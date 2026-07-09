@@ -36,8 +36,8 @@ export default function Home() {
   const [lealtad, setLealtad] = useState<DatosLealtad | null>(null);
   const [cargandoLealtad, setCargandoLealtad] = useState(false);
   const [beneficioAplicado, setBeneficioAplicado] = useState(false);
+  const [productoDetalle, setProductoDetalle] = useState<any | null>(null);
 
-  // Cargar productos y carrito persistido
   useEffect(() => {
     fetch('/api/productos')
       .then((res) => res.json())
@@ -56,7 +56,6 @@ export default function Home() {
     setTelefonoUsuario(localStorage.getItem('moramango_telefono') || '');
   }, []);
 
-  // Cargar datos de lealtad cuando el usuario está logueado y abre el carrito
   useEffect(() => {
     if (session && verCarrito && !lealtad) {
       setCargandoLealtad(true);
@@ -70,7 +69,6 @@ export default function Home() {
     }
   }, [session, verCarrito, lealtad]);
 
-  // Cuando el usuario regresa del login con carrito guardado, abrir carrito automáticamente
   useEffect(() => {
     if (session && carrito.length > 0) {
       const volvioDeLogin = sessionStorage.getItem('moramango_login_redirect');
@@ -81,7 +79,6 @@ export default function Home() {
     }
   }, [session, carrito]);
 
-  // Persistir carrito en localStorage cada vez que cambia
   useEffect(() => {
     try {
       localStorage.setItem(CARRITO_KEY, JSON.stringify(carrito));
@@ -150,7 +147,13 @@ export default function Home() {
     setVerPerfil(false);
   };
 
-  // Calcular totales con descuento si aplica
+  // Abrir detalle solo si hay descripción — evita modal vacío
+  const abrirDetalle = (producto: any) => {
+    if (producto.descripcion && producto.descripcion.trim()) {
+      setProductoDetalle(producto);
+    }
+  };
+
   const totalArticulos = carrito.reduce((total, item) => total + item.cantidad, 0);
   const totalBruto = carrito.reduce((total, item) => total + (item.precio * item.cantidad), 0);
 
@@ -167,7 +170,6 @@ export default function Home() {
     return lealtad.beneficioDisponible;
   })();
 
-  // Mensaje de recordatorio de lealtad
   const mensajeLealtad = (() => {
     if (!session || !lealtad || cargandoLealtad) return null;
 
@@ -232,7 +234,7 @@ export default function Home() {
         setVerCarrito(false);
         setNotas('');
         setBeneficioAplicado(false);
-        setLealtad(null); // Forzar recarga en el siguiente pedido
+        setLealtad(null);
         setPedidoConfirmado(data.idPedido);
       } else {
         alert('Hubo un error al procesar tu pedido. Intenta de nuevo.');
@@ -244,7 +246,6 @@ export default function Home() {
     }
   };
 
-  // Pantalla de confirmación
   if (pedidoConfirmado) {
     return (
       <main className="h-[100dvh] bg-neutral-200 font-sans flex justify-center overflow-hidden">
@@ -268,6 +269,12 @@ export default function Home() {
       </main>
     );
   }
+
+  // Info del producto en detalle (para el modal)
+  const itemEnCarritoDetalle = productoDetalle
+    ? carrito.find(i => i.id === productoDetalle.id)
+    : null;
+  const cantidadEnCarritoDetalle = itemEnCarritoDetalle?.cantidad ?? 0;
 
   return (
     <main className="h-[100dvh] bg-neutral-200 font-sans flex justify-center overflow-hidden">
@@ -335,18 +342,31 @@ export default function Home() {
                         {(items as any[]).map((producto, index) => {
                           const itemEnCarrito = carrito.find(item => item.id === producto.id);
                           const cantidadAgregada = itemEnCarrito ? itemEnCarrito.cantidad : 0;
+                          const tieneDescripcion = producto.descripcion && producto.descripcion.trim();
 
                           return (
                             <div key={producto.id || index} className="flex gap-4 p-4 rounded-3xl bg-white shadow-sm border border-neutral-100">
-                              <div className="flex-1 flex flex-col justify-center">
-                                <h3 className="font-bold text-neutral-900 leading-tight">{producto.nombre}</h3>
+                              {/* Área de texto — tappable si tiene descripción */}
+                              <button
+                                onClick={() => abrirDetalle(producto)}
+                                disabled={!tieneDescripcion}
+                                className={`flex-1 flex flex-col justify-center text-left ${
+                                  tieneDescripcion ? 'active:opacity-70 transition-opacity' : 'cursor-default'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <h3 className="font-bold text-neutral-900 leading-tight">{producto.nombre}</h3>
+                                  {tieneDescripcion && (
+                                    <span className="text-neutral-400 text-xs">›</span>
+                                  )}
+                                </div>
                                 {producto.descripcion && (
                                   <p className="text-xs text-neutral-500 mt-1.5 line-clamp-2 leading-relaxed">
                                     {producto.descripcion}
                                   </p>
                                 )}
                                 <div className="mt-3 font-bold text-neutral-900">${producto.precio}</div>
-                              </div>
+                              </button>
 
                               <div className="relative shrink-0 ml-2">
                                 <button
@@ -440,7 +460,6 @@ export default function Home() {
                 </div>
               ))}
 
-              {/* Mensaje de lealtad */}
               {session && (
                 <div className="mt-2">
                   {cargandoLealtad && (
@@ -455,7 +474,6 @@ export default function Home() {
                       <span className="text-lg leading-none mt-0.5">{mensajeLealtad.emoji}</span>
                       <div className="flex-1">
                         <p className="text-xs text-neutral-700 leading-relaxed">{mensajeLealtad.texto}</p>
-                        {/* Botón para aplicar descuento del 15% */}
                         {mensajeLealtad.tipo === 'descuento' && (
                           <button
                             onClick={() => setBeneficioAplicado(prev => !prev)}
@@ -474,7 +492,6 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Campo de notas */}
               <div className="bg-white rounded-2xl p-4 border border-neutral-100 shadow-sm">
                 <label className="text-sm font-semibold text-neutral-700 block mb-2">Notas del pedido</label>
                 <textarea
@@ -488,7 +505,6 @@ export default function Home() {
             </div>
 
             <div className="bg-white p-6 rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.05)] border-t border-neutral-100 shrink-0">
-              {/* Desglose de precios si hay descuento */}
               {beneficioAplicado && descuentoAplicado > 0 && (
                 <div className="mb-3 space-y-1">
                   <div className="flex justify-between items-center text-sm text-neutral-500">
@@ -579,6 +595,128 @@ export default function Home() {
                 </button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* MODAL: DETALLE DE PRODUCTO (bottom sheet) */}
+        {productoDetalle && (
+          <div
+            className="absolute inset-0 z-[60] flex items-end justify-center"
+            onClick={() => setProductoDetalle(null)}
+          >
+            {/* Backdrop */}
+            <div className="absolute inset-0 bg-black/50" />
+
+            {/* Sheet */}
+            <div
+              className="relative w-full bg-white rounded-t-3xl shadow-2xl max-h-[90%] flex flex-col animate-slide-up"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <style jsx>{`
+                @keyframes slide-up {
+                  from { transform: translateY(100%); }
+                  to { transform: translateY(0); }
+                }
+                .animate-slide-up {
+                  animation: slide-up 0.25s ease-out;
+                }
+              `}</style>
+
+              {/* Handle visual */}
+              <div className="flex justify-center pt-3 pb-1 shrink-0">
+                <div className="w-10 h-1 bg-neutral-300 rounded-full" />
+              </div>
+
+              {/* Botón cerrar */}
+              <button
+                onClick={() => setProductoDetalle(null)}
+                className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center bg-neutral-100 rounded-full text-neutral-700 active:scale-90 z-10"
+                aria-label="Cerrar"
+              >
+                ✕
+              </button>
+
+              {/* Contenido scrollable */}
+              <div className="flex-1 overflow-y-auto px-6 pb-4">
+                {/* Imagen grande */}
+                <div className="w-full h-48 bg-neutral-100 rounded-2xl overflow-hidden flex items-center justify-center mb-4 mt-2">
+                  {productoDetalle.imagen ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={productoDetalle.imagen}
+                      alt={productoDetalle.nombre}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-7xl opacity-20">
+                      {getIcono(productoDetalle.categoria || '')}
+                    </span>
+                  )}
+                </div>
+
+                {/* Categoría */}
+                {productoDetalle.categoria && (
+                  <p className="text-xs text-neutral-500 uppercase tracking-wide font-semibold mb-1">
+                    {productoDetalle.categoria}
+                  </p>
+                )}
+
+                {/* Nombre */}
+                <h2 className="text-2xl font-bold text-neutral-900 mb-3 leading-tight">
+                  {productoDetalle.nombre}
+                </h2>
+
+                {/* Descripción completa */}
+                {productoDetalle.descripcion && (
+                  <p className="text-sm text-neutral-600 leading-relaxed mb-4 whitespace-pre-line">
+                    {productoDetalle.descripcion}
+                  </p>
+                )}
+
+                {/* Precio */}
+                <div className="text-2xl font-bold text-neutral-900 mb-2">
+                  ${productoDetalle.precio}
+                </div>
+              </div>
+
+              {/* Footer con acción */}
+              <div className="border-t border-neutral-100 p-4 shrink-0 bg-white rounded-b-3xl">
+                {cantidadEnCarritoDetalle === 0 ? (
+                  <button
+                    onClick={() => agregarAlCarrito(productoDetalle)}
+                    className="w-full bg-black text-white font-bold text-base py-4 rounded-2xl active:scale-95 transition-transform shadow-md"
+                  >
+                    Agregar al pedido
+                  </button>
+                ) : (
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center bg-neutral-100 rounded-2xl p-1.5 gap-2">
+                      <button
+                        onClick={() => eliminarDelCarrito(productoDetalle.id)}
+                        className="w-11 h-11 flex items-center justify-center bg-white rounded-xl font-medium text-neutral-700 shadow-sm active:scale-90 text-lg"
+                      >
+                        −
+                      </button>
+                      <span className="font-bold text-neutral-900 px-2 min-w-[24px] text-center text-lg tabular-nums">
+                        {cantidadEnCarritoDetalle}
+                      </span>
+                      <button
+                        onClick={() => agregarAlCarrito(productoDetalle)}
+                        className="w-11 h-11 flex items-center justify-center bg-black text-white rounded-xl font-medium shadow-sm active:scale-90 text-lg"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-neutral-500">En tu pedido</p>
+                      <p className="font-bold text-neutral-900">
+                        ${(limpiarPrecio(productoDetalle.precio) * cantidadEnCarritoDetalle).toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 

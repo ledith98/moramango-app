@@ -78,6 +78,7 @@ export default function Home() {
     const { lada, numero } = parsearTelefono(telefonoGuardado);
     setLadaUsuario(lada);
     setTelefonoUsuario(numero);
+  }, []);
 
   useEffect(() => {
     if (session && verCarrito && !lealtad) {
@@ -106,6 +107,10 @@ export default function Home() {
             setLadaUsuario(lada);
             setTelefonoUsuario(numero);
           }
+        })
+        .catch(() => {});
+    }
+  }, [session, verPerfil, nombreUsuario, telefonoUsuario]);
 
   useEffect(() => {
     if (session && carrito.length > 0) {

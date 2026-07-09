@@ -12,6 +12,7 @@ interface Pedido {
   Total_Final: string;
   Notas_Pedido: string;
   Telefono: string;
+  HoraLegible: string;
 }
 
 interface DetalleItem {
@@ -52,12 +53,6 @@ const siguienteEstado = (actual: string): string | null => {
   const i = FLUJO.indexOf(actual);
   if (i === -1 || i === FLUJO.length - 1) return null;
   return FLUJO[i + 1];
-};
-
-const horaDeId = (idPedido: string) => {
-  const match = /^PED-\d{6}-(\d{2})(\d{2})(\d{2})-\d+$/.exec(idPedido);
-  if (!match) return '';
-  return `${match[1]}:${match[2]}`;
 };
 
 const hoyISO = () => new Date().toISOString().slice(0, 10);
@@ -151,7 +146,7 @@ export default function PedidosPage() {
               onClick={() => abrirDetalle(p.ID_Pedido)}
               className="w-full flex items-center gap-4 p-4 text-left hover:bg-neutral-50 transition-colors"
             >
-              <span className="font-mono text-sm text-neutral-500 w-14 shrink-0">{horaDeId(p.ID_Pedido)}</span>
+              <span className="font-mono text-sm text-neutral-500 w-14 shrink-0">{p.HoraLegible}</span>
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-neutral-900 truncate">{p.Nombre_Cliente_Snap}</p>
                 <p className="text-xs text-neutral-500 font-mono">{p.ID_Pedido}</p>

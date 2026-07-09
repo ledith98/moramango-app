@@ -8,19 +8,18 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSheetData } from '@/lib/googleSheets';
-import { extraerFechaPedido, fechaCortaDesdeISO, fechaHoyMTY } from '@/lib/pedidoFecha';
+import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const fechaISO = searchParams.get('fecha') || fechaHoyMTY();
-  const fechaCorta = fechaCortaDesdeISO(fechaISO);
 
   const [pedidos, detalles] = await Promise.all([
     getSheetData('PEDIDOS'),
     getSheetData('DT PEDIDOS'),
   ]);
 
-  const delDia = pedidos.filter((p) => extraerFechaPedido(p.ID_Pedido)?.fechaCorta === fechaCorta);
+  const delDia = pedidos.filter((p) => parsearFechaHora(p.Fecha_Hora)?.fechaISO === fechaISO);
   const validos = delDia.filter((p) => p.Estado !== 'Cancelado');
 
   const totalVentas = validos.reduce((sum, p) => sum + (parseFloat(p.Total_Final) || 0), 0);

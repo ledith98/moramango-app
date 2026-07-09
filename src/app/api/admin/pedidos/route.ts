@@ -13,7 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSheetData, findRow, updateCell } from '@/lib/googleSheets';
-import { extraerFechaPedido, fechaCortaDesdeISO, fechaHoyMTY } from '@/lib/pedidoFecha';
+import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 
 export const ESTADOS_VALIDOS = [
   'Recibido',
@@ -28,7 +28,6 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const fechaISO = searchParams.get('fecha') || fechaHoyMTY();
   const estado = searchParams.get('estado');
-  const fechaCorta = fechaCortaDesdeISO(fechaISO);
 
   const [pedidos, usuarios] = await Promise.all([
     getSheetData('PEDIDOS'),
@@ -38,13 +37,14 @@ export async function GET(req: NextRequest) {
   const telefonoPorUsuario = new Map(usuarios.map((u) => [u.ID_Usuario, u.Telefono || '']));
 
   const delDia = pedidos
-    .map((p) => ({ pedido: p, info: extraerFechaPedido(p.ID_Pedido) }))
-    .filter(({ info }) => info?.fechaCorta === fechaCorta)
+    .map((p) => ({ pedido: p, info: parsearFechaHora(p.Fecha_Hora) }))
+    .filter(({ info }) => info?.fechaISO === fechaISO)
     .filter(({ pedido }) => !estado || pedido.Estado === estado)
     .sort((a, b) => (b.info!.timestamp - a.info!.timestamp))
-    .map(({ pedido }) => ({
+    .map(({ pedido, info }) => ({
       ...pedido,
       Telefono: telefonoPorUsuario.get(pedido.ID_Usuario) || '',
+      HoraLegible: info!.horaLegible,
     }));
 
   return NextResponse.json({ pedidos: delDia });

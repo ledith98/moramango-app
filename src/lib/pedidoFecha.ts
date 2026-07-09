@@ -1,13 +1,18 @@
 /**
  * pedidoFecha.ts
  *
- * Fecha_Hora en PEDIDOS se guarda con toLocaleString('es-MX', {...}),
- * formato "D/M/AAAA, HH:MM:SS" — ambiguo para `new Date(string)` (Node
- * lo interpreta como M/D/AAAA). En cambio el ID_Pedido trae la fecha
- * embebida sin ambigüedad: PED-YYMMDD-HHMMSS-NNN.
+ * Fecha_Hora en PEDIDOS se guarda con
+ * `new Date().toLocaleString('es-MX', { timeZone: 'America/Monterrey' })`,
+ * que produce un formato NO zero-padded y en 12h, ej: "9/7/2026, 9:05:03 a.m."
+ * `new Date(string)` no puede parsear eso de forma confiable (Node lo
+ * interpretaría con reglas ambiguas de M/D vs D/M).
  *
- * Todo el filtrado/ordenado por día y hora se hace a partir del ID,
- * nunca parseando Fecha_Hora.
+ * NOTA: el formato de ID_Pedido cambió con el tiempo — versiones viejas
+ * incluían la hora (PED-YYMMDD-HHMMSS-NNN), la versión actual no
+ * (PED-YYMMDD-NNN). Por eso NO se debe depender del ID para obtener la
+ * hora — solo Fecha_Hora es la fuente confiable de fecha/hora real.
+ * Este módulo parsea Fecha_Hora directamente con una regex fija en vez
+ * de usar `new Date(string)`.
  */
 
 export function fechaHoyMTY(): string {
@@ -22,33 +27,34 @@ export function fechaHoyMTY(): string {
   return `${get('year')}-${get('month')}-${get('day')}`; // YYYY-MM-DD
 }
 
-export function fechaCortaDesdeISO(fechaISO: string): string {
-  // "2026-07-09" -> "260709"
-  const [yyyy, mm, dd] = fechaISO.split('-');
-  return `${yyyy.slice(2)}${mm}${dd}`;
-}
-
-export interface InfoFechaPedido {
-  fechaCorta: string; // YYMMDD
-  horaCorta: string; // HHMMSS
+export interface FechaHoraPedido {
   fechaISO: string; // YYYY-MM-DD
-  timestamp: number; // para ordenar
+  horaLegible: string; // HH:MM (24h, zero-padded)
+  timestamp: number; // clave numérica solo para ordenar, no es epoch real
 }
 
-export function extraerFechaPedido(idPedido: string): InfoFechaPedido | null {
-  const match = /^PED-(\d{6})-(\d{6})-\d+$/.exec(idPedido ?? '');
+const REGEX_FECHA_HORA = /^(\d{1,2})\/(\d{1,2})\/(\d{4}),\s*(\d{1,2}):(\d{2}):(\d{2})\s*(a\.\s*m\.|p\.\s*m\.)$/i;
+
+export function parsearFechaHora(fechaHoraStr: string | undefined | null): FechaHoraPedido | null {
+  const match = REGEX_FECHA_HORA.exec((fechaHoraStr ?? '').trim());
   if (!match) return null;
 
-  const [, fechaCorta, horaCorta] = match;
-  const yy = fechaCorta.slice(0, 2);
-  const mm = fechaCorta.slice(2, 4);
-  const dd = fechaCorta.slice(4, 6);
-  const hh = horaCorta.slice(0, 2);
-  const mi = horaCorta.slice(2, 4);
-  const ss = horaCorta.slice(4, 6);
+  const [, ddStr, mmStr, yyyyStr, hhStr, miStr, ssStr, ampm] = match;
+  const dd = parseInt(ddStr, 10);
+  const mm = parseInt(mmStr, 10);
+  const yyyy = parseInt(yyyyStr, 10);
+  let hh = parseInt(hhStr, 10);
+  const mi = parseInt(miStr, 10);
+  const ss = parseInt(ssStr, 10);
 
-  const fechaISO = `20${yy}-${mm}-${dd}`;
-  const timestamp = new Date(`${fechaISO}T${hh}:${mi}:${ss}`).getTime();
+  const esPM = /p/i.test(ampm);
+  if (hh === 12) hh = esPM ? 12 : 0;
+  else if (esPM) hh += 12;
 
-  return { fechaCorta, horaCorta, fechaISO, timestamp };
+  const fechaISO = `${yyyy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+  const horaLegible = `${String(hh).padStart(2, '0')}:${String(mi).padStart(2, '0')}`;
+  // Concatenación numérica AAAAMMDDHHMMSS — ordena cronológicamente sin pasar por Date().
+  const timestamp = (yyyy * 10000 + mm * 100 + dd) * 1_000_000 + (hh * 10000 + mi * 100 + ss);
+
+  return { fechaISO, horaLegible, timestamp };
 }

@@ -6,7 +6,7 @@
 
 import { NextResponse } from 'next/server';
 import { getSheetData } from '@/lib/googleSheets';
-import { extraerFechaPedido } from '@/lib/pedidoFecha';
+import { parsearFechaHora } from '@/lib/pedidoFecha';
 
 export async function GET(
   _req: Request,
@@ -18,8 +18,8 @@ export async function GET(
   const delCliente = pedidos
     .filter((p) => p.ID_Usuario === id)
     .sort((a, b) => {
-      const ta = extraerFechaPedido(a.ID_Pedido)?.timestamp ?? 0;
-      const tb = extraerFechaPedido(b.ID_Pedido)?.timestamp ?? 0;
+      const ta = parsearFechaHora(a.Fecha_Hora)?.timestamp ?? 0;
+      const tb = parsearFechaHora(b.Fecha_Hora)?.timestamp ?? 0;
       return tb - ta;
     });
 

@@ -4,12 +4,10 @@
  * GET  → Devuelve los pedidos del usuario logueado
  * POST → Crea pedido, actualiza lealtad por PEDIDOS (no artículos)
  *
- * Formato ID: PED-YYMMDD-HHMMSS-NNN
+ * Formato ID: PED-YYMMDD-NNN
  *   - YYMMDD: fecha en zona horaria de Monterrey
- *   - HHMMSS: hora exacta del pedido (24h)
  *   - NNN: secuencial del día
- * La hora dentro del ID evita colisiones si el secuencial se calcula mal
- * por lag de Google Sheets.
+ * La hora se ve en la columna Fecha_Hora, no se duplica en el ID.
  *
  * Lógica de lealtad:
  * - 5 pedidos → 15% descuento (ciclo NO reinicia al canjear)
@@ -51,16 +49,12 @@ export async function POST(req: NextRequest) {
   const ahora = new Date();
   const fechaStr = ahora.toLocaleString('es-MX', { timeZone: 'America/Monterrey' });
 
-  // Descomponer fecha/hora en zona horaria de Monterrey
+  // Descomponer fecha en zona horaria de Monterrey (solo YY/MM/DD para el ID)
   const partes = new Intl.DateTimeFormat('es-MX', {
     timeZone: 'America/Monterrey',
     year: '2-digit',
     month: '2-digit',
     day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
   }).formatToParts(ahora);
 
   const getParte = (tipo: string) =>
@@ -69,21 +63,17 @@ export async function POST(req: NextRequest) {
   const yy = getParte('year');
   const mm = getParte('month');
   const dd = getParte('day');
-  const hh = getParte('hour');
-  const mi = getParte('minute');
-  const ss = getParte('second');
 
   const fechaCorta = `${yy}${mm}${dd}`;   // 260708
-  const horaCorta = `${hh}${mi}${ss}`;    // 125430
 
   // Contar pedidos del día para el número secuencial
   const pedidosExistentes = await getSheetData('PEDIDOS');
   const delMismoDia = pedidosExistentes.filter((p) =>
-    p.ID_Pedido?.includes(`-${fechaCorta}-`)
+    p.ID_Pedido?.startsWith(`PED-${fechaCorta}-`)
   ).length;
 
-  // Formato final: PED-260708-125430-023
-  const idPedido = `PED-${fechaCorta}-${horaCorta}-${String(delMismoDia + 1).padStart(3, '0')}`;
+  // Formato final: PED-260708-001
+  const idPedido = `PED-${fechaCorta}-${String(delMismoDia + 1).padStart(3, '0')}`;
 
   const totalBruto = items.reduce(
     (sum: number, item: any) => sum + item.precio * item.cantidad,
@@ -168,3 +158,4 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ success: true, idPedido });
 }
+

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSession, signIn } from 'next-auth/react';
+import { useSession, signIn, signOut } from 'next-auth/react';
 
 interface ItemCarrito {
   id: string;
@@ -9,6 +9,13 @@ interface ItemCarrito {
   precio: number;
   categoria: string;
   cantidad: number;
+}
+
+interface DatosLealtad {
+  cicloActual: number;
+  beneficioDisponible: string;
+  pedidosParaDescuento: number;
+  pedidosParaArticulo: number;
 }
 
 const CARRITO_KEY = 'moramango_carrito';
@@ -25,6 +32,10 @@ export default function Home() {
   const [nombreUsuario, setNombreUsuario] = useState('');
   const [telefonoUsuario, setTelefonoUsuario] = useState('');
   const [pedidoConfirmado, setPedidoConfirmado] = useState<string | null>(null);
+  const [notas, setNotas] = useState('');
+  const [lealtad, setLealtad] = useState<DatosLealtad | null>(null);
+  const [cargandoLealtad, setCargandoLealtad] = useState(false);
+  const [beneficioAplicado, setBeneficioAplicado] = useState(false);
 
   // Cargar productos y carrito persistido
   useEffect(() => {
@@ -36,16 +47,28 @@ export default function Home() {
       })
       .catch(() => setCargando(false));
 
-    // Recuperar carrito de localStorage (sobrevive al redirect de login)
     try {
       const carritoGuardado = localStorage.getItem(CARRITO_KEY);
       if (carritoGuardado) setCarrito(JSON.parse(carritoGuardado));
     } catch {}
 
-    // Recuperar datos de perfil
     setNombreUsuario(localStorage.getItem('moramango_nombre') || '');
     setTelefonoUsuario(localStorage.getItem('moramango_telefono') || '');
   }, []);
+
+  // Cargar datos de lealtad cuando el usuario está logueado y abre el carrito
+  useEffect(() => {
+    if (session && verCarrito && !lealtad) {
+      setCargandoLealtad(true);
+      fetch('/api/usuario')
+        .then((res) => res.json())
+        .then((data) => {
+          if (!data.error) setLealtad(data);
+        })
+        .catch(() => {})
+        .finally(() => setCargandoLealtad(false));
+    }
+  }, [session, verCarrito, lealtad]);
 
   // Cuando el usuario regresa del login con carrito guardado, abrir carrito automáticamente
   useEffect(() => {
@@ -127,10 +150,56 @@ export default function Home() {
     setVerPerfil(false);
   };
 
+  // Calcular totales con descuento si aplica
+  const totalArticulos = carrito.reduce((total, item) => total + item.cantidad, 0);
+  const totalBruto = carrito.reduce((total, item) => total + (item.precio * item.cantidad), 0);
+
+  const descuentoAplicado = (() => {
+    if (!beneficioAplicado || !lealtad) return 0;
+    if (lealtad.beneficioDisponible === '15% Descuento') return totalBruto * 0.15;
+    return 0;
+  })();
+
+  const totalPagar = totalBruto - descuentoAplicado;
+
+  const beneficioCanjeadoStr = (() => {
+    if (!beneficioAplicado || !lealtad) return 'Ninguno';
+    return lealtad.beneficioDisponible;
+  })();
+
+  // Mensaje de recordatorio de lealtad
+  const mensajeLealtad = (() => {
+    if (!session || !lealtad || cargandoLealtad) return null;
+
+    const b = lealtad.beneficioDisponible;
+
+    if (b === 'Articulo Gratis') {
+      return {
+        emoji: '🎉',
+        texto: '¡Tienes un licuado o jugo gratis disponible (hasta $35)! Agrégalo a tu pedido si quieres usarlo.',
+        tipo: 'gratis',
+      };
+    }
+    if (b === '15% Descuento') {
+      return {
+        emoji: '🏷️',
+        texto: '¡Tienes 15% de descuento disponible! Puedes aplicarlo a este pedido.',
+        tipo: 'descuento',
+      };
+    }
+    if (lealtad.pedidosParaDescuento > 0) {
+      return {
+        emoji: '⭐',
+        texto: `Te faltan ${lealtad.pedidosParaDescuento} pedido${lealtad.pedidosParaDescuento === 1 ? '' : 's'} para obtener 15% de descuento.`,
+        tipo: 'progreso',
+      };
+    }
+    return null;
+  })();
+
   const confirmarOrden = async () => {
     if (carrito.length === 0) return;
 
-    // Si no está logueado, guardamos el estado y mandamos al login
     if (!session) {
       sessionStorage.setItem('moramango_login_redirect', 'confirmar');
       signIn('google', { callbackUrl: '/' });
@@ -149,19 +218,21 @@ export default function Home() {
             precio: item.precio,
             cantidad: item.cantidad,
           })),
-          notas: '',
+          notas: notas.trim(),
           horaRecoleccion: '',
-          beneficioCanjeado: 'Ninguno',
+          beneficioCanjeado: beneficioCanjeadoStr,
         }),
       });
 
       const data = await res.json();
 
       if (data.success) {
-        // Limpiar carrito y mostrar confirmación
         setCarrito([]);
         localStorage.removeItem(CARRITO_KEY);
         setVerCarrito(false);
+        setNotas('');
+        setBeneficioAplicado(false);
+        setLealtad(null); // Forzar recarga en el siguiente pedido
         setPedidoConfirmado(data.idPedido);
       } else {
         alert('Hubo un error al procesar tu pedido. Intenta de nuevo.');
@@ -173,10 +244,7 @@ export default function Home() {
     }
   };
 
-  const totalArticulos = carrito.reduce((total, item) => total + item.cantidad, 0);
-  const totalPagar = carrito.reduce((total, item) => total + (item.precio * item.cantidad), 0);
-
-  // Pantalla de confirmación de pedido
+  // Pantalla de confirmación
   if (pedidoConfirmado) {
     return (
       <main className="h-[100dvh] bg-neutral-200 font-sans flex justify-center overflow-hidden">
@@ -371,9 +439,69 @@ export default function Home() {
                   </div>
                 </div>
               ))}
+
+              {/* Mensaje de lealtad */}
+              {session && (
+                <div className="mt-2">
+                  {cargandoLealtad && (
+                    <div className="bg-neutral-100 rounded-2xl p-3.5 animate-pulse h-12" />
+                  )}
+                  {!cargandoLealtad && mensajeLealtad && (
+                    <div className={`rounded-2xl p-3.5 border flex gap-3 items-start ${
+                      mensajeLealtad.tipo === 'gratis' ? 'bg-amber-50 border-amber-200' :
+                      mensajeLealtad.tipo === 'descuento' ? 'bg-green-50 border-green-200' :
+                      'bg-neutral-50 border-neutral-200'
+                    }`}>
+                      <span className="text-lg leading-none mt-0.5">{mensajeLealtad.emoji}</span>
+                      <div className="flex-1">
+                        <p className="text-xs text-neutral-700 leading-relaxed">{mensajeLealtad.texto}</p>
+                        {/* Botón para aplicar descuento del 15% */}
+                        {mensajeLealtad.tipo === 'descuento' && (
+                          <button
+                            onClick={() => setBeneficioAplicado(prev => !prev)}
+                            className={`mt-2 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${
+                              beneficioAplicado
+                                ? 'bg-green-600 text-white'
+                                : 'bg-black text-white'
+                            }`}
+                          >
+                            {beneficioAplicado ? '✓ Descuento aplicado' : 'Aplicar 15% de descuento'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Campo de notas */}
+              <div className="bg-white rounded-2xl p-4 border border-neutral-100 shadow-sm">
+                <label className="text-sm font-semibold text-neutral-700 block mb-2">Notas del pedido</label>
+                <textarea
+                  value={notas}
+                  onChange={(e) => setNotas(e.target.value)}
+                  placeholder="Ej: Sin mayonesa, sin tomate, extra salsa..."
+                  rows={3}
+                  className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none focus:border-black transition-colors resize-none"
+                />
+              </div>
             </div>
 
             <div className="bg-white p-6 rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.05)] border-t border-neutral-100 shrink-0">
+              {/* Desglose de precios si hay descuento */}
+              {beneficioAplicado && descuentoAplicado > 0 && (
+                <div className="mb-3 space-y-1">
+                  <div className="flex justify-between items-center text-sm text-neutral-500">
+                    <span>Subtotal</span>
+                    <span>${totalBruto.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm text-green-600 font-medium">
+                    <span>Descuento 15%</span>
+                    <span>-${descuentoAplicado.toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
+
               <div className="flex justify-between items-center mb-4">
                 <span className="text-neutral-500 font-medium text-lg">Total a pagar</span>
                 <span className="text-2xl font-bold text-black">${totalPagar.toFixed(2)}</span>
@@ -436,10 +564,20 @@ export default function Home() {
                 Guardar Datos
               </button>
             </form>
+
+            {session && (
+              <div className="p-6 pt-0 shrink-0">
+                <button
+                  onClick={() => {
+                    if (confirm('¿Cerrar sesión? Tu carrito se conserva.')) {
+                      signOut({ callbackUrl: '/' });
+                    }
+                  }}
+                  className="w-full bg-white border border-red-200 text-red-600 font-semibold py-3 rounded-2xl active:scale-95 transition-transform"
+                >
+                  Cerrar Sesión
+                </button>
+              </div>
+            )}
           </div>
         )}
-
-      </div>
-    </main>
-  );
-}

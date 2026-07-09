@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useSession, signIn, signOut } from 'next-auth/react';
 
 // Separa un teléfono guardado tipo "+528186003207" en lada y número
@@ -380,14 +381,25 @@ export default function Home() {
                   <p className="text-xs text-neutral-500 font-medium mt-1">Blend to Go</p>
                 </div>
               </div>
-              <button
-                onClick={() => session ? setVerPerfil(true) : signIn('google', { callbackUrl: '/' })}
-                className={`w-10 h-10 rounded-full flex items-center justify-center text-lg active:scale-90 transition-transform ${
-                  session ? 'bg-black text-white' : 'bg-neutral-100 text-black'
-                }`}
-              >
-                {session ? '👤' : '🔑'}
-              </button>
+              <div className="flex items-center gap-2">
+                {(session?.user as any)?.rol === 'admin' && (
+                  <Link
+                    href="/admin"
+                    className="w-10 h-10 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-lg active:scale-90 transition-transform"
+                    title="Panel de Admin"
+                  >
+                    ⚙️
+                  </Link>
+                )}
+                <button
+                  onClick={() => session ? setVerPerfil(true) : signIn('google', { callbackUrl: '/' })}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center text-lg active:scale-90 transition-transform ${
+                    session ? 'bg-black text-white' : 'bg-neutral-100 text-black'
+                  }`}
+                >
+                  {session ? '👤' : '🔑'}
+                </button>
+              </div>
             </div>
 
             <div className="flex overflow-x-auto gap-4 mt-6 px-4 pb-4" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>

@@ -69,6 +69,21 @@ export default function Home() {
     }
   }, [session, verCarrito, lealtad]);
 
+  // Precargar nombre/teléfono desde el sheet cuando abre Mis Datos
+  // (solo si los campos locales están vacíos, para no sobreescribir cambios sin guardar)
+  useEffect(() => {
+    if (session && verPerfil && !nombreUsuario && !telefonoUsuario) {
+      fetch('/api/usuario')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.error) return;
+          if (data.nombre) setNombreUsuario(data.nombre);
+          if (data.telefono) setTelefonoUsuario(data.telefono);
+        })
+        .catch(() => {});
+    }
+  }, [session, verPerfil, nombreUsuario, telefonoUsuario]);
+
   useEffect(() => {
     if (session && carrito.length > 0) {
       const volvioDeLogin = sessionStorage.getItem('moramango_login_redirect');
@@ -140,10 +155,29 @@ export default function Home() {
     });
   };
 
-  const guardarPerfil = (e: React.FormEvent) => {
+  const guardarPerfil = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Guardar localmente (backup y funciona sin conexión)
     localStorage.setItem('moramango_nombre', nombreUsuario);
     localStorage.setItem('moramango_telefono', telefonoUsuario);
+
+    // Sincronizar al sheet si el usuario está logueado
+    if (session) {
+      try {
+        await fetch('/api/usuario', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nombre: nombreUsuario,
+            telefono: telefonoUsuario,
+          }),
+        });
+      } catch {
+        // Si falla el sync, ya está en localStorage. No bloqueamos al usuario.
+      }
+    }
+
     setVerPerfil(false);
   };
 

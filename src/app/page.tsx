@@ -382,6 +382,13 @@ export default function Home() {
                                   )}
                                 </button>
 
+                                {/* Indicador + para agregar (solo si no está en el carrito) */}
+                                {cantidadAgregada === 0 && (
+                                  <div className="absolute -bottom-2 -right-2 w-9 h-9 bg-black text-white rounded-full flex items-center justify-center shadow-lg pointer-events-none">
+                                    <span className="text-xl font-medium leading-none">+</span>
+                                  </div>
+                                )}
+                                
                                 {cantidadAgregada > 0 && (
                                   <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between bg-white/90 backdrop-blur-sm rounded-b-2xl px-1.5 py-1 shadow-sm">
                                     <button

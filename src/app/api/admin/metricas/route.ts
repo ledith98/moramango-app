@@ -9,8 +9,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSheetData } from '@/lib/googleSheets';
 import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
+import { getAdminSession } from '@/lib/roles';
 
 export async function GET(req: NextRequest) {
+  if (!(await getAdminSession())) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  }
+
   const { searchParams } = new URL(req.url);
   const fechaISO = searchParams.get('fecha') || fechaHoyMTY();
 

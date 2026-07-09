@@ -16,14 +16,23 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { appendRow, ensureColumn, findRow, getSheetData, updateCell } from '@/lib/googleSheets';
+import { getAdminSession } from '@/lib/roles';
 
 export async function GET() {
+  if (!(await getAdminSession())) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  }
+
   const productos = await getSheetData('Productos');
   const visibles = productos.filter((p) => (p.Eliminado || '').toUpperCase() !== 'TRUE');
   return NextResponse.json({ productos: visibles });
 }
 
 export async function POST(req: NextRequest) {
+  if (!(await getAdminSession())) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  }
+
   const { nombre, categoria, descripcion, precio } = await req.json();
 
   if (!nombre || typeof nombre !== 'string' || !nombre.trim()) {
@@ -56,6 +65,10 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  if (!(await getAdminSession())) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  }
+
   const { idProducto, nombre, categoria, descripcion, precio, disponible } = await req.json();
 
   if (!idProducto) {
@@ -91,6 +104,10 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  if (!(await getAdminSession())) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  }
+
   const { searchParams } = new URL(req.url);
   const idProducto = searchParams.get('id');
 

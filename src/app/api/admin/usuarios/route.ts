@@ -12,13 +12,22 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { findRow, getSheetData, updateCell } from '@/lib/googleSheets';
+import { getAdminSession } from '@/lib/roles';
 
 export async function GET() {
+  if (!(await getAdminSession())) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  }
+
   const usuarios = await getSheetData('USUARIOS');
   return NextResponse.json({ usuarios });
 }
 
 export async function PATCH(req: NextRequest) {
+  if (!(await getAdminSession())) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  }
+
   const { idUsuario, activo, rol } = await req.json();
 
   if (!idUsuario) {

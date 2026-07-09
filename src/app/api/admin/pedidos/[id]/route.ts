@@ -7,11 +7,16 @@
 
 import { NextResponse } from 'next/server';
 import { getSheetData } from '@/lib/googleSheets';
+import { getAdminSession } from '@/lib/roles';
 
 export async function GET(
   _req: Request,
   context: { params: Promise<{ id: string }> }
 ) {
+  if (!(await getAdminSession())) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  }
+
   const { id } = await context.params;
 
   const [pedidos, detalles, usuarios] = await Promise.all([

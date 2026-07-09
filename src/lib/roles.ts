@@ -43,3 +43,12 @@ export async function requireAuth() {
 export function esAdmin(session: any): boolean {
   return session?.user?.rol === 'admin';
 }
+
+// Para API routes de admin: devuelve la sesión solo si el usuario es admin.
+// El rol se lee fresco desde el Sheet (vía el callback session), así un
+// cambio de rol aplica de inmediato sin que el usuario re-inicie sesión.
+export async function getAdminSession() {
+  const session = await getServerSession(authOptions);
+  if (!session || (session.user as any).rol !== 'admin') return null;
+  return session;
+}

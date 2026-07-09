@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSheetData, findRow, updateCell } from '@/lib/googleSheets';
 import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
+import { getAdminSession } from '@/lib/roles';
 
 export const ESTADOS_VALIDOS = [
   'Recibido',
@@ -25,6 +26,10 @@ export const ESTADOS_VALIDOS = [
 
 // ── GET: pedidos filtrados por fecha (default hoy) y estado opcional ─────────
 export async function GET(req: NextRequest) {
+  if (!(await getAdminSession())) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  }
+
   const { searchParams } = new URL(req.url);
   const fechaISO = searchParams.get('fecha') || fechaHoyMTY();
   const estado = searchParams.get('estado');
@@ -52,6 +57,10 @@ export async function GET(req: NextRequest) {
 
 // ── PATCH: cambiar estado de un pedido ────────────────────────────────────────
 export async function PATCH(req: NextRequest) {
+  if (!(await getAdminSession())) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  }
+
   const { idPedido, nuevoEstado } = await req.json();
 
   if (!idPedido || !nuevoEstado) {

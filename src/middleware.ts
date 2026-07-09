@@ -5,8 +5,12 @@ export async function middleware(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   const pathname = req.nextUrl.pathname;
 
+  // Aquí solo se exige estar logueado. El check de rol=admin se hace con
+  // datos frescos del Sheet en requireAdmin() (páginas) y getAdminSession()
+  // (API routes) — el token JWT de la cookie puede traer un rol viejo hasta
+  // que el usuario re-inicie sesión, así que no es confiable para el rol.
   if (pathname.startsWith('/admin') || pathname.startsWith('/api/admin')) {
-    if (!token || token.rol !== 'admin') {
+    if (!token) {
       if (pathname.startsWith('/api/admin')) {
         return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
       }

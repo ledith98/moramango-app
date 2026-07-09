@@ -2,7 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 
 export async function middleware(req: NextRequest) {
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+  // secureCookie explícito: getToken por defecto decide el nombre de la
+  // cookie con NEXTAUTH_URL.startsWith('https://'). Si la variable está
+  // guardada sin protocolo (el login sí la normaliza, getToken no), busca
+  // una cookie que no existe y ningún usuario logueado pasa. Detectar el
+  // protocolo desde la petición evita depender del formato de la variable.
+  const esHttps =
+    req.nextUrl.protocol === 'https:' ||
+    req.headers.get('x-forwarded-proto') === 'https';
+
+  const token = await getToken({
+    req,
+    secret: process.env.NEXTAUTH_SECRET,
+    secureCookie: esHttps,
+  });
   const pathname = req.nextUrl.pathname;
 
   // Aquí solo se exige estar logueado. El check de rol=admin se hace con

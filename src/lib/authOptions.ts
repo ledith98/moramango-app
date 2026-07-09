@@ -4,17 +4,30 @@
  * Configura el login con Google (NextAuth).
  *
  * Qué hace cada vez que alguien inicia sesión:
- * 1. Busca su email en la hoja USUARIOS de tu Sheet
- * 2. Si no existe → lo registra automáticamente como "cliente"
- * 3. Lee su Rol (cliente / admin) y lo agrega a la sesión
+ * 1. Busca su email en la hoja USUARIOS
+ * 2. Si no existe → lo registra automáticamente como "cliente" activo
+ * 3. Si existe pero está inactivo (Activo=no) → bloquea el acceso
+ * 4. Actualiza su Ultimo_Acceso con la fecha/hora actual
+ * 5. Lee su Rol (cliente / admin) y lo agrega a la sesión
  *
- * Resultado: la app sabe quién es el usuario y qué puede hacer,
- * sin que tú tengas que registrar a nadie manualmente.
+ * Orden EXACTO de columnas del sheet USUARIOS:
+ * A: ID_Usuario
+ * B: Nombre
+ * C: Telefono
+ * D: Rol
+ * E: Email
+ * F: Fecha_Registro
+ * G: Ciclo_Actual
+ * H: Total_Articulos_Historico
+ * I: Beneficio_Disponible
+ * J: Notas_Admin
+ * K: Activo
+ * L: Ultimo_Acceso
  */
 
 import type { NextAuthOptions } from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
-import { getSheetData, appendRow } from './googleSheets';
+import { getSheetData, appendRow, findRow, updateCell } from './googleSheets';
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -29,26 +42,40 @@ export const authOptions: NextAuthOptions = {
       try {
         const usuarios = await getSheetData('USUARIOS');
         const existe = usuarios.find((u) => u.Email === user.email);
+        const ahora = new Date().toLocaleString('es-MX', {
+          timeZone: 'America/Monterrey',
+        });
 
         if (!existe) {
-          // Usuario nuevo: lo registramos automáticamente
+          // Usuario nuevo — se registra como cliente activo
           const nuevoId = `USR-${String(usuarios.length + 1).padStart(3, '0')}`;
-          const ahora = new Date().toLocaleString('es-MX', {
-            timeZone: 'America/Monterrey',
-          });
 
           await appendRow('USUARIOS', [
-            nuevoId,
-            user.name ?? '',
-            '',              // Telefono — lo llena el usuario en su perfil
-            user.email ?? '',
-            ahora,           // Fecha_Registro
-            0,               // Ciclo_Actual
-            0,               // Total_Articulos_Historico
-            'Ninguno',       // Beneficio_Disponible
-            'cliente',       // Rol — todos los nuevos entran como cliente
-            '',              // Notas_Admin
+            nuevoId,           // A - ID_Usuario
+            user.name ?? '',   // B - Nombre
+            '',                // C - Telefono (lo llena el usuario después en perfil)
+            'cliente',         // D - Rol
+            user.email ?? '',  // E - Email
+            ahora,             // F - Fecha_Registro
+            0,                 // G - Ciclo_Actual
+            0,                 // H - Total_Articulos_Historico
+            'Ninguno',         // I - Beneficio_Disponible
+            '',                // J - Notas_Admin
+            'si',              // K - Activo
+            ahora,             // L - Ultimo_Acceso
           ]);
+        } else {
+          // Usuario existente — bloquear si Activo dice explícitamente 'no'
+          if (existe.Activo?.toLowerCase() === 'no') {
+            console.log(`Acceso bloqueado para ${user.email}: usuario inactivo`);
+            return false;
+          }
+
+          // Actualizar Ultimo_Acceso — columna L = 12
+          const usuarioRow = await findRow('USUARIOS', 'Email', user.email!);
+          if (usuarioRow) {
+            await updateCell('USUARIOS', usuarioRow.rowIndex, 12, ahora);
+          }
         }
 
         return true;
@@ -68,13 +95,12 @@ export const authOptions: NextAuthOptions = {
         const usuario = usuarios.find((u) => u.Email === session.user!.email);
 
         if (usuario) {
-          // Estos datos estarán disponibles en toda la app
-          // con useSession() o getServerSession()
           (session.user as any).id_usuario = usuario.ID_Usuario;
           (session.user as any).rol = usuario.Rol || 'cliente';
           (session.user as any).beneficio = usuario.Beneficio_Disponible;
           (session.user as any).ciclo_actual = parseInt(usuario.Ciclo_Actual) || 0;
           (session.user as any).telefono = usuario.Telefono || '';
+          (session.user as any).activo = usuario.Activo || 'si';
         }
       } catch (error) {
         console.error('Error leyendo sesión:', error);

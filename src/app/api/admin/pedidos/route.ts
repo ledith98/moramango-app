@@ -4,25 +4,50 @@
  * Solo accesible para admin — el middleware.ts bloquea esta ruta
  * automáticamente si el usuario no tiene rol=admin.
  *
- * GET  → Todos los pedidos (el admin los ve todos, sin filtro)
- * PATCH → Cambiar el estado de un pedido
+ * GET  → Pedidos, filtrables por ?fecha=YYYY-MM-DD (default hoy) y ?estado=
+ *        Se enriquecen con el teléfono del cliente (cruce con USUARIOS)
+ * PATCH → Cambiar el estado de un pedido (incluye "Cancelado")
  *         Cuando pasa a "Listo para recoger", descuenta insumos
  *         automáticamente usando las recetas de Catalogo
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSheetData, findRow, updateCell } from '@/lib/googleSheets';
+import { extraerFechaPedido, fechaCortaDesdeISO, fechaHoyMTY } from '@/lib/pedidoFecha';
 
-// ── GET: todos los pedidos ────────────────────────────────────────────────────
-export async function GET() {
-  const pedidos = await getSheetData('PEDIDOS');
+export const ESTADOS_VALIDOS = [
+  'Recibido',
+  'En preparación',
+  'Listo para recoger',
+  'Entregado',
+  'Cancelado',
+];
 
-  // Más recientes primero
-  const ordenados = [...pedidos].sort((a, b) => {
-    return new Date(b.Fecha_Hora).getTime() - new Date(a.Fecha_Hora).getTime();
-  });
+// ── GET: pedidos filtrados por fecha (default hoy) y estado opcional ─────────
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const fechaISO = searchParams.get('fecha') || fechaHoyMTY();
+  const estado = searchParams.get('estado');
+  const fechaCorta = fechaCortaDesdeISO(fechaISO);
 
-  return NextResponse.json({ pedidos: ordenados });
+  const [pedidos, usuarios] = await Promise.all([
+    getSheetData('PEDIDOS'),
+    getSheetData('USUARIOS'),
+  ]);
+
+  const telefonoPorUsuario = new Map(usuarios.map((u) => [u.ID_Usuario, u.Telefono || '']));
+
+  const delDia = pedidos
+    .map((p) => ({ pedido: p, info: extraerFechaPedido(p.ID_Pedido) }))
+    .filter(({ info }) => info?.fechaCorta === fechaCorta)
+    .filter(({ pedido }) => !estado || pedido.Estado === estado)
+    .sort((a, b) => (b.info!.timestamp - a.info!.timestamp))
+    .map(({ pedido }) => ({
+      ...pedido,
+      Telefono: telefonoPorUsuario.get(pedido.ID_Usuario) || '',
+    }));
+
+  return NextResponse.json({ pedidos: delDia });
 }
 
 // ── PATCH: cambiar estado de un pedido ────────────────────────────────────────
@@ -33,8 +58,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Faltan datos' }, { status: 400 });
   }
 
-  const estadosValidos = ['Recibido', 'En preparación', 'Listo para recoger', 'Entregado'];
-  if (!estadosValidos.includes(nuevoEstado)) {
+  if (!ESTADOS_VALIDOS.includes(nuevoEstado)) {
     return NextResponse.json({ error: 'Estado inválido' }, { status: 400 });
   }
 

@@ -1,7 +1,26 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSession, signIn } from 'next-auth/react';
+import { useSession, signIn, signOut } from 'next-auth/react';
+
+// Separa un teléfono guardado tipo "+528186003207" en lada y número
+const parsearTelefono = (telefonoCompleto: string): { lada: string; numero: string } => {
+  if (!telefonoCompleto) return { lada: '52', numero: '' };
+  // Formato con +: +528186003207 → lada 52, número 8186003207
+  if (telefonoCompleto.startsWith('+')) {
+    const solo = telefonoCompleto.slice(1).replace(/\D/g, '');
+    // Asumimos lada de 1-3 dígitos, tomamos los últimos 10 como número si es +52
+    // Para otras ladas, todo lo que no es lada
+    if (solo.startsWith('52') && solo.length >= 10) {
+      return { lada: '52', numero: solo.slice(2) };
+    }
+    // Otras ladas: primeros 2-3 dígitos como lada
+    return { lada: solo.slice(0, solo.length - 10) || '52', numero: solo.slice(-10) };
+  }
+  // Sin +: dato viejo, asumimos mexicano
+  const soloDigitos = telefonoCompleto.replace(/\D/g, '');
+  return { lada: '52', numero: soloDigitos.slice(-10) };
+};
 
 interface ItemCarrito {
   id: string;
@@ -9,6 +28,13 @@ interface ItemCarrito {
   precio: number;
   categoria: string;
   cantidad: number;
+}
+
+interface DatosLealtad {
+  cicloActual: number;
+  beneficioDisponible: string;
+  pedidosParaDescuento: number;
+  pedidosParaArticulo: number;
 }
 
 const CARRITO_KEY = 'moramango_carrito';
@@ -24,9 +50,15 @@ export default function Home() {
   const [verPerfil, setVerPerfil] = useState(false);
   const [nombreUsuario, setNombreUsuario] = useState('');
   const [telefonoUsuario, setTelefonoUsuario] = useState('');
+  const [ladaUsuario, setLadaUsuario] = useState('52');
+  const [errorTelefono, setErrorTelefono] = useState('');
   const [pedidoConfirmado, setPedidoConfirmado] = useState<string | null>(null);
+  const [notas, setNotas] = useState('');
+  const [lealtad, setLealtad] = useState<DatosLealtad | null>(null);
+  const [cargandoLealtad, setCargandoLealtad] = useState(false);
+  const [beneficioAplicado, setBeneficioAplicado] = useState(false);
+  const [productoDetalle, setProductoDetalle] = useState<any | null>(null);
 
-  // Cargar productos y carrito persistido
   useEffect(() => {
     fetch('/api/productos')
       .then((res) => res.json())
@@ -36,18 +68,50 @@ export default function Home() {
       })
       .catch(() => setCargando(false));
 
-    // Recuperar carrito de localStorage (sobrevive al redirect de login)
     try {
       const carritoGuardado = localStorage.getItem(CARRITO_KEY);
       if (carritoGuardado) setCarrito(JSON.parse(carritoGuardado));
     } catch {}
 
-    // Recuperar datos de perfil
     setNombreUsuario(localStorage.getItem('moramango_nombre') || '');
-    setTelefonoUsuario(localStorage.getItem('moramango_telefono') || '');
+    const telefonoGuardado = localStorage.getItem('moramango_telefono') || '';
+    const { lada, numero } = parsearTelefono(telefonoGuardado);
+    setLadaUsuario(lada);
+    setTelefonoUsuario(numero);
   }, []);
 
-  // Cuando el usuario regresa del login con carrito guardado, abrir carrito automáticamente
+  useEffect(() => {
+    if (session && verCarrito && !lealtad) {
+      setCargandoLealtad(true);
+      fetch('/api/usuario')
+        .then((res) => res.json())
+        .then((data) => {
+          if (!data.error) setLealtad(data);
+        })
+        .catch(() => {})
+        .finally(() => setCargandoLealtad(false));
+    }
+  }, [session, verCarrito, lealtad]);
+
+  // Precargar nombre/teléfono desde el sheet cuando abre Mis Datos
+  // (solo si los campos locales están vacíos, para no sobreescribir cambios sin guardar)
+  useEffect(() => {
+    if (session && verPerfil && !nombreUsuario && !telefonoUsuario) {
+      fetch('/api/usuario')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.error) return;
+          if (data.nombre) setNombreUsuario(data.nombre);
+          if (data.telefono) {
+            const { lada, numero } = parsearTelefono(data.telefono);
+            setLadaUsuario(lada);
+            setTelefonoUsuario(numero);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [session, verPerfil, nombreUsuario, telefonoUsuario]);
+
   useEffect(() => {
     if (session && carrito.length > 0) {
       const volvioDeLogin = sessionStorage.getItem('moramango_login_redirect');
@@ -58,7 +122,6 @@ export default function Home() {
     }
   }, [session, carrito]);
 
-  // Persistir carrito en localStorage cada vez que cambia
   useEffect(() => {
     try {
       localStorage.setItem(CARRITO_KEY, JSON.stringify(carrito));
@@ -120,17 +183,110 @@ export default function Home() {
     });
   };
 
-  const guardarPerfil = (e: React.FormEvent) => {
+  const guardarPerfil = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorTelefono('');
+
+    // Validar lada — solo dígitos, 1-3 caracteres
+    const ladaLimpia = ladaUsuario.replace(/\D/g, '');
+    if (!ladaLimpia || ladaLimpia.length > 3) {
+      setErrorTelefono('Lada inválida (1-3 dígitos)');
+      return;
+    }
+
+    // Validar número — solo dígitos, longitud según lada
+    const numeroLimpio = telefonoUsuario.replace(/\D/g, '');
+    if (ladaLimpia === '52') {
+      if (numeroLimpio.length !== 10) {
+        setErrorTelefono('El número debe tener 10 dígitos');
+        return;
+      }
+    } else {
+      if (numeroLimpio.length < 7 || numeroLimpio.length > 15) {
+        setErrorTelefono('El número debe tener entre 7 y 15 dígitos');
+        return;
+      }
+    }
+
+    // Formato final: +528186003207
+    const telefonoCompleto = `+${ladaLimpia}${numeroLimpio}`;
+
     localStorage.setItem('moramango_nombre', nombreUsuario);
-    localStorage.setItem('moramango_telefono', telefonoUsuario);
+    localStorage.setItem('moramango_telefono', telefonoCompleto);
+
+    if (session) {
+      try {
+        await fetch('/api/usuario', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nombre: nombreUsuario,
+            telefono: telefonoCompleto,
+          }),
+        });
+      } catch {
+        // Si falla el sync, ya está en localStorage. No bloqueamos al usuario.
+      }
+    }
+
     setVerPerfil(false);
   };
+
+  // Abrir detalle solo si hay descripción — evita modal vacío
+  const abrirDetalle = (producto: any) => {
+    if (producto.descripcion && producto.descripcion.trim()) {
+      setProductoDetalle(producto);
+    }
+  };
+
+  const totalArticulos = carrito.reduce((total, item) => total + item.cantidad, 0);
+  const totalBruto = carrito.reduce((total, item) => total + (item.precio * item.cantidad), 0);
+
+  const descuentoAplicado = (() => {
+    if (!beneficioAplicado || !lealtad) return 0;
+    if (lealtad.beneficioDisponible === '15% Descuento') return totalBruto * 0.15;
+    return 0;
+  })();
+
+  const totalPagar = totalBruto - descuentoAplicado;
+
+  const beneficioCanjeadoStr = (() => {
+    if (!beneficioAplicado || !lealtad) return 'Ninguno';
+    return lealtad.beneficioDisponible;
+  })();
+
+  const mensajeLealtad = (() => {
+    if (!session || !lealtad || cargandoLealtad) return null;
+
+    const b = lealtad.beneficioDisponible;
+
+    if (b === 'Articulo Gratis') {
+      return {
+        emoji: '🎉',
+        texto: '¡Tienes un licuado o jugo gratis disponible (hasta $35)! Agrégalo a tu pedido si quieres usarlo.',
+        tipo: 'gratis',
+      };
+    }
+    if (b === '15% Descuento') {
+      return {
+        emoji: '🏷️',
+        texto: '¡Tienes 15% de descuento disponible! Puedes aplicarlo a este pedido.',
+        tipo: 'descuento',
+      };
+    }
+    if (lealtad.pedidosParaDescuento > 0) {
+      return {
+        emoji: '⭐',
+        texto: `Te faltan ${lealtad.pedidosParaDescuento} pedido${lealtad.pedidosParaDescuento === 1 ? '' : 's'} para obtener 15% de descuento.`,
+        tipo: 'progreso',
+      };
+    }
+    return null;
+  })();
 
   const confirmarOrden = async () => {
     if (carrito.length === 0) return;
 
-    // Si no está logueado, guardamos el estado y mandamos al login
     if (!session) {
       sessionStorage.setItem('moramango_login_redirect', 'confirmar');
       signIn('google', { callbackUrl: '/' });
@@ -149,19 +305,21 @@ export default function Home() {
             precio: item.precio,
             cantidad: item.cantidad,
           })),
-          notas: '',
+          notas: notas.trim(),
           horaRecoleccion: '',
-          beneficioCanjeado: 'Ninguno',
+          beneficioCanjeado: beneficioCanjeadoStr,
         }),
       });
 
       const data = await res.json();
 
       if (data.success) {
-        // Limpiar carrito y mostrar confirmación
         setCarrito([]);
         localStorage.removeItem(CARRITO_KEY);
         setVerCarrito(false);
+        setNotas('');
+        setBeneficioAplicado(false);
+        setLealtad(null);
         setPedidoConfirmado(data.idPedido);
       } else {
         alert('Hubo un error al procesar tu pedido. Intenta de nuevo.');
@@ -173,10 +331,6 @@ export default function Home() {
     }
   };
 
-  const totalArticulos = carrito.reduce((total, item) => total + item.cantidad, 0);
-  const totalPagar = carrito.reduce((total, item) => total + (item.precio * item.cantidad), 0);
-
-  // Pantalla de confirmación de pedido
   if (pedidoConfirmado) {
     return (
       <main className="h-[100dvh] bg-neutral-200 font-sans flex justify-center overflow-hidden">
@@ -200,6 +354,12 @@ export default function Home() {
       </main>
     );
   }
+
+  // Info del producto en detalle (para el modal)
+  const itemEnCarritoDetalle = productoDetalle
+    ? carrito.find(i => i.id === productoDetalle.id)
+    : null;
+  const cantidadEnCarritoDetalle = itemEnCarritoDetalle?.cantidad ?? 0;
 
   return (
     <main className="h-[100dvh] bg-neutral-200 font-sans flex justify-center overflow-hidden">
@@ -267,18 +427,31 @@ export default function Home() {
                         {(items as any[]).map((producto, index) => {
                           const itemEnCarrito = carrito.find(item => item.id === producto.id);
                           const cantidadAgregada = itemEnCarrito ? itemEnCarrito.cantidad : 0;
+                          const tieneDescripcion = producto.descripcion && producto.descripcion.trim();
 
                           return (
                             <div key={producto.id || index} className="flex gap-4 p-4 rounded-3xl bg-white shadow-sm border border-neutral-100">
-                              <div className="flex-1 flex flex-col justify-center">
-                                <h3 className="font-bold text-neutral-900 leading-tight">{producto.nombre}</h3>
+                              {/* Área de texto — tappable si tiene descripción */}
+                              <button
+                                onClick={() => abrirDetalle(producto)}
+                                disabled={!tieneDescripcion}
+                                className={`flex-1 flex flex-col justify-center text-left ${
+                                  tieneDescripcion ? 'active:opacity-70 transition-opacity' : 'cursor-default'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <h3 className="font-bold text-neutral-900 leading-tight">{producto.nombre}</h3>
+                                  {tieneDescripcion && (
+                                    <span className="text-neutral-400 text-xs">›</span>
+                                  )}
+                                </div>
                                 {producto.descripcion && (
                                   <p className="text-xs text-neutral-500 mt-1.5 line-clamp-2 leading-relaxed">
                                     {producto.descripcion}
                                   </p>
                                 )}
                                 <div className="mt-3 font-bold text-neutral-900">${producto.precio}</div>
-                              </div>
+                              </button>
 
                               <div className="relative shrink-0 ml-2">
                                 <button
@@ -294,6 +467,13 @@ export default function Home() {
                                   )}
                                 </button>
 
+                                {/* Indicador + para agregar (solo si no está en el carrito) */}
+                                {cantidadAgregada === 0 && (
+                                  <div className="absolute -bottom-2 -right-2 w-9 h-9 bg-black text-white rounded-full flex items-center justify-center shadow-lg pointer-events-none">
+                                    <span className="text-xl font-medium leading-none">+</span>
+                                  </div>
+                                )}
+                                
                                 {cantidadAgregada > 0 && (
                                   <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between bg-white/90 backdrop-blur-sm rounded-b-2xl px-1.5 py-1 shadow-sm">
                                     <button
@@ -371,9 +551,65 @@ export default function Home() {
                   </div>
                 </div>
               ))}
+
+              {session && (
+                <div className="mt-2">
+                  {cargandoLealtad && (
+                    <div className="bg-neutral-100 rounded-2xl p-3.5 animate-pulse h-12" />
+                  )}
+                  {!cargandoLealtad && mensajeLealtad && (
+                    <div className={`rounded-2xl p-3.5 border flex gap-3 items-start ${
+                      mensajeLealtad.tipo === 'gratis' ? 'bg-amber-50 border-amber-200' :
+                      mensajeLealtad.tipo === 'descuento' ? 'bg-green-50 border-green-200' :
+                      'bg-neutral-50 border-neutral-200'
+                    }`}>
+                      <span className="text-lg leading-none mt-0.5">{mensajeLealtad.emoji}</span>
+                      <div className="flex-1">
+                        <p className="text-xs text-neutral-700 leading-relaxed">{mensajeLealtad.texto}</p>
+                        {mensajeLealtad.tipo === 'descuento' && (
+                          <button
+                            onClick={() => setBeneficioAplicado(prev => !prev)}
+                            className={`mt-2 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${
+                              beneficioAplicado
+                                ? 'bg-green-600 text-white'
+                                : 'bg-black text-white'
+                            }`}
+                          >
+                            {beneficioAplicado ? '✓ Descuento aplicado' : 'Aplicar 15% de descuento'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="bg-white rounded-2xl p-4 border border-neutral-100 shadow-sm">
+                <label className="text-sm font-semibold text-neutral-700 block mb-2">Notas del pedido</label>
+                <textarea
+                  value={notas}
+                  onChange={(e) => setNotas(e.target.value)}
+                  placeholder="Ej: Sin mayonesa, sin tomate, extra salsa..."
+                  rows={3}
+                  className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none focus:border-black transition-colors resize-none"
+                />
+              </div>
             </div>
 
             <div className="bg-white p-6 rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.05)] border-t border-neutral-100 shrink-0">
+              {beneficioAplicado && descuentoAplicado > 0 && (
+                <div className="mb-3 space-y-1">
+                  <div className="flex justify-between items-center text-sm text-neutral-500">
+                    <span>Subtotal</span>
+                    <span>${totalBruto.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm text-green-600 font-medium">
+                    <span>Descuento 15%</span>
+                    <span>-${descuentoAplicado.toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
+
               <div className="flex justify-between items-center mb-4">
                 <span className="text-neutral-500 font-medium text-lg">Total a pagar</span>
                 <span className="text-2xl font-bold text-black">${totalPagar.toFixed(2)}</span>
@@ -427,15 +663,181 @@ export default function Home() {
 
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-neutral-700 block">Teléfono de Contacto</label>
-                <input type="tel" value={telefonoUsuario} onChange={(e) => setTelefonoUsuario(e.target.value)}
-                  placeholder="Ej. 8186003207"
-                  className="w-full bg-white border border-neutral-300 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black transition-colors shadow-sm" required />
+                <div className="flex gap-2">
+                  <div className="relative w-24 shrink-0">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none">+</span>
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      value={ladaUsuario}
+                      onChange={(e) => setLadaUsuario(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                      placeholder="52"
+                      maxLength={3}
+                      className="w-full bg-white border border-neutral-300 rounded-xl pl-7 pr-2 py-3 text-neutral-900 focus:outline-none focus:border-black transition-colors shadow-sm"
+                      required
+                    />
+                  </div>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    value={telefonoUsuario}
+                    onChange={(e) => setTelefonoUsuario(e.target.value.replace(/\D/g, '').slice(0, 15))}
+                    placeholder={ladaUsuario === '52' ? '8186003207 (10 dígitos)' : 'Número sin lada'}
+                    className="flex-1 bg-white border border-neutral-300 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black transition-colors shadow-sm"
+                    required
+                  />
+                </div>
+                {errorTelefono && (
+                  <p className="text-xs text-red-600 mt-1">{errorTelefono}</p>
+                )}
+                <p className="text-xs text-neutral-500">
+                  {ladaUsuario === '52'
+                    ? 'México (+52): 10 dígitos'
+                    : `Lada +${ladaUsuario}: entre 7 y 15 dígitos`}
+                </p>
               </div>
 
               <button type="submit" className="w-full bg-black text-white font-bold text-lg py-4 rounded-2xl active:scale-95 transition-transform shadow-md mt-8">
                 Guardar Datos
               </button>
             </form>
+
+            {session && (
+              <div className="p-6 pt-0 shrink-0">
+                <button
+                  onClick={() => {
+                    if (confirm('¿Cerrar sesión? Tu carrito se conserva.')) {
+                      signOut({ callbackUrl: '/' });
+                    }
+                  }}
+                  className="w-full bg-white border border-red-200 text-red-600 font-semibold py-3 rounded-2xl active:scale-95 transition-transform"
+                >
+                  Cerrar Sesión
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* MODAL: DETALLE DE PRODUCTO (bottom sheet) */}
+        {productoDetalle && (
+          <div
+            className="absolute inset-0 z-[60] flex items-end justify-center"
+            onClick={() => setProductoDetalle(null)}
+          >
+            {/* Backdrop */}
+            <div className="absolute inset-0 bg-black/50" />
+
+            {/* Sheet */}
+            <div
+              className="relative w-full bg-white rounded-t-3xl shadow-2xl max-h-[90%] flex flex-col animate-slide-up"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <style jsx>{`
+                @keyframes slide-up {
+                  from { transform: translateY(100%); }
+                  to { transform: translateY(0); }
+                }
+                .animate-slide-up {
+                  animation: slide-up 0.25s ease-out;
+                }
+              `}</style>
+
+              {/* Handle visual */}
+              <div className="flex justify-center pt-3 pb-1 shrink-0">
+                <div className="w-10 h-1 bg-neutral-300 rounded-full" />
+              </div>
+
+              {/* Botón cerrar */}
+              <button
+                onClick={() => setProductoDetalle(null)}
+                className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center bg-neutral-100 rounded-full text-neutral-700 active:scale-90 z-10"
+                aria-label="Cerrar"
+              >
+                ✕
+              </button>
+
+              {/* Contenido scrollable */}
+              <div className="flex-1 overflow-y-auto px-6 pb-4">
+                {/* Imagen grande */}
+                <div className="w-full h-48 bg-neutral-100 rounded-2xl overflow-hidden flex items-center justify-center mb-4 mt-2">
+                  {productoDetalle.imagen ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={productoDetalle.imagen}
+                      alt={productoDetalle.nombre}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-7xl opacity-20">
+                      {getIcono(productoDetalle.categoria || '')}
+                    </span>
+                  )}
+                </div>
+
+                {/* Categoría */}
+                {productoDetalle.categoria && (
+                  <p className="text-xs text-neutral-500 uppercase tracking-wide font-semibold mb-1">
+                    {productoDetalle.categoria}
+                  </p>
+                )}
+
+                {/* Nombre */}
+                <h2 className="text-2xl font-bold text-neutral-900 mb-3 leading-tight">
+                  {productoDetalle.nombre}
+                </h2>
+
+                {/* Descripción completa */}
+                {productoDetalle.descripcion && (
+                  <p className="text-sm text-neutral-600 leading-relaxed mb-4 whitespace-pre-line">
+                    {productoDetalle.descripcion}
+                  </p>
+                )}
+
+                {/* Precio */}
+                <div className="text-2xl font-bold text-neutral-900 mb-2">
+                  ${productoDetalle.precio}
+                </div>
+              </div>
+
+              {/* Footer con acción */}
+              <div className="border-t border-neutral-100 p-4 shrink-0 bg-white rounded-b-3xl">
+                {cantidadEnCarritoDetalle === 0 ? (
+                  <button
+                    onClick={() => agregarAlCarrito(productoDetalle)}
+                    className="w-full bg-black text-white font-bold text-base py-4 rounded-2xl active:scale-95 transition-transform shadow-md"
+                  >
+                    Agregar al pedido
+                  </button>
+                ) : (
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center bg-neutral-100 rounded-2xl p-1.5 gap-2">
+                      <button
+                        onClick={() => eliminarDelCarrito(productoDetalle.id)}
+                        className="w-11 h-11 flex items-center justify-center bg-white rounded-xl font-medium text-neutral-700 shadow-sm active:scale-90 text-lg"
+                      >
+                        −
+                      </button>
+                      <span className="font-bold text-neutral-900 px-2 min-w-[24px] text-center text-lg tabular-nums">
+                        {cantidadEnCarritoDetalle}
+                      </span>
+                      <button
+                        onClick={() => agregarAlCarrito(productoDetalle)}
+                        className="w-11 h-11 flex items-center justify-center bg-black text-white rounded-xl font-medium shadow-sm active:scale-90 text-lg"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-neutral-500">En tu pedido</p>
+                      <p className="font-bold text-neutral-900">
+                        ${(limpiarPrecio(productoDetalle.precio) * cantidadEnCarritoDetalle).toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 

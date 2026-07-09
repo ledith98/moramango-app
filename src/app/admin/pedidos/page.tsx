@@ -1,0 +1,249 @@
+'use client';
+
+import { useCallback, useEffect, useState } from 'react';
+
+interface Pedido {
+  ID_Pedido: string;
+  ID_Usuario: string;
+  Nombre_Cliente_Snap: string;
+  Fecha_Hora: string;
+  Estado: string;
+  Hora_Recoleccion: string;
+  Total_Final: string;
+  Notas_Pedido: string;
+  Telefono: string;
+}
+
+interface DetalleItem {
+  Nombre_Producto_Snap: string;
+  Cantidad: string;
+  Precio_Unitario_Snap: string;
+  Subtotal: string;
+  Notas_Item: string;
+}
+
+interface Detalle {
+  pedido: Pedido;
+  items: DetalleItem[];
+  cliente: { nombre: string; telefono: string; email: string } | null;
+}
+
+const FLUJO = ['Recibido', 'En preparación', 'Listo para recoger', 'Entregado'];
+const ESTADOS_FILTRO = ['Todos', ...FLUJO, 'Cancelado'];
+
+const colorEstado = (estado: string) => {
+  switch (estado) {
+    case 'Recibido':
+      return 'bg-blue-100 text-blue-700';
+    case 'En preparación':
+      return 'bg-amber-100 text-amber-700';
+    case 'Listo para recoger':
+      return 'bg-green-100 text-green-700';
+    case 'Entregado':
+      return 'bg-neutral-200 text-neutral-600';
+    case 'Cancelado':
+      return 'bg-red-100 text-red-700';
+    default:
+      return 'bg-neutral-100 text-neutral-600';
+  }
+};
+
+const siguienteEstado = (actual: string): string | null => {
+  const i = FLUJO.indexOf(actual);
+  if (i === -1 || i === FLUJO.length - 1) return null;
+  return FLUJO[i + 1];
+};
+
+const horaDeId = (idPedido: string) => {
+  const match = /^PED-\d{6}-(\d{2})(\d{2})(\d{2})-\d+$/.exec(idPedido);
+  if (!match) return '';
+  return `${match[1]}:${match[2]}`;
+};
+
+const hoyISO = () => new Date().toISOString().slice(0, 10);
+
+export default function PedidosPage() {
+  const [fecha, setFecha] = useState(hoyISO());
+  const [estadoFiltro, setEstadoFiltro] = useState('Todos');
+  const [pedidos, setPedidos] = useState<Pedido[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [detalle, setDetalle] = useState<Detalle | null>(null);
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
+  const [actualizando, setActualizando] = useState(false);
+
+  const cargarPedidos = useCallback(() => {
+    setCargando(true);
+    const params = new URLSearchParams({ fecha });
+    if (estadoFiltro !== 'Todos') params.set('estado', estadoFiltro);
+    fetch(`/api/admin/pedidos?${params}`)
+      .then((res) => res.json())
+      .then((data) => setPedidos(data.pedidos || []))
+      .finally(() => setCargando(false));
+  }, [fecha, estadoFiltro]);
+
+  useEffect(() => {
+    cargarPedidos();
+  }, [cargarPedidos]);
+
+  const abrirDetalle = (idPedido: string) => {
+    setCargandoDetalle(true);
+    setDetalle(null);
+    fetch(`/api/admin/pedidos/${idPedido}`)
+      .then((res) => res.json())
+      .then((data) => setDetalle(data))
+      .finally(() => setCargandoDetalle(false));
+  };
+
+  const cambiarEstado = async (idPedido: string, nuevoEstado: string) => {
+    setActualizando(true);
+    try {
+      await fetch('/api/admin/pedidos', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idPedido, nuevoEstado }),
+      });
+      cargarPedidos();
+      if (detalle) abrirDetalle(idPedido);
+    } finally {
+      setActualizando(false);
+    }
+  };
+
+  const cancelarPedido = (idPedido: string) => {
+    if (!confirm(`¿Cancelar el pedido ${idPedido}? Esta acción no se puede deshacer.`)) return;
+    cambiarEstado(idPedido, 'Cancelado');
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 flex flex-wrap items-center gap-3">
+        <label className="text-sm font-semibold text-neutral-700">Fecha</label>
+        <input
+          type="date"
+          value={fecha}
+          onChange={(e) => setFecha(e.target.value)}
+          className="bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-black"
+        />
+        <label className="text-sm font-semibold text-neutral-700 ml-2">Estado</label>
+        <select
+          value={estadoFiltro}
+          onChange={(e) => setEstadoFiltro(e.target.value)}
+          className="bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-black"
+        >
+          {ESTADOS_FILTRO.map((e) => (
+            <option key={e} value={e}>
+              {e}
+            </option>
+          ))}
+        </select>
+        <span className="text-xs text-neutral-500 ml-auto">{pedidos.length} pedido{pedidos.length === 1 ? '' : 's'}</span>
+      </div>
+
+      {cargando ? (
+        <p className="text-neutral-500 animate-pulse">Cargando pedidos...</p>
+      ) : pedidos.length === 0 ? (
+        <p className="text-neutral-500">No hay pedidos para este filtro.</p>
+      ) : (
+        <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 divide-y divide-neutral-100 overflow-hidden">
+          {pedidos.map((p) => (
+            <button
+              key={p.ID_Pedido}
+              onClick={() => abrirDetalle(p.ID_Pedido)}
+              className="w-full flex items-center gap-4 p-4 text-left hover:bg-neutral-50 transition-colors"
+            >
+              <span className="font-mono text-sm text-neutral-500 w-14 shrink-0">{horaDeId(p.ID_Pedido)}</span>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-neutral-900 truncate">{p.Nombre_Cliente_Snap}</p>
+                <p className="text-xs text-neutral-500 font-mono">{p.ID_Pedido}</p>
+              </div>
+              <span className="font-bold text-neutral-900 shrink-0">${parseFloat(p.Total_Final || '0').toFixed(2)}</span>
+              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full shrink-0 ${colorEstado(p.Estado)}`}>
+                {p.Estado}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {(cargandoDetalle || detalle) && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => setDetalle(null)}
+        >
+          <div
+            className="bg-white w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl max-h-[90vh] flex flex-col shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {cargandoDetalle && !detalle ? (
+              <div className="p-8 text-center text-neutral-500 animate-pulse">Cargando pedido...</div>
+            ) : detalle ? (
+              <>
+                <div className="p-5 border-b border-neutral-100 flex items-start justify-between shrink-0">
+                  <div>
+                    <p className="font-mono text-sm text-neutral-500">{detalle.pedido.ID_Pedido}</p>
+                    <h2 className="text-lg font-bold text-black">{detalle.cliente?.nombre || detalle.pedido.Nombre_Cliente_Snap}</h2>
+                    {detalle.cliente?.telefono && (
+                      <p className="text-sm text-neutral-500">📞 {detalle.cliente.telefono}</p>
+                    )}
+                  </div>
+                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full shrink-0 ${colorEstado(detalle.pedido.Estado)}`}>
+                    {detalle.pedido.Estado}
+                  </span>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-5 space-y-3">
+                  {detalle.items.map((item, idx) => (
+                    <div key={idx} className="flex justify-between items-start bg-neutral-50 rounded-xl p-3">
+                      <div>
+                        <p className="font-semibold text-neutral-900 text-sm">
+                          {item.Cantidad}× {item.Nombre_Producto_Snap}
+                        </p>
+                        {item.Notas_Item && (
+                          <p className="text-xs text-neutral-500 mt-0.5">{item.Notas_Item}</p>
+                        )}
+                      </div>
+                      <span className="text-sm font-semibold text-neutral-700">${parseFloat(item.Subtotal || '0').toFixed(2)}</span>
+                    </div>
+                  ))}
+
+                  {detalle.pedido.Notas_Pedido && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                      <p className="text-xs font-semibold text-amber-700 mb-1">Notas del pedido</p>
+                      <p className="text-sm text-amber-900">{detalle.pedido.Notas_Pedido}</p>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between items-center pt-2">
+                    <span className="text-neutral-500 font-medium">Total</span>
+                    <span className="text-xl font-bold text-black">${parseFloat(detalle.pedido.Total_Final || '0').toFixed(2)}</span>
+                  </div>
+                </div>
+
+                <div className="p-5 border-t border-neutral-100 flex gap-2 shrink-0">
+                  {detalle.pedido.Estado !== 'Cancelado' && detalle.pedido.Estado !== 'Entregado' && (
+                    <button
+                      onClick={() => cancelarPedido(detalle.pedido.ID_Pedido)}
+                      disabled={actualizando}
+                      className="flex-1 border border-red-200 text-red-600 font-semibold py-3 rounded-2xl active:scale-95 transition-transform disabled:opacity-50"
+                    >
+                      Cancelar
+                    </button>
+                  )}
+                  {siguienteEstado(detalle.pedido.Estado) && (
+                    <button
+                      onClick={() => cambiarEstado(detalle.pedido.ID_Pedido, siguienteEstado(detalle.pedido.Estado)!)}
+                      disabled={actualizando}
+                      className="flex-1 bg-black text-white font-semibold py-3 rounded-2xl active:scale-95 transition-transform disabled:opacity-50"
+                    >
+                      {actualizando ? 'Actualizando...' : `Avanzar a "${siguienteEstado(detalle.pedido.Estado)}"`}
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : null}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

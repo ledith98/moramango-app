@@ -1,14 +1,20 @@
 /**
  * app/api/pedidos/route.ts
  *
- * Maneja dos operaciones:
+ * GET  → Devuelve los pedidos del usuario logueado
+ * POST → Crea pedido, actualiza lealtad por PEDIDOS (no artículos)
  *
- * GET  → Devuelve los pedidos del usuario logueado (solo los suyos)
- * POST → Crea un pedido nuevo en PEDIDOS y DT PEDIDOS,
- *        y actualiza el programa de lealtad en USUARIOS
+ * Formato ID: PED-YYMMDD-HHMMSS-NNN
+ *   - YYMMDD: fecha en zona horaria de Monterrey
+ *   - HHMMSS: hora exacta del pedido (24h)
+ *   - NNN: secuencial del día
+ * La hora dentro del ID evita colisiones si el secuencial se calcula mal
+ * por lag de Google Sheets.
  *
- * No requiere ser admin — cualquier cliente logueado puede usarlo.
- * Sí requiere estar logueado — sin sesión devuelve 401.
+ * Lógica de lealtad:
+ * - 5 pedidos → 15% descuento (ciclo NO reinicia al canjear)
+ * - 10 pedidos → Artículo gratis ≤ $35 (ciclo SÍ reinicia al canjear)
+ * - Un solo beneficio activo a la vez
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -16,7 +22,6 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/authOptions';
 import { appendRow, getSheetData, findRow, updateCell } from '@/lib/googleSheets';
 
-// ── GET: pedidos del usuario actual ──────────────────────────────────────────
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) {
@@ -30,7 +35,6 @@ export async function GET() {
   return NextResponse.json({ pedidos: misPedidos });
 }
 
-// ── POST: crear pedido nuevo ──────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) {
@@ -46,42 +50,74 @@ export async function POST(req: NextRequest) {
   const usuario = session.user as any;
   const ahora = new Date();
   const fechaStr = ahora.toLocaleString('es-MX', { timeZone: 'America/Monterrey' });
-  const fechaId = ahora.toISOString().slice(0, 10).replace(/-/g, '');
 
-  // ID de pedido legible: PED-20250701-001
+  // Descomponer fecha/hora en zona horaria de Monterrey
+  const partes = new Intl.DateTimeFormat('es-MX', {
+    timeZone: 'America/Monterrey',
+    year: '2-digit',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(ahora);
+
+  const getParte = (tipo: string) =>
+    partes.find((p) => p.type === tipo)?.value ?? '00';
+
+  const yy = getParte('year');
+  const mm = getParte('month');
+  const dd = getParte('day');
+  const hh = getParte('hour');
+  const mi = getParte('minute');
+  const ss = getParte('second');
+
+  const fechaCorta = `${yy}${mm}${dd}`;   // 260708
+  const horaCorta = `${hh}${mi}${ss}`;    // 125430
+
+  // Contar pedidos del día para el número secuencial
   const pedidosExistentes = await getSheetData('PEDIDOS');
   const delMismoDia = pedidosExistentes.filter((p) =>
-    p.ID_Pedido?.includes(fechaId)
+    p.ID_Pedido?.includes(`-${fechaCorta}-`)
   ).length;
-  const idPedido = `PED-${fechaId}-${String(delMismoDia + 1).padStart(3, '0')}`;
 
-  // Calcular totales
+  // Formato final: PED-260708-125430-023
+  const idPedido = `PED-${fechaCorta}-${horaCorta}-${String(delMismoDia + 1).padStart(3, '0')}`;
+
   const totalBruto = items.reduce(
     (sum: number, item: any) => sum + item.precio * item.cantidad,
     0
   );
-  const descuento =
-    beneficioCanjeado === '20% Descuento' ? totalBruto * 0.2 : 0;
+
+  // Calcular descuento según beneficio canjeado
+  let descuento = 0;
+  if (beneficioCanjeado === '15% Descuento') {
+    descuento = totalBruto * 0.15;
+  } else if (beneficioCanjeado === 'Articulo Gratis') {
+    // El artículo gratis se descuenta cuando implementemos el UI de selección
+    descuento = 0;
+  }
   const totalFinal = totalBruto - descuento;
 
-  // 1. Crear fila en PEDIDOS
+  // 1. Fila en PEDIDOS
   await appendRow('PEDIDOS', [
     idPedido,
     usuario.id_usuario ?? '',
-    usuario.name ?? '',        // Nombre_Cliente_Snap
-    fechaStr,                  // Fecha_Hora
-    'Recibido',                // Estado inicial
-    horaRecoleccion ?? '',     // Hora_Recoleccion
+    usuario.name ?? '',
+    fechaStr,
+    'Recibido',
+    horaRecoleccion ?? '',
     totalBruto,
     beneficioCanjeado ?? 'Ninguno',
     descuento,
     totalFinal,
     notas ?? '',
-    'App',                     // Origen_Venta
-    '',                        // ID_Empleado (vacío para pedidos online)
+    'App',
+    '',
   ]);
 
-  // 2. Crear filas en DT PEDIDOS (una por artículo)
+  // 2. Filas en DT PEDIDOS
   const dtExistentes = await getSheetData('DT PEDIDOS');
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
@@ -90,41 +126,43 @@ export async function POST(req: NextRequest) {
     await appendRow('DT PEDIDOS', [
       idDetalle,
       idPedido,
-      item.id,                        // ID_Producto
-      item.nombre,                    // Nombre_Producto_Snap
+      item.id,
+      item.nombre,
       item.cantidad,
-      item.precio,                    // Precio_Unitario_Snap
-      item.precio * item.cantidad,    // Subtotal
+      item.precio,
+      item.precio * item.cantidad,
       item.notas ?? '',
     ]);
   }
 
-  // 3. Actualizar programa de lealtad en USUARIOS
-  const totalArticulosNuevos = items.reduce(
-    (sum: number, item: any) => sum + item.cantidad,
-    0
-  );
-
+  // 3. Actualizar lealtad — se acumula por PEDIDO, no por artículos
   const usuarioRow = await findRow('USUARIOS', 'ID_Usuario', usuario.id_usuario);
   if (usuarioRow) {
     const cicloActual = parseInt(usuarioRow.data.Ciclo_Actual) || 0;
     const historicoActual = parseInt(usuarioRow.data.Total_Articulos_Historico) || 0;
-    const nuevoCiclo = cicloActual + totalArticulosNuevos;
+    const nuevoCiclo = cicloActual + 1;
 
-    let beneficioNuevo = 'Ninguno';
+    let beneficioNuevo = usuarioRow.data.Beneficio_Disponible || 'Ninguno';
     let cicloFinal = nuevoCiclo;
 
-    if (nuevoCiclo >= 10) {
-      beneficioNuevo = 'Articulo Gratis';
-      cicloFinal = nuevoCiclo - 10; // Reinicio del ciclo
-    } else if (nuevoCiclo >= 5) {
-      beneficioNuevo = '20% Descuento';
+    if (beneficioCanjeado === 'Articulo Gratis') {
+      // Solo el artículo gratis reinicia el ciclo
+      cicloFinal = 0;
+      beneficioNuevo = 'Ninguno';
+    } else if (beneficioCanjeado === '15% Descuento') {
+      // El descuento NO reinicia el ciclo, sigue acumulando
+      beneficioNuevo = 'Ninguno';
+    } else {
+      // No se canjeó nada — calcular si se ganó un beneficio nuevo
+      if (nuevoCiclo >= 10) {
+        beneficioNuevo = 'Articulo Gratis';
+      } else if (nuevoCiclo >= 5) {
+        beneficioNuevo = '15% Descuento';
+      }
     }
 
-    // Columnas en USUARIOS (ajusta si el orden de tu Sheet es diferente):
-    // Col 6 = Ciclo_Actual, Col 7 = Total_Articulos_Historico, Col 8 = Beneficio_Disponible
     await updateCell('USUARIOS', usuarioRow.rowIndex, 6, cicloFinal);
-    await updateCell('USUARIOS', usuarioRow.rowIndex, 7, historicoActual + totalArticulosNuevos);
+    await updateCell('USUARIOS', usuarioRow.rowIndex, 7, historicoActual + 1);
     await updateCell('USUARIOS', usuarioRow.rowIndex, 8, beneficioNuevo);
   }
 

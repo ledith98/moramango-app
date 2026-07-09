@@ -55,6 +55,32 @@ const siguienteEstado = (actual: string): string | null => {
   return FLUJO[i + 1];
 };
 
+// Mensaje pre-escrito para el cliente según el estado actual del pedido.
+// Se envía manualmente: el botón abre WhatsApp en el celular de Moramango
+// con el chat del cliente y este texto listo, solo falta presionar enviar.
+const mensajeWhatsApp = (estado: string, nombre: string, idPedido: string): string => {
+  const primerNombre = (nombre || '').trim().split(' ')[0] || 'hola';
+  switch (estado) {
+    case 'Recibido':
+      return `¡Hola ${primerNombre}! 👋 Recibimos tu pedido ${idPedido} en Moramango. Te avisaremos por aquí cuando esté listo. 🥭`;
+    case 'En preparación':
+      return `¡Hola ${primerNombre}! Tu pedido ${idPedido} ya está en preparación. 🥤`;
+    case 'Listo para recoger':
+      return `¡Hola ${primerNombre}! 🎉 Tu pedido ${idPedido} está listo para recoger en Moramango. ¡Te esperamos!`;
+    case 'Entregado':
+      return `¡Gracias por tu compra, ${primerNombre}! 💛 Esperamos que disfrutes tu pedido. ¡Vuelve pronto a Moramango!`;
+    case 'Cancelado':
+      return `Hola ${primerNombre}, lamentamos informarte que tu pedido ${idPedido} fue cancelado. Si tienes alguna duda, respóndenos por aquí. 🙏`;
+    default:
+      return `¡Hola ${primerNombre}! Te escribimos de Moramango sobre tu pedido ${idPedido}.`;
+  }
+};
+
+const linkWhatsApp = (telefono: string, mensaje: string): string => {
+  const digitos = telefono.replace(/\D/g, '');
+  return `https://wa.me/${digitos}?text=${encodeURIComponent(mensaje)}`;
+};
+
 const hoyISO = () => new Date().toISOString().slice(0, 10);
 
 export default function PedidosPage() {
@@ -173,17 +199,36 @@ export default function PedidosPage() {
               <div className="p-8 text-center text-neutral-500 animate-pulse">Cargando pedido...</div>
             ) : detalle ? (
               <>
-                <div className="p-5 border-b border-neutral-100 flex items-start justify-between shrink-0">
-                  <div>
-                    <p className="font-mono text-sm text-neutral-500">{detalle.pedido.ID_Pedido}</p>
-                    <h2 className="text-lg font-bold text-black">{detalle.cliente?.nombre || detalle.pedido.Nombre_Cliente_Snap}</h2>
-                    {detalle.cliente?.telefono && (
-                      <p className="text-sm text-neutral-500">📞 {detalle.cliente.telefono}</p>
-                    )}
+                <div className="p-5 border-b border-neutral-100 shrink-0">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="font-mono text-sm text-neutral-500">{detalle.pedido.ID_Pedido}</p>
+                      <h2 className="text-lg font-bold text-black">{detalle.cliente?.nombre || detalle.pedido.Nombre_Cliente_Snap}</h2>
+                      {detalle.cliente?.telefono && (
+                        <p className="text-sm text-neutral-500">📞 {detalle.cliente.telefono}</p>
+                      )}
+                    </div>
+                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full shrink-0 ${colorEstado(detalle.pedido.Estado)}`}>
+                      {detalle.pedido.Estado}
+                    </span>
                   </div>
-                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full shrink-0 ${colorEstado(detalle.pedido.Estado)}`}>
-                    {detalle.pedido.Estado}
-                  </span>
+                  {detalle.cliente?.telefono && (
+                    <a
+                      href={linkWhatsApp(
+                        detalle.cliente.telefono,
+                        mensajeWhatsApp(
+                          detalle.pedido.Estado,
+                          detalle.cliente?.nombre || detalle.pedido.Nombre_Cliente_Snap,
+                          detalle.pedido.ID_Pedido
+                        )
+                      )}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-3 w-full flex items-center justify-center gap-2 bg-green-500 text-white font-semibold py-2.5 rounded-xl active:scale-95 transition-transform"
+                    >
+                      💬 Avisar por WhatsApp
+                    </a>
+                  )}
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-5 space-y-3">

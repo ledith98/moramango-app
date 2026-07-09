@@ -3,6 +3,25 @@
 import { useEffect, useState } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
 
+// Separa un teléfono guardado tipo "+528186003207" en lada y número
+const parsearTelefono = (telefonoCompleto: string): { lada: string; numero: string } => {
+  if (!telefonoCompleto) return { lada: '52', numero: '' };
+  // Formato con +: +528186003207 → lada 52, número 8186003207
+  if (telefonoCompleto.startsWith('+')) {
+    const solo = telefonoCompleto.slice(1).replace(/\D/g, '');
+    // Asumimos lada de 1-3 dígitos, tomamos los últimos 10 como número si es +52
+    // Para otras ladas, todo lo que no es lada
+    if (solo.startsWith('52') && solo.length >= 10) {
+      return { lada: '52', numero: solo.slice(2) };
+    }
+    // Otras ladas: primeros 2-3 dígitos como lada
+    return { lada: solo.slice(0, solo.length - 10) || '52', numero: solo.slice(-10) };
+  }
+  // Sin +: dato viejo, asumimos mexicano
+  const soloDigitos = telefonoCompleto.replace(/\D/g, '');
+  return { lada: '52', numero: soloDigitos.slice(-10) };
+};
+
 interface ItemCarrito {
   id: string;
   nombre: string;
@@ -31,6 +50,8 @@ export default function Home() {
   const [verPerfil, setVerPerfil] = useState(false);
   const [nombreUsuario, setNombreUsuario] = useState('');
   const [telefonoUsuario, setTelefonoUsuario] = useState('');
+  const [ladaUsuario, setLadaUsuario] = useState('52');
+  const [errorTelefono, setErrorTelefono] = useState('');
   const [pedidoConfirmado, setPedidoConfirmado] = useState<string | null>(null);
   const [notas, setNotas] = useState('');
   const [lealtad, setLealtad] = useState<DatosLealtad | null>(null);
@@ -53,8 +74,10 @@ export default function Home() {
     } catch {}
 
     setNombreUsuario(localStorage.getItem('moramango_nombre') || '');
-    setTelefonoUsuario(localStorage.getItem('moramango_telefono') || '');
-  }, []);
+    const telefonoGuardado = localStorage.getItem('moramango_telefono') || '';
+    const { lada, numero } = parsearTelefono(telefonoGuardado);
+    setLadaUsuario(lada);
+    setTelefonoUsuario(numero);
 
   useEffect(() => {
     if (session && verCarrito && !lealtad) {
@@ -78,11 +101,11 @@ export default function Home() {
         .then((data) => {
           if (data.error) return;
           if (data.nombre) setNombreUsuario(data.nombre);
-          if (data.telefono) setTelefonoUsuario(data.telefono);
-        })
-        .catch(() => {});
-    }
-  }, [session, verPerfil, nombreUsuario, telefonoUsuario]);
+          if (data.telefono) {
+            const { lada, numero } = parsearTelefono(data.telefono);
+            setLadaUsuario(lada);
+            setTelefonoUsuario(numero);
+          }
 
   useEffect(() => {
     if (session && carrito.length > 0) {
@@ -157,12 +180,35 @@ export default function Home() {
 
   const guardarPerfil = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorTelefono('');
 
-    // Guardar localmente (backup y funciona sin conexión)
+    // Validar lada — solo dígitos, 1-3 caracteres
+    const ladaLimpia = ladaUsuario.replace(/\D/g, '');
+    if (!ladaLimpia || ladaLimpia.length > 3) {
+      setErrorTelefono('Lada inválida (1-3 dígitos)');
+      return;
+    }
+
+    // Validar número — solo dígitos, longitud según lada
+    const numeroLimpio = telefonoUsuario.replace(/\D/g, '');
+    if (ladaLimpia === '52') {
+      if (numeroLimpio.length !== 10) {
+        setErrorTelefono('El número debe tener 10 dígitos');
+        return;
+      }
+    } else {
+      if (numeroLimpio.length < 7 || numeroLimpio.length > 15) {
+        setErrorTelefono('El número debe tener entre 7 y 15 dígitos');
+        return;
+      }
+    }
+
+    // Formato final: +528186003207
+    const telefonoCompleto = `+${ladaLimpia}${numeroLimpio}`;
+
     localStorage.setItem('moramango_nombre', nombreUsuario);
-    localStorage.setItem('moramango_telefono', telefonoUsuario);
+    localStorage.setItem('moramango_telefono', telefonoCompleto);
 
-    // Sincronizar al sheet si el usuario está logueado
     if (session) {
       try {
         await fetch('/api/usuario', {
@@ -170,7 +216,7 @@ export default function Home() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             nombre: nombreUsuario,
-            telefono: telefonoUsuario,
+            telefono: telefonoCompleto,
           }),
         });
       } catch {
@@ -612,9 +658,38 @@ export default function Home() {
 
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-neutral-700 block">Teléfono de Contacto</label>
-                <input type="tel" value={telefonoUsuario} onChange={(e) => setTelefonoUsuario(e.target.value)}
-                  placeholder="Ej. 8186003207"
-                  className="w-full bg-white border border-neutral-300 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black transition-colors shadow-sm" required />
+                <div className="flex gap-2">
+                  <div className="relative w-24 shrink-0">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none">+</span>
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      value={ladaUsuario}
+                      onChange={(e) => setLadaUsuario(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                      placeholder="52"
+                      maxLength={3}
+                      className="w-full bg-white border border-neutral-300 rounded-xl pl-7 pr-2 py-3 text-neutral-900 focus:outline-none focus:border-black transition-colors shadow-sm"
+                      required
+                    />
+                  </div>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    value={telefonoUsuario}
+                    onChange={(e) => setTelefonoUsuario(e.target.value.replace(/\D/g, '').slice(0, 15))}
+                    placeholder={ladaUsuario === '52' ? '8186003207 (10 dígitos)' : 'Número sin lada'}
+                    className="flex-1 bg-white border border-neutral-300 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black transition-colors shadow-sm"
+                    required
+                  />
+                </div>
+                {errorTelefono && (
+                  <p className="text-xs text-red-600 mt-1">{errorTelefono}</p>
+                )}
+                <p className="text-xs text-neutral-500">
+                  {ladaUsuario === '52'
+                    ? 'México (+52): 10 dígitos'
+                    : `Lada +${ladaUsuario}: entre 7 y 15 dígitos`}
+                </p>
               </div>
 
               <button type="submit" className="w-full bg-black text-white font-bold text-lg py-4 rounded-2xl active:scale-95 transition-transform shadow-md mt-8">

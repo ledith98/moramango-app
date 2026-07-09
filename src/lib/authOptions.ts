@@ -87,6 +87,27 @@ export const authOptions: NextAuthOptions = {
       }
     },
 
+    async jwt({ token }) {
+      // Se ejecuta en cada request que valida sesión (incluyendo el
+      // middleware vía getToken()). Sin esto, token.rol nunca existe y
+      // el middleware bloquea a todos los admins sin importar el Sheet.
+      if (!token.email) return token;
+
+      try {
+        const usuarios = await getSheetData('USUARIOS');
+        const usuario = usuarios.find((u) => u.Email === token.email);
+        if (usuario) {
+          (token as any).rol = usuario.Rol || 'cliente';
+          (token as any).id_usuario = usuario.ID_Usuario;
+          (token as any).activo = usuario.Activo || 'si';
+        }
+      } catch (error) {
+        console.error('Error en jwt callback:', error);
+      }
+
+      return token;
+    },
+
     async session({ session }) {
       if (!session.user?.email) return session;
 

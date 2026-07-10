@@ -131,6 +131,21 @@ export default function PedidosPage() {
     cambiarEstado(idPedido, 'Cancelado');
   };
 
+  const cambiarMetodo = async (idPedido: string, metodoPago: string) => {
+    setActualizando(true);
+    try {
+      await fetch('/api/admin/pedidos', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idPedido, metodoPago }),
+      });
+      cargarPedidos();
+      abrirDetalle(idPedido);
+    } finally {
+      setActualizando(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 flex flex-wrap items-center gap-3">
@@ -270,7 +285,29 @@ export default function PedidosPage() {
                   </div>
                 </div>
 
-                <div className="p-5 border-t border-neutral-100 shrink-0">
+                <div className="p-5 border-t border-neutral-100 shrink-0 space-y-3">
+                  <div>
+                    <p className="text-xs font-semibold text-neutral-500 mb-2">Método de pago</p>
+                    <div className="flex flex-wrap gap-2">
+                      {['Efectivo', 'Terminal', 'Transferencia'].map((m) => {
+                        const activo = detalle.pedido.Metodo_Pago === m;
+                        return (
+                          <button
+                            key={m}
+                            onClick={() => !activo && cambiarMetodo(detalle.pedido.ID_Pedido, m)}
+                            disabled={actualizando || activo}
+                            className={`px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${
+                              activo
+                                ? 'bg-black text-white'
+                                : 'bg-neutral-100 text-neutral-600 active:scale-95'
+                            } ${actualizando && !activo ? 'opacity-50' : ''}`}
+                          >
+                            {m === 'Efectivo' ? '💵' : m === 'Transferencia' ? '📲' : '💳'} {m}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                   <p className="text-xs font-semibold text-neutral-500 mb-2">
                     {actualizando ? 'Actualizando...' : 'Cambiar estado'}
                   </p>

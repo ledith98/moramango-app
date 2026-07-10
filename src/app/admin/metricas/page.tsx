@@ -8,8 +8,18 @@ interface Metricas {
   numPedidos: number;
   ticketPromedio: number;
   productoMasVendido: { nombre: string; cantidad: number } | null;
+  ventasPorMetodo: Record<string, { total: number; pedidos: number }>;
   pedidosCancelados: number;
 }
+
+// Orden y presentación fija del corte de caja; 'Sin registrar' solo se
+// muestra si hay pedidos sin método asignado.
+const METODOS_CORTE = [
+  { clave: 'Efectivo', icono: '💵' },
+  { clave: 'Terminal', icono: '💳' },
+  { clave: 'Transferencia', icono: '📲' },
+  { clave: 'Sin registrar', icono: '❔' },
+];
 
 const hoyISO = () => new Date().toISOString().slice(0, 10);
 
@@ -61,15 +71,49 @@ export default function MetricasPage() {
       {cargando ? (
         <p className="text-neutral-500 animate-pulse">Cargando métricas...</p>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {tarjetas.map((t) => (
-            <div key={t.label} className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100">
-              <div className="text-2xl mb-2">{t.icon}</div>
-              <p className="text-xs text-neutral-500 font-medium uppercase tracking-wide">{t.label}</p>
-              <p className="text-xl font-bold text-black mt-1 break-words">{t.valor}</p>
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {tarjetas.map((t) => (
+              <div key={t.label} className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100">
+                <div className="text-2xl mb-2">{t.icon}</div>
+                <p className="text-xs text-neutral-500 font-medium uppercase tracking-wide">{t.label}</p>
+                <p className="text-xl font-bold text-black mt-1 break-words">{t.valor}</p>
+              </div>
+            ))}
+          </div>
+
+          {metricas && (
+            <div className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100">
+              <p className="text-xs text-neutral-500 font-medium uppercase tracking-wide mb-3">
+                Ingresos por método de pago
+              </p>
+              <div className="space-y-2">
+                {METODOS_CORTE.map(({ clave, icono }) => {
+                  const datos = metricas.ventasPorMetodo?.[clave];
+                  if (clave === 'Sin registrar' && !datos) return null;
+                  const total = datos?.total ?? 0;
+                  const pedidos = datos?.pedidos ?? 0;
+                  return (
+                    <div key={clave} className="flex items-center justify-between py-1.5 border-b border-neutral-50 last:border-0">
+                      <span className="text-sm text-neutral-700">
+                        {icono} {clave}
+                        <span className="text-neutral-400 ml-1.5">
+                          ({pedidos} pedido{pedidos === 1 ? '' : 's'})
+                        </span>
+                      </span>
+                      <span className="font-bold text-black tabular-nums">${total.toFixed(2)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              {metricas.ventasPorMetodo?.['Sin registrar'] && (
+                <p className="text-xs text-neutral-400 mt-3">
+                  💡 "Sin registrar" son pedidos sin método de pago asignado — puedes ponérselo desde el detalle del pedido al cobrar.
+                </p>
+              )}
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
     </div>
   );

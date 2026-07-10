@@ -31,6 +31,17 @@ export async function GET(req: NextRequest) {
   const numPedidos = validos.length;
   const ticketPromedio = numPedidos > 0 ? totalVentas / numPedidos : 0;
 
+  // Desglose de ingresos por método de pago (corte de caja).
+  // Los pedidos sin método asignado (típicamente de app aún no cobrados)
+  // caen en 'Sin registrar'.
+  const ventasPorMetodo: Record<string, { total: number; pedidos: number }> = {};
+  for (const p of validos) {
+    const metodo = p.Metodo_Pago || 'Sin registrar';
+    if (!ventasPorMetodo[metodo]) ventasPorMetodo[metodo] = { total: 0, pedidos: 0 };
+    ventasPorMetodo[metodo].total += parseFloat(p.Total_Final) || 0;
+    ventasPorMetodo[metodo].pedidos += 1;
+  }
+
   const idsValidos = new Set(validos.map((p) => p.ID_Pedido));
   const conteoProductos = new Map<string, number>();
   for (const item of detalles) {
@@ -53,6 +64,7 @@ export async function GET(req: NextRequest) {
     numPedidos,
     ticketPromedio,
     productoMasVendido,
+    ventasPorMetodo,
     pedidosCancelados: delDia.length - validos.length,
   });
 }

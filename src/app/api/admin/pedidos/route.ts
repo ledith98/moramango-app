@@ -12,7 +12,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSheetData, findRow, updateCell } from '@/lib/googleSheets';
+import { getSheetData, findRow, updateCell, ensureColumn } from '@/lib/googleSheets';
 import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 import { getAdminSession } from '@/lib/roles';
 
@@ -56,20 +56,26 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ pedidos: delDia });
 }
 
-// ── PATCH: cambiar estado de un pedido ────────────────────────────────────────
+// ── PATCH: cambiar estado y/o método de pago de un pedido ────────────────────
+const METODOS_PAGO = ['Efectivo', 'Terminal', 'Transferencia'];
+
 export async function PATCH(req: NextRequest) {
   if (!(await getAdminSession())) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
-  const { idPedido, nuevoEstado } = await req.json();
+  const { idPedido, nuevoEstado, metodoPago } = await req.json();
 
-  if (!idPedido || !nuevoEstado) {
+  if (!idPedido || (!nuevoEstado && !metodoPago)) {
     return NextResponse.json({ error: 'Faltan datos' }, { status: 400 });
   }
 
-  if (!ESTADOS_VALIDOS.includes(nuevoEstado)) {
+  if (nuevoEstado && !ESTADOS_VALIDOS.includes(nuevoEstado)) {
     return NextResponse.json({ error: 'Estado inválido' }, { status: 400 });
+  }
+
+  if (metodoPago && !METODOS_PAGO.includes(metodoPago)) {
+    return NextResponse.json({ error: 'Método de pago inválido' }, { status: 400 });
   }
 
   const pedidoRow = await findRow('PEDIDOS', 'ID_Pedido', idPedido);
@@ -77,12 +83,21 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 });
   }
 
-  // Columna 5 = Estado en tu hoja PEDIDOS
-  await updateCell('PEDIDOS', pedidoRow.rowIndex, 5, nuevoEstado);
+  if (nuevoEstado) {
+    // Columna 5 = Estado en tu hoja PEDIDOS
+    await updateCell('PEDIDOS', pedidoRow.rowIndex, 5, nuevoEstado);
 
-  // Descontar insumos cuando el pedido está listo
-  if (nuevoEstado === 'Listo para recoger') {
-    await descontarInsumos(idPedido);
+    // Descontar insumos cuando el pedido está listo
+    if (nuevoEstado === 'Listo para recoger') {
+      await descontarInsumos(idPedido);
+    }
+  }
+
+  if (metodoPago) {
+    // Los pedidos de la app no traen método de pago (pagan al recoger):
+    // el admin lo asigna aquí para que el corte de caja quede completo.
+    const colMetodo = await ensureColumn('PEDIDOS', 'Metodo_Pago');
+    await updateCell('PEDIDOS', pedidoRow.rowIndex, colMetodo, metodoPago);
   }
 
   return NextResponse.json({ success: true });

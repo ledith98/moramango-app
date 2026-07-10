@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSheetData, findRow, updateCell, ensureColumn } from '@/lib/googleSheets';
 import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
+import { consumoPorInsumo, normalizarNombre } from '@/lib/insumos';
 import { getAdminSession } from '@/lib/roles';
 
 export const ESTADOS_VALIDOS = [
@@ -104,35 +105,42 @@ export async function PATCH(req: NextRequest) {
 }
 
 // ── Descuento automático de materia prima ─────────────────────────────────────
+// La receta (Catalogo) referencia al insumo por NOMBRE: Ingrediente ↔
+// "Nombre insumo". La columna Stock_Actual se resuelve por encabezado,
+// nunca por índice fijo (la hoja tiene Proveedor en la columna 5).
 async function descontarInsumos(idPedido: string) {
   try {
     const detalles = await getSheetData('DT PEDIDOS');
     const itemsPedido = detalles.filter((d) => d.ID_Pedido === idPedido);
     if (itemsPedido.length === 0) return;
 
-    const catalogo = await getSheetData('Catalogo');
-    const insumos = await getSheetData('Insumos');
+    const [catalogo, insumos] = await Promise.all([
+      getSheetData('Catalogo'),
+      getSheetData('Insumos'),
+    ]);
 
-    for (const item of itemsPedido) {
-      const cantidad = parseInt(item.Cantidad) || 1;
+    const consumo = consumoPorInsumo(
+      itemsPedido.map((i) => ({
+        idProducto: i.ID_Producto,
+        cantidad: parseInt(i.Cantidad) || 1,
+      })),
+      catalogo
+    );
+    if (consumo.size === 0) return;
 
-      // Recetas de este producto en Catalogo
-      const recetas = catalogo.filter((c) => c.ID_Producto === item.ID_Producto);
+    const colStock = await ensureColumn('Insumos', 'Stock_Actual');
 
-      for (const receta of recetas) {
-        const cantPorUnidad = parseFloat(receta.Cantidad_Receta) || 0;
-        const totalDescontar = cantPorUnidad * cantidad;
+    for (const [clave, cantidadConsumida] of consumo) {
+      const idx = insumos.findIndex(
+        (ins) => normalizarNombre(ins['Nombre insumo']) === clave
+      );
+      if (idx === -1) continue;
 
-        const insumoRow = await findRow('Insumos', 'ID_Insumo', receta.ID_Insumo);
-        if (!insumoRow) continue;
+      const stockActual = parseFloat(insumos[idx].Stock_Actual) || 0;
+      const nuevoStock = Math.max(0, stockActual - cantidadConsumida);
 
-        const stockActual = parseFloat(insumoRow.data.Stock_Actual) || 0;
-        const nuevoStock = Math.max(0, stockActual - totalDescontar);
-
-        // Columna 5 = Stock_Actual en tu hoja Insumos
-        // Si tu columna está en otra posición, ajusta este número
-        await updateCell('Insumos', insumoRow.rowIndex, 5, nuevoStock);
-      }
+      // Fila = índice en datos + 2 (la fila 1 son encabezados)
+      await updateCell('Insumos', idx + 2, colStock, Math.round(nuevoStock * 1000) / 1000);
     }
   } catch (error) {
     // El error no cancela el cambio de estado

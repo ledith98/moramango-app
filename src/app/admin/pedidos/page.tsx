@@ -15,6 +15,7 @@ interface Pedido {
   HoraLegible: string;
   Origen_Venta: string;
   Metodo_Pago?: string;
+  Estado_Pago?: string;
 }
 
 interface DetalleItem {
@@ -187,6 +188,7 @@ export default function PedidosPage() {
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-neutral-900 truncate">
                   {p.Origen_Venta === 'Local' && <span title="Venta en local">🏪 </span>}
+                  {p.Estado_Pago === 'Pagado' && <span title="Pagado en línea">✅ </span>}
                   {p.Nombre_Cliente_Snap}
                 </p>
                 <p className="text-xs text-neutral-500 font-mono">{p.ID_Pedido}</p>
@@ -232,10 +234,20 @@ export default function PedidosPage() {
                         </span>
                         {detalle.pedido.Metodo_Pago && (
                           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600">
-                            {detalle.pedido.Metodo_Pago === 'Efectivo' ? '💵' : detalle.pedido.Metodo_Pago === 'Transferencia' ? '📲' : '💳'} {detalle.pedido.Metodo_Pago}
+                            {detalle.pedido.Metodo_Pago === 'Efectivo' ? '💵' : detalle.pedido.Metodo_Pago === 'Transferencia' ? '📲' : detalle.pedido.Metodo_Pago === 'Mercado Pago' ? '🛍️' : '💳'} {detalle.pedido.Metodo_Pago}
                           </span>
                         )}
                       </div>
+                      {detalle.pedido.Estado_Pago === 'Pagado' && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                          ✅ Pagado en línea
+                        </span>
+                      )}
+                      {detalle.pedido.Estado_Pago === 'Pendiente' && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                          🕓 Pago en línea pendiente
+                        </span>
+                      )}
                     </div>
                   </div>
                   {detalle.cliente?.telefono && (

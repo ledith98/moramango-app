@@ -18,8 +18,12 @@ const METODOS_CORTE = [
   { clave: 'Efectivo', icono: '💵' },
   { clave: 'Terminal', icono: '💳' },
   { clave: 'Transferencia', icono: '📲' },
+  { clave: 'Mercado Pago', icono: '🛍️' },
   { clave: 'Sin registrar', icono: '❔' },
 ];
+
+// Filas que solo se muestran cuando tienen datos
+const METODOS_CONDICIONALES = ['Mercado Pago', 'Sin registrar'];
 
 const hoyISO = () => new Date().toISOString().slice(0, 10);
 
@@ -90,7 +94,7 @@ export default function MetricasPage() {
               <div className="space-y-2">
                 {METODOS_CORTE.map(({ clave, icono }) => {
                   const datos = metricas.ventasPorMetodo?.[clave];
-                  if (clave === 'Sin registrar' && !datos) return null;
+                  if (METODOS_CONDICIONALES.includes(clave) && !datos) return null;
                   const total = datos?.total ?? 0;
                   const pedidos = datos?.pedidos ?? 0;
                   return (

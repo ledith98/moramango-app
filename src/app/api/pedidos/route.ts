@@ -18,7 +18,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/authOptions';
-import { appendRow, getSheetData, findRow, updateCell } from '@/lib/googleSheets';
+import { appendRow, ensureColumn, getSheetData, findRow, updateCell } from '@/lib/googleSheets';
+import { baseUrlDesdeRequest, crearPreferencia, mpConfigurado } from '@/lib/mercadoPago';
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Debes iniciar sesión' }, { status: 401 });
   }
 
-  const { items, notas, horaRecoleccion, beneficioCanjeado } = await req.json();
+  const { items, notas, horaRecoleccion, beneficioCanjeado, pagoEnLinea } = await req.json();
 
   if (!items || items.length === 0) {
     return NextResponse.json({ error: 'El carrito está vacío' }, { status: 400 });
@@ -91,7 +92,7 @@ export async function POST(req: NextRequest) {
   const totalFinal = totalBruto - descuento;
 
   // 1. Fila en PEDIDOS
-  await appendRow('PEDIDOS', [
+  const filaPedido = await appendRow('PEDIDOS', [
     idPedido,
     usuario.id_usuario ?? '',
     usuario.name ?? '',
@@ -154,6 +155,31 @@ export async function POST(req: NextRequest) {
     await updateCell('USUARIOS', usuarioRow.rowIndex, 6, cicloFinal);
     await updateCell('USUARIOS', usuarioRow.rowIndex, 7, historicoActual + 1);
     await updateCell('USUARIOS', usuarioRow.rowIndex, 8, beneficioNuevo);
+  }
+
+  // 4. Pago en línea (opcional) — si falla, el pedido ya quedó creado y
+  // el cliente simplemente paga al recoger.
+  if (pagoEnLinea && mpConfigurado()) {
+    try {
+      const numArticulos = items.reduce(
+        (sum: number, item: any) => sum + (parseInt(item.cantidad) || 1),
+        0
+      );
+      const preferencia = await crearPreferencia({
+        idPedido,
+        descripcion: `Pedido Moramango ${idPedido} (${numArticulos} artículo${numArticulos === 1 ? '' : 's'})`,
+        total: totalFinal,
+        baseUrl: baseUrlDesdeRequest(req),
+      });
+
+      if (preferencia) {
+        const colEstadoPago = await ensureColumn('PEDIDOS', 'Estado_Pago');
+        await updateCell('PEDIDOS', filaPedido, colEstadoPago, 'Pendiente');
+        return NextResponse.json({ success: true, idPedido, checkoutUrl: preferencia.checkoutUrl });
+      }
+    } catch (error) {
+      console.error('Error iniciando pago en línea:', error);
+    }
   }
 
   return NextResponse.json({ success: true, idPedido });

@@ -54,6 +54,9 @@ export default function Home() {
   const [ladaUsuario, setLadaUsuario] = useState('52');
   const [errorTelefono, setErrorTelefono] = useState('');
   const [pedidoConfirmado, setPedidoConfirmado] = useState<string | null>(null);
+  const [pagoExitoso, setPagoExitoso] = useState(false);
+  const [pagoEnLinea, setPagoEnLinea] = useState(false);
+  const [avisoPago, setAvisoPago] = useState('');
   const [notas, setNotas] = useState('');
   const [lealtad, setLealtad] = useState<DatosLealtad | null>(null);
   const [cargandoLealtad, setCargandoLealtad] = useState(false);
@@ -79,6 +82,23 @@ export default function Home() {
     const { lada, numero } = parsearTelefono(telefonoGuardado);
     setLadaUsuario(lada);
     setTelefonoUsuario(numero);
+
+    // Regreso desde el checkout de Mercado Pago
+    const params = new URLSearchParams(window.location.search);
+    const pago = params.get('pago');
+    if (pago) {
+      const pedido = params.get('pedido');
+      if (pago === 'exito' && pedido) {
+        setPagoExitoso(true);
+        setPedidoConfirmado(pedido);
+      } else if (pedido) {
+        setAvisoPago(
+          `El pago en línea no se completó, pero tu pedido ${pedido} quedó registrado. Puedes pagarlo al recogerlo.`
+        );
+      }
+      // Limpiar la URL para que un refresh no repita el mensaje
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   }, []);
 
   useEffect(() => {
@@ -309,6 +329,7 @@ export default function Home() {
           notas: notas.trim(),
           horaRecoleccion: '',
           beneficioCanjeado: beneficioCanjeadoStr,
+          pagoEnLinea,
         }),
       });
 
@@ -321,6 +342,13 @@ export default function Home() {
         setNotas('');
         setBeneficioAplicado(false);
         setLealtad(null);
+
+        if (data.checkoutUrl) {
+          // Ir al checkout de Mercado Pago; al terminar regresa con ?pago=...
+          window.location.href = data.checkoutUrl;
+          return;
+        }
+
         setPedidoConfirmado(data.idPedido);
       } else {
         alert('Hubo un error al procesar tu pedido. Intenta de nuevo.');
@@ -338,6 +366,9 @@ export default function Home() {
         <div className="w-full max-w-md bg-neutral-50 shadow-2xl flex flex-col items-center justify-center p-8 text-center">
           <div className="text-6xl mb-4">✅</div>
           <h2 className="text-2xl font-bold text-black mb-2">¡Pedido recibido!</h2>
+          {pagoExitoso && (
+            <p className="text-sm font-semibold text-green-600 mb-2">💳 Pago en línea recibido</p>
+          )}
           <p className="text-neutral-500 mb-2">Tu número de pedido es:</p>
           <p className="text-lg font-mono font-bold text-black bg-neutral-100 px-4 py-2 rounded-xl mb-6">
             {pedidoConfirmado}
@@ -424,6 +455,19 @@ export default function Home() {
           </header>
 
           <div className="p-4 flex-1 overflow-y-auto pb-32">
+            {avisoPago && (
+              <div className="mb-4 bg-amber-50 border border-amber-200 rounded-2xl p-3.5 flex gap-3 items-start">
+                <span className="text-base leading-none mt-0.5">⚠️</span>
+                <p className="flex-1 text-xs text-amber-800 leading-relaxed">{avisoPago}</p>
+                <button
+                  onClick={() => setAvisoPago('')}
+                  className="text-amber-400 text-sm font-bold px-1"
+                  aria-label="Cerrar aviso"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
             {cargando ? (
               <div className="flex justify-center items-center py-10">
                 <p className="text-neutral-500 animate-pulse font-medium">Preparando menú...</p>
@@ -626,6 +670,35 @@ export default function Home() {
                 <span className="text-neutral-500 font-medium text-lg">Total a pagar</span>
                 <span className="text-2xl font-bold text-black">${totalPagar.toFixed(2)}</span>
               </div>
+
+              {session && (
+                <div className="mb-4">
+                  <p className="text-xs font-semibold text-neutral-500 mb-2">¿Cómo quieres pagar?</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setPagoEnLinea(false)}
+                      className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                        !pagoEnLinea ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-600'
+                      }`}
+                    >
+                      🏪 Pagar al recoger
+                    </button>
+                    <button
+                      onClick={() => setPagoEnLinea(true)}
+                      className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                        pagoEnLinea ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-600'
+                      }`}
+                    >
+                      💳 Pagar en línea
+                    </button>
+                  </div>
+                  {pagoEnLinea && (
+                    <p className="text-xs text-neutral-500 mt-2">
+                      Te llevaremos a Mercado Pago para completar el pago de forma segura.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {!session && (
                 <div className="mb-4 bg-neutral-50 p-3.5 rounded-xl border border-neutral-200 flex gap-3 items-start">

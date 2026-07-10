@@ -48,7 +48,8 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => (b.info!.timestamp - a.info!.timestamp))
     .map(({ pedido, info }) => ({
       ...pedido,
-      Telefono: telefonoPorUsuario.get(pedido.ID_Usuario) || '',
+      // Ventas locales no tienen usuario: cae al teléfono capturado en mostrador
+      Telefono: telefonoPorUsuario.get(pedido.ID_Usuario) || pedido.Telefono_Cliente || '',
       HoraLegible: info!.horaLegible,
     }));
 

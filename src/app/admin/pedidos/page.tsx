@@ -13,6 +13,8 @@ interface Pedido {
   Notas_Pedido: string;
   Telefono: string;
   HoraLegible: string;
+  Origen_Venta: string;
+  Metodo_Pago?: string;
 }
 
 interface DetalleItem {
@@ -47,12 +49,6 @@ const colorEstado = (estado: string) => {
     default:
       return 'bg-neutral-100 text-neutral-600';
   }
-};
-
-const siguienteEstado = (actual: string): string | null => {
-  const i = FLUJO.indexOf(actual);
-  if (i === -1 || i === FLUJO.length - 1) return null;
-  return FLUJO[i + 1];
 };
 
 // Mensaje pre-escrito para el cliente según el estado actual del pedido.
@@ -174,7 +170,10 @@ export default function PedidosPage() {
             >
               <span className="font-mono text-sm text-neutral-500 w-14 shrink-0">{p.HoraLegible}</span>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-neutral-900 truncate">{p.Nombre_Cliente_Snap}</p>
+                <p className="font-semibold text-neutral-900 truncate">
+                  {p.Origen_Venta === 'Local' && <span title="Venta en local">🏪 </span>}
+                  {p.Nombre_Cliente_Snap}
+                </p>
                 <p className="text-xs text-neutral-500 font-mono">{p.ID_Pedido}</p>
               </div>
               <span className="font-bold text-neutral-900 shrink-0">${parseFloat(p.Total_Final || '0').toFixed(2)}</span>
@@ -208,9 +207,21 @@ export default function PedidosPage() {
                         <p className="text-sm text-neutral-500">📞 {detalle.cliente.telefono}</p>
                       )}
                     </div>
-                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full shrink-0 ${colorEstado(detalle.pedido.Estado)}`}>
-                      {detalle.pedido.Estado}
-                    </span>
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${colorEstado(detalle.pedido.Estado)}`}>
+                        {detalle.pedido.Estado}
+                      </span>
+                      <div className="flex gap-1.5">
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600">
+                          {detalle.pedido.Origen_Venta === 'Local' ? '🏪 Local' : '📱 App'}
+                        </span>
+                        {detalle.pedido.Metodo_Pago && (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600">
+                            {detalle.pedido.Metodo_Pago === 'Efectivo' ? '💵' : '💳'} {detalle.pedido.Metodo_Pago}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                   {detalle.cliente?.telefono && (
                     <a
@@ -259,25 +270,38 @@ export default function PedidosPage() {
                   </div>
                 </div>
 
-                <div className="p-5 border-t border-neutral-100 flex gap-2 shrink-0">
-                  {detalle.pedido.Estado !== 'Cancelado' && detalle.pedido.Estado !== 'Entregado' && (
-                    <button
-                      onClick={() => cancelarPedido(detalle.pedido.ID_Pedido)}
-                      disabled={actualizando}
-                      className="flex-1 border border-red-200 text-red-600 font-semibold py-3 rounded-2xl active:scale-95 transition-transform disabled:opacity-50"
-                    >
-                      Cancelar
-                    </button>
-                  )}
-                  {siguienteEstado(detalle.pedido.Estado) && (
-                    <button
-                      onClick={() => cambiarEstado(detalle.pedido.ID_Pedido, siguienteEstado(detalle.pedido.Estado)!)}
-                      disabled={actualizando}
-                      className="flex-1 bg-black text-white font-semibold py-3 rounded-2xl active:scale-95 transition-transform disabled:opacity-50"
-                    >
-                      {actualizando ? 'Actualizando...' : `Avanzar a "${siguienteEstado(detalle.pedido.Estado)}"`}
-                    </button>
-                  )}
+                <div className="p-5 border-t border-neutral-100 shrink-0">
+                  <p className="text-xs font-semibold text-neutral-500 mb-2">
+                    {actualizando ? 'Actualizando...' : 'Cambiar estado'}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {[...FLUJO, 'Cancelado'].map((e) => {
+                      const activo = detalle.pedido.Estado === e;
+                      return (
+                        <button
+                          key={e}
+                          onClick={() => {
+                            if (activo) return;
+                            if (e === 'Cancelado') {
+                              cancelarPedido(detalle.pedido.ID_Pedido);
+                            } else {
+                              cambiarEstado(detalle.pedido.ID_Pedido, e);
+                            }
+                          }}
+                          disabled={actualizando || activo}
+                          className={`px-3 py-2 rounded-xl text-xs font-semibold transition-colors disabled:opacity-100 ${
+                            activo
+                              ? colorEstado(e) + ' ring-2 ring-offset-1 ring-neutral-300'
+                              : e === 'Cancelado'
+                              ? 'bg-red-50 text-red-600 border border-red-200 active:scale-95'
+                              : 'bg-neutral-100 text-neutral-600 active:scale-95'
+                          } ${actualizando && !activo ? 'opacity-50' : ''}`}
+                        >
+                          {e}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </>
             ) : null}

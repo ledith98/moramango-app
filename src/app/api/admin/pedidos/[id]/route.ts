@@ -31,13 +31,14 @@ export async function GET(
   }
 
   const items = detalles.filter((d) => d.ID_Pedido === id);
-  const cliente = usuarios.find((u) => u.ID_Usuario === pedido.ID_Usuario);
+  const usuario = usuarios.find((u) => u.ID_Usuario === pedido.ID_Usuario);
 
-  return NextResponse.json({
-    pedido,
-    items,
-    cliente: cliente
-      ? { nombre: cliente.Nombre, telefono: cliente.Telefono, email: cliente.Email }
-      : null,
-  });
+  // Ventas locales no tienen usuario registrado: el cliente se arma con
+  // los datos capturados en mostrador para que el modal y el botón de
+  // WhatsApp funcionen igual.
+  const cliente = usuario
+    ? { nombre: usuario.Nombre, telefono: usuario.Telefono, email: usuario.Email }
+    : { nombre: pedido.Nombre_Cliente_Snap || '', telefono: pedido.Telefono_Cliente || '', email: '' };
+
+  return NextResponse.json({ pedido, items, cliente });
 }

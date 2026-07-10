@@ -37,8 +37,10 @@ export async function getSheetData(tabName: string) {
 /**
  * Agrega una fila al final de una hoja usando rango explícito.
  * Evita que la detección automática de "append" se confunda con tablas estructuradas.
+ * Devuelve el número de fila (1-based) donde se escribió, para poder
+ * actualizar columnas extra con updateCell sin re-leer la hoja.
  */
-export async function appendRow(tabName: string, values: (string | number | boolean)[]) {
+export async function appendRow(tabName: string, values: (string | number | boolean)[]): Promise<number> {
   const auth = getAuthClient();
   const sheets = google.sheets({ version: 'v4', auth });
 
@@ -65,6 +67,8 @@ export async function appendRow(tabName: string, values: (string | number | bool
     valueInputOption: 'USER_ENTERED',
     requestBody: { values: [values] },
   });
+
+  return nextRow;
 }
 
 export async function updateCell(

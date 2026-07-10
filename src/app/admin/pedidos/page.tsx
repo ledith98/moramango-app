@@ -217,7 +217,7 @@ export default function PedidosPage() {
                         </span>
                         {detalle.pedido.Metodo_Pago && (
                           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600">
-                            {detalle.pedido.Metodo_Pago === 'Efectivo' ? '💵' : '💳'} {detalle.pedido.Metodo_Pago}
+                            {detalle.pedido.Metodo_Pago === 'Efectivo' ? '💵' : detalle.pedido.Metodo_Pago === 'Transferencia' ? '📲' : '💳'} {detalle.pedido.Metodo_Pago}
                           </span>
                         )}
                       </div>

@@ -25,7 +25,7 @@ const ESTADOS_VALIDOS = [
   'Cancelado',
 ];
 
-const METODOS_PAGO = ['Efectivo', 'Terminal'];
+const METODOS_PAGO = ['Efectivo', 'Terminal', 'Transferencia'];
 
 export async function POST(req: NextRequest) {
   const session = await getAdminSession();

@@ -18,7 +18,13 @@ interface ItemVenta {
 }
 
 const ESTADOS = ['Recibido', 'En preparación', 'Listo para recoger', 'Entregado', 'Cancelado'];
-const METODOS = ['Efectivo', 'Terminal'];
+const METODOS = ['Efectivo', 'Terminal', 'Transferencia'];
+
+const ICONO_METODO: Record<string, string> = {
+  Efectivo: '💵',
+  Terminal: '💳',
+  Transferencia: '📲',
+};
 
 export default function VentaPage() {
   const [productos, setProductos] = useState<Producto[]>([]);
@@ -230,7 +236,7 @@ export default function VentaPage() {
                     metodoPago === m ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-600'
                   }`}
                 >
-                  {m === 'Efectivo' ? '💵 Efectivo' : '💳 Terminal'}
+                  {ICONO_METODO[m]} {m}
                 </button>
               ))}
             </div>

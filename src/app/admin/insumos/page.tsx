@@ -1,12 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
+import { CATEGORIAS_INSUMOS, DIAS_FRESCURA } from '@/lib/insumos';
 
 interface Insumo {
   id: string;
   nombre: string;
   unidad: string;
   proveedor: string;
+  categoria: string;
   stock: number;
   consumoDiario: number;
   diasRestantes: number | null;
@@ -15,6 +17,9 @@ interface Insumo {
   conteoFisico: number | null;
   fechaConteo: string;
   diferencia: number | null;
+  fechaCompra: string;
+  diasDesdeCompra: number | null;
+  fresco: boolean | null;
   enRecetas: boolean;
 }
 
@@ -23,6 +28,19 @@ const PUNTO_NIVEL: Record<string, string> = {
   amarillo: 'bg-amber-400',
   verde: 'bg-green-500',
   gris: 'bg-neutral-300',
+};
+
+const SIN_CATEGORIA = 'Sin categoría';
+
+const ICONO_GRUPO: Record<string, string> = {
+  'Verduras y frutas': '🥬',
+  Pan: '🍞',
+  'Jamón y queso': '🧀',
+  'Leche y agua': '🥛',
+  Complementos: '🍯',
+  Empaque: '📦',
+  Condimentos: '🥫',
+  [SIN_CATEGORIA]: '❔',
 };
 
 export default function InsumosPage() {
@@ -96,9 +114,35 @@ export default function InsumosPage() {
     accion(ins.id, 'ajustar');
   };
 
+  const cambiarCategoria = async (ins: Insumo, valor: string) => {
+    setInsumos((prev) => prev.map((x) => (x.id === ins.id ? { ...x, categoria: valor } : x)));
+    setOcupado(true);
+    try {
+      await fetch('/api/admin/insumos', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idInsumo: ins.id, accion: 'categoria', valor }),
+      });
+      cargar();
+    } finally {
+      setOcupado(false);
+    }
+  };
+
   const alertas = insumos
     .filter((i) => i.nivel === 'rojo' || i.nivel === 'amarillo')
     .sort((a, b) => (a.nivel === 'rojo' ? -1 : 1) - (b.nivel === 'rojo' ? -1 : 1));
+
+  // Frescos comprados hace más del margen permitido
+  const alertasFrescura = insumos.filter((i) => i.fresco === false);
+
+  // Agrupar por categoría en el orden fijo, con "Sin categoría" al final
+  const grupos = [...CATEGORIAS_INSUMOS, SIN_CATEGORIA]
+    .map((cat) => ({
+      categoria: cat,
+      items: insumos.filter((i) => (i.categoria || SIN_CATEGORIA) === cat),
+    }))
+    .filter((g) => g.items.length > 0);
 
   return (
     <div className="space-y-6">
@@ -139,6 +183,23 @@ export default function InsumosPage() {
             </div>
           )}
 
+          {alertasFrescura.length > 0 && (
+            <div className="space-y-2">
+              <h2 className="font-bold text-neutral-900">🥬 Revisar frescura</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {alertasFrescura.map((i) => (
+                  <div key={i.id} className="rounded-2xl p-4 border bg-orange-50 border-orange-200">
+                    <p className="font-bold text-neutral-900">🥬 {i.nombre}</p>
+                    <p className="text-sm text-neutral-600 mt-1">
+                      Comprado hace {i.diasDesdeCompra} día{i.diasDesdeCompra === 1 ? '' : 's'} — el
+                      margen para frescos es de {DIAS_FRESCURA} días. Revisa si sigue en buen estado.
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div>
             <div className="flex items-center justify-between mb-2">
               <h2 className="font-bold text-neutral-900">Inventario</h2>
@@ -155,12 +216,23 @@ export default function InsumosPage() {
                     <th className="p-3 font-semibold">Stock (app)</th>
                     <th className="p-3 font-semibold">Consumo/día</th>
                     <th className="p-3 font-semibold">Alcanza para</th>
+                    <th className="p-3 font-semibold">Última compra</th>
                     <th className="p-3 font-semibold">Conteo físico</th>
                     <th className="p-3 font-semibold"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100">
-                  {insumos.map((i) => (
+                  {grupos.map((grupo) => (
+                    <Fragment key={grupo.categoria}>
+                      <tr className="bg-neutral-50">
+                        <td colSpan={7} className="px-3 py-2 font-bold text-neutral-700 text-xs uppercase tracking-wide">
+                          {ICONO_GRUPO[grupo.categoria] ?? '❔'} {grupo.categoria}
+                          <span className="font-normal text-neutral-400 ml-1.5 normal-case tracking-normal">
+                            ({grupo.items.length})
+                          </span>
+                        </td>
+                      </tr>
+                      {grupo.items.map((i) => (
                     <tr key={i.id} className="hover:bg-neutral-50">
                       <td className="p-3">
                         <p className="font-semibold text-neutral-900">{i.nombre}</p>
@@ -168,6 +240,18 @@ export default function InsumosPage() {
                           {i.id}
                           {!i.enRecetas && ' · sin receta asociada'}
                         </p>
+                        <select
+                          value={i.categoria}
+                          onChange={(e) => cambiarCategoria(i, e.target.value)}
+                          className="mt-1 bg-neutral-50 border border-neutral-200 rounded-lg px-1.5 py-1 text-[11px] text-neutral-600 focus:outline-none focus:border-black"
+                        >
+                          <option value="">Sin categoría</option>
+                          {CATEGORIAS_INSUMOS.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </select>
                       </td>
                       <td className="p-3 font-semibold text-neutral-900 whitespace-nowrap">
                         {i.stock} {i.unidad}
@@ -186,6 +270,30 @@ export default function InsumosPage() {
                             <span className="text-neutral-400">sin datos</span>
                           )}
                         </span>
+                      </td>
+                      <td className="p-3 whitespace-nowrap">
+                        {i.diasDesdeCompra !== null ? (
+                          <div>
+                            <p className="text-neutral-700">
+                              {i.diasDesdeCompra === 0
+                                ? 'Hoy'
+                                : `Hace ${i.diasDesdeCompra} día${i.diasDesdeCompra === 1 ? '' : 's'}`}
+                            </p>
+                            {i.fresco !== null && (
+                              <span
+                                className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                                  i.fresco
+                                    ? 'bg-green-100 text-green-700'
+                                    : 'bg-orange-100 text-orange-700'
+                                }`}
+                              >
+                                {i.fresco ? '🟢 Fresco' : `⚠️ +${DIAS_FRESCURA} días`}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-neutral-400">—</span>
+                        )}
                       </td>
                       <td className="p-3 whitespace-nowrap">
                         {i.conteoFisico !== null ? (
@@ -239,6 +347,8 @@ export default function InsumosPage() {
                         </div>
                       </td>
                     </tr>
+                      ))}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

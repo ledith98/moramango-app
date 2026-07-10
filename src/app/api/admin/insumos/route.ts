@@ -17,8 +17,14 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { ensureColumn, getSheetData, updateCell } from '@/lib/googleSheets';
-import { consumoPorInsumo, normalizarNombre } from '@/lib/insumos';
-import { parsearFechaHora } from '@/lib/pedidoFecha';
+import {
+  CATEGORIA_FRESCOS,
+  CATEGORIAS_INSUMOS,
+  consumoPorInsumo,
+  DIAS_FRESCURA,
+  normalizarNombre,
+} from '@/lib/insumos';
+import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 import { getAdminSession } from '@/lib/roles';
 
 const DIAS_ANALISIS = 7;
@@ -89,7 +95,31 @@ export async function GET() {
     const conteoStr = ins.Conteo_Fisico ?? '';
     const conteoFisico = conteoStr !== '' ? parseFloat(conteoStr) || 0 : null;
 
+    // Fecha de la última compra y días transcurridos (para frescura)
+    const fechaCompra = ins.Fecha_Compra || '';
+    const infoCompra = parsearFechaHora(fechaCompra);
+    const diasDesdeCompra = infoCompra
+      ? Math.max(
+          0,
+          Math.round(
+            (new Date(fechaHoyMTY()).getTime() - new Date(infoCompra.fechaISO).getTime()) /
+              86400000
+          )
+        )
+      : null;
+
+    const categoria = ins.Categoria || '';
+    // fresco: solo aplica a la categoría de frescos y si hay fecha de compra
+    const fresco =
+      categoria === CATEGORIA_FRESCOS && diasDesdeCompra !== null
+        ? diasDesdeCompra <= DIAS_FRESCURA
+        : null;
+
     return {
+      categoria,
+      fechaCompra,
+      diasDesdeCompra,
+      fresco,
       id: ins['ID Insumo'] || '',
       nombre: ins['Nombre insumo'] || '',
       unidad: ins['Unidad Medida'] || '',
@@ -114,9 +144,9 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
-  const { idInsumo, accion, cantidad } = await req.json();
+  const { idInsumo, accion, cantidad, valor } = await req.json();
 
-  if (!idInsumo || !['restock', 'conteo', 'ajustar'].includes(accion)) {
+  if (!idInsumo || !['restock', 'conteo', 'ajustar', 'categoria'].includes(accion)) {
     return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 });
   }
 
@@ -132,13 +162,24 @@ export async function PATCH(req: NextRequest) {
   const colStock = await ensureColumn('Insumos', 'Stock_Actual');
   const colUltima = await ensureColumn('Insumos', 'Ultima actualizacion');
 
+  if (accion === 'categoria') {
+    if (valor !== '' && !CATEGORIAS_INSUMOS.includes(valor)) {
+      return NextResponse.json({ error: 'Categoría inválida' }, { status: 400 });
+    }
+    const colCategoria = await ensureColumn('Insumos', 'Categoria');
+    await updateCell('Insumos', filaInsumo, colCategoria, valor);
+    return NextResponse.json({ success: true });
+  }
+
   if (accion === 'restock') {
     const num = parseFloat(cantidad);
     if (isNaN(num) || num <= 0) {
       return NextResponse.json({ error: 'Cantidad inválida' }, { status: 400 });
     }
     const nuevoStock = (parseFloat(insumo.Stock_Actual) || 0) + num;
+    const colFechaCompra = await ensureColumn('Insumos', 'Fecha_Compra');
     await updateCell('Insumos', filaInsumo, colStock, redondear(nuevoStock, 3));
+    await updateCell('Insumos', filaInsumo, colFechaCompra, fecha);
     await updateCell('Insumos', filaInsumo, colUltima, fecha);
     return NextResponse.json({ success: true, stock: redondear(nuevoStock, 3) });
   }

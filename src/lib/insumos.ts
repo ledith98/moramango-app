@@ -11,6 +11,23 @@
 export const normalizarNombre = (s: string | undefined | null): string =>
   (s ?? '').trim().toLowerCase();
 
+// Grupos fijos del inventario (columna Categoria en la hoja Insumos).
+// El orden aquí es el orden en que se muestran en el panel.
+export const CATEGORIAS_INSUMOS = [
+  'Verduras y frutas',
+  'Pan',
+  'Jamón y queso',
+  'Leche y agua',
+  'Complementos',
+  'Empaque',
+  'Condimentos',
+] as const;
+
+// Margen de frescura: 'Verduras y frutas' compradas hace más de estos
+// días se marcan para revisar.
+export const DIAS_FRESCURA = 3;
+export const CATEGORIA_FRESCOS = 'Verduras y frutas';
+
 /**
  * Factor multiplicador por merma. Heurística de formato:
  * - valor > 1 se interpreta como porcentaje (5 → ×1.05)

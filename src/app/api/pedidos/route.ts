@@ -20,6 +20,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/authOptions';
 import { appendRow, ensureColumn, getSheetData, findRow, updateCell } from '@/lib/googleSheets';
 import { baseUrlDesdeRequest, crearPreferencia, mpConfigurado } from '@/lib/mercadoPago';
+import { enviarTelegram } from '@/lib/telegram';
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -160,7 +161,36 @@ export async function POST(req: NextRequest) {
     await updateCell('USUARIOS', usuarioRow.rowIndex, 8, beneficioNuevo);
   }
 
-  // 4. Pago por transferencia — el cliente ve la CLABE en la tienda y
+  // 4. Aviso a Telegram (si está configurado). Se hace await para que el
+  // envío alcance a completarse antes de que termine la función en Vercel,
+  // pero nunca rompe el pedido si falla.
+  try {
+    const numArticulos = items.reduce(
+      (sum: number, item: any) => sum + (parseInt(item.cantidad) || 1),
+      0
+    );
+    const formaPagoTexto = esTransferencia
+      ? '📲 Transferencia (por confirmar)'
+      : pagoEnLinea
+      ? '💳 Pago en línea (Mercado Pago)'
+      : '🏪 Pagar al recoger';
+    const listaItems = items
+      .map((it: any) => `• ${parseInt(it.cantidad) || 1}× ${it.nombre}`)
+      .join('\n');
+
+    await enviarTelegram(
+      `🔔 <b>Nuevo pedido ${idPedido}</b>\n` +
+        `👤 ${usuario.name ?? 'Cliente'}\n` +
+        `🛒 ${numArticulos} artículo${numArticulos === 1 ? '' : 's'} — <b>$${totalFinal.toFixed(2)}</b>\n` +
+        `${formaPagoTexto}\n\n` +
+        `${listaItems}` +
+        (notas?.trim() ? `\n\n📝 ${notas.trim()}` : '')
+    );
+  } catch (error) {
+    console.error('Error enviando aviso a Telegram:', error);
+  }
+
+  // 5. Pago por transferencia — el cliente ve la CLABE en la tienda y
   // transfiere; queda 'Pendiente' hasta que el admin confirme que llegó.
   if (esTransferencia) {
     try {
@@ -173,7 +203,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 5. Pago en línea (opcional) — si falla, el pedido ya quedó creado y
+  // 6. Pago en línea (opcional) — si falla, el pedido ya quedó creado y
   // el cliente simplemente paga al recoger.
   if (pagoEnLinea && mpConfigurado()) {
     try {

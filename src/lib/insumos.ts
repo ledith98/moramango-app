@@ -29,6 +29,19 @@ export const DIAS_FRESCURA = 3;
 export const CATEGORIA_FRESCOS = 'Verduras y frutas';
 
 /**
+ * Convierte una fecha de <input type="date"> (YYYY-MM-DD) al formato
+ * es-MX que usa el resto del sistema (D/M/AAAA, 12:00:00 p.m.), sin
+ * pasar por Date() para evitar corrimientos de zona horaria.
+ * Devuelve null si el formato no es válido.
+ */
+export function fechaCompraDesdeISO(iso: string): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((iso ?? '').trim());
+  if (!m) return null;
+  const [, yyyy, mm, dd] = m;
+  return `${parseInt(dd, 10)}/${parseInt(mm, 10)}/${yyyy}, 12:00:00 p.m.`;
+}
+
+/**
  * Factor multiplicador por merma. Heurística de formato:
  * - valor > 1 se interpreta como porcentaje (5 → ×1.05)
  * - valor ≤ 1 como fracción (0.05 → ×1.05)

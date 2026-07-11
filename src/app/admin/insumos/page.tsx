@@ -18,6 +18,7 @@ interface Insumo {
   fechaConteo: string;
   diferencia: number | null;
   fechaCompra: string;
+  fechaCompraISO: string;
   diasDesdeCompra: number | null;
   fresco: boolean | null;
   enRecetas: boolean;
@@ -122,6 +123,20 @@ export default function InsumosPage() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idInsumo: ins.id, accion: 'categoria', valor }),
+      });
+      cargar();
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  const cambiarFechaCompra = async (ins: Insumo, valor: string) => {
+    setOcupado(true);
+    try {
+      await fetch('/api/admin/insumos', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idInsumo: ins.id, accion: 'fecha_compra', valor }),
       });
       cargar();
     } finally {
@@ -272,28 +287,37 @@ export default function InsumosPage() {
                         </span>
                       </td>
                       <td className="p-3 whitespace-nowrap">
-                        {i.diasDesdeCompra !== null ? (
-                          <div>
-                            <p className="text-neutral-700">
-                              {i.diasDesdeCompra === 0
-                                ? 'Hoy'
-                                : `Hace ${i.diasDesdeCompra} día${i.diasDesdeCompra === 1 ? '' : 's'}`}
-                            </p>
-                            {i.fresco !== null && (
-                              <span
-                                className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
-                                  i.fresco
-                                    ? 'bg-green-100 text-green-700'
-                                    : 'bg-orange-100 text-orange-700'
-                                }`}
-                              >
-                                {i.fresco ? '🟢 Fresco' : `⚠️ +${DIAS_FRESCURA} días`}
+                        <input
+                          type="date"
+                          value={i.fechaCompraISO}
+                          disabled={ocupado}
+                          onChange={(e) => cambiarFechaCompra(i, e.target.value)}
+                          className="bg-neutral-50 border border-neutral-200 rounded-lg px-2 py-1 text-xs text-neutral-700 focus:outline-none focus:border-black disabled:opacity-50"
+                        />
+                        <div className="mt-1">
+                          {i.diasDesdeCompra !== null ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="text-[11px] text-neutral-500">
+                                {i.diasDesdeCompra === 0
+                                  ? 'Hoy'
+                                  : `Hace ${i.diasDesdeCompra} día${i.diasDesdeCompra === 1 ? '' : 's'}`}
                               </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-neutral-400">—</span>
-                        )}
+                              {i.fresco !== null && (
+                                <span
+                                  className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                                    i.fresco
+                                      ? 'bg-green-100 text-green-700'
+                                      : 'bg-orange-100 text-orange-700'
+                                  }`}
+                                >
+                                  {i.fresco ? '🟢 Fresco' : `⚠️ +${DIAS_FRESCURA} días`}
+                                </span>
+                              )}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-neutral-400">Sin registrar</span>
+                          )}
+                        </div>
                       </td>
                       <td className="p-3 whitespace-nowrap">
                         {i.conteoFisico !== null ? (

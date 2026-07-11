@@ -22,6 +22,7 @@ import {
   CATEGORIAS_INSUMOS,
   consumoPorInsumo,
   DIAS_FRESCURA,
+  fechaCompraDesdeISO,
   normalizarNombre,
 } from '@/lib/insumos';
 import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
@@ -132,6 +133,8 @@ export async function GET() {
       conteoFisico,
       fechaConteo: ins.Fecha_Conteo || '',
       diferencia: conteoFisico !== null ? redondear(conteoFisico - stock, 3) : null,
+      // ISO (YYYY-MM-DD) para prellenar el <input type="date"> del panel
+      fechaCompraISO: infoCompra?.fechaISO ?? '',
       enRecetas: nombresEnRecetas.has(clave),
     };
   });
@@ -146,7 +149,7 @@ export async function PATCH(req: NextRequest) {
 
   const { idInsumo, accion, cantidad, valor } = await req.json();
 
-  if (!idInsumo || !['restock', 'conteo', 'ajustar', 'categoria'].includes(accion)) {
+  if (!idInsumo || !['restock', 'conteo', 'ajustar', 'categoria', 'fecha_compra'].includes(accion)) {
     return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 });
   }
 
@@ -171,15 +174,35 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ success: true });
   }
 
+  // Ajustar manualmente la fecha de compra (valor = YYYY-MM-DD, o '' para limpiar)
+  if (accion === 'fecha_compra') {
+    const colFechaCompra = await ensureColumn('Insumos', 'Fecha_Compra');
+    if (valor === '') {
+      await updateCell('Insumos', filaInsumo, colFechaCompra, '');
+      return NextResponse.json({ success: true });
+    }
+    const fechaCanonica = fechaCompraDesdeISO(valor);
+    if (!fechaCanonica) {
+      return NextResponse.json({ error: 'Fecha inválida' }, { status: 400 });
+    }
+    await updateCell('Insumos', filaInsumo, colFechaCompra, fechaCanonica);
+    return NextResponse.json({ success: true });
+  }
+
   if (accion === 'restock') {
     const num = parseFloat(cantidad);
     if (isNaN(num) || num <= 0) {
       return NextResponse.json({ error: 'Cantidad inválida' }, { status: 400 });
     }
+    // Fecha de compra: la indicada (YYYY-MM-DD) o, si no se dio, hoy
+    const fechaCompra = valor ? fechaCompraDesdeISO(valor) : fecha;
+    if (valor && !fechaCompra) {
+      return NextResponse.json({ error: 'Fecha inválida' }, { status: 400 });
+    }
     const nuevoStock = (parseFloat(insumo.Stock_Actual) || 0) + num;
     const colFechaCompra = await ensureColumn('Insumos', 'Fecha_Compra');
     await updateCell('Insumos', filaInsumo, colStock, redondear(nuevoStock, 3));
-    await updateCell('Insumos', filaInsumo, colFechaCompra, fecha);
+    await updateCell('Insumos', filaInsumo, colFechaCompra, fechaCompra!);
     await updateCell('Insumos', filaInsumo, colUltima, fecha);
     return NextResponse.json({ success: true, stock: redondear(nuevoStock, 3) });
   }

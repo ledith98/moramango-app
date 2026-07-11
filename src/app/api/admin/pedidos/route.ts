@@ -65,9 +65,9 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
-  const { idPedido, nuevoEstado, metodoPago } = await req.json();
+  const { idPedido, nuevoEstado, metodoPago, estadoPago } = await req.json();
 
-  if (!idPedido || (!nuevoEstado && !metodoPago)) {
+  if (!idPedido || (!nuevoEstado && !metodoPago && !estadoPago)) {
     return NextResponse.json({ error: 'Faltan datos' }, { status: 400 });
   }
 
@@ -77,6 +77,10 @@ export async function PATCH(req: NextRequest) {
 
   if (metodoPago && !METODOS_PAGO.includes(metodoPago)) {
     return NextResponse.json({ error: 'Método de pago inválido' }, { status: 400 });
+  }
+
+  if (estadoPago && !['Pagado', 'Pendiente'].includes(estadoPago)) {
+    return NextResponse.json({ error: 'Estado de pago inválido' }, { status: 400 });
   }
 
   const pedidoRow = await findRow('PEDIDOS', 'ID_Pedido', idPedido);
@@ -99,6 +103,12 @@ export async function PATCH(req: NextRequest) {
     // el admin lo asigna aquí para que el corte de caja quede completo.
     const colMetodo = await ensureColumn('PEDIDOS', 'Metodo_Pago');
     await updateCell('PEDIDOS', pedidoRow.rowIndex, colMetodo, metodoPago);
+  }
+
+  if (estadoPago) {
+    // Confirmar (o revertir) el pago de una transferencia pendiente
+    const colEstadoPago = await ensureColumn('PEDIDOS', 'Estado_Pago');
+    await updateCell('PEDIDOS', pedidoRow.rowIndex, colEstadoPago, estadoPago);
   }
 
   return NextResponse.json({ success: true });

@@ -40,7 +40,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Debes iniciar sesión' }, { status: 401 });
   }
 
-  const { items, notas, horaRecoleccion, beneficioCanjeado, pagoEnLinea } = await req.json();
+  const { items, notas, horaRecoleccion, beneficioCanjeado, pagoEnLinea, metodoPago } = await req.json();
+  // Desde la tienda el cliente solo puede elegir Transferencia (Efectivo/
+  // Terminal son del punto de venta en mostrador).
+  const esTransferencia = metodoPago === 'Transferencia';
 
   if (!items || items.length === 0) {
     return NextResponse.json({ error: 'El carrito está vacío' }, { status: 400 });
@@ -157,7 +160,20 @@ export async function POST(req: NextRequest) {
     await updateCell('USUARIOS', usuarioRow.rowIndex, 8, beneficioNuevo);
   }
 
-  // 4. Pago en línea (opcional) — si falla, el pedido ya quedó creado y
+  // 4. Pago por transferencia — el cliente ve la CLABE en la tienda y
+  // transfiere; queda 'Pendiente' hasta que el admin confirme que llegó.
+  if (esTransferencia) {
+    try {
+      const colMetodo = await ensureColumn('PEDIDOS', 'Metodo_Pago');
+      await updateCell('PEDIDOS', filaPedido, colMetodo, 'Transferencia');
+      const colEstadoPago = await ensureColumn('PEDIDOS', 'Estado_Pago');
+      await updateCell('PEDIDOS', filaPedido, colEstadoPago, 'Pendiente');
+    } catch (error) {
+      console.error('Error marcando transferencia:', error);
+    }
+  }
+
+  // 5. Pago en línea (opcional) — si falla, el pedido ya quedó creado y
   // el cliente simplemente paga al recoger.
   if (pagoEnLinea && mpConfigurado()) {
     try {

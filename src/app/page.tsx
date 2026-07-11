@@ -40,6 +40,17 @@ interface DatosLealtad {
 
 const CARRITO_KEY = 'moramango_carrito';
 
+// Datos de la cuenta para pago por transferencia (SPEI).
+// Se configuran con variables de entorno NEXT_PUBLIC_* (en .env.local y
+// Vercel) para no dejar los datos bancarios dentro del código/GitHub.
+// Si no hay CLABE configurada, la opción de transferencia no aparece.
+const TRANSFERENCIA = {
+  clabe: process.env.NEXT_PUBLIC_TRANSFER_CLABE || '',
+  titular: process.env.NEXT_PUBLIC_TRANSFER_TITULAR || '',
+  banco: process.env.NEXT_PUBLIC_TRANSFER_BANCO || '',
+};
+const TRANSFERENCIA_HABILITADA = TRANSFERENCIA.clabe.length > 0;
+
 export default function Home() {
   const { data: session } = useSession();
   const [productos, setProductos] = useState<any[]>([]);
@@ -55,7 +66,9 @@ export default function Home() {
   const [errorTelefono, setErrorTelefono] = useState('');
   const [pedidoConfirmado, setPedidoConfirmado] = useState<string | null>(null);
   const [pagoExitoso, setPagoExitoso] = useState(false);
-  const [pagoEnLinea, setPagoEnLinea] = useState(false);
+  const [formaPago, setFormaPago] = useState<'recoger' | 'transferencia' | 'linea'>('recoger');
+  const [pedidoPorTransferencia, setPedidoPorTransferencia] = useState(false);
+  const [clabeCopiada, setClabeCopiada] = useState(false);
   const [avisoPago, setAvisoPago] = useState('');
   const [notas, setNotas] = useState('');
   const [lealtad, setLealtad] = useState<DatosLealtad | null>(null);
@@ -305,6 +318,16 @@ export default function Home() {
     return null;
   })();
 
+  const copiarClabe = async () => {
+    try {
+      await navigator.clipboard.writeText(TRANSFERENCIA.clabe);
+      setClabeCopiada(true);
+      setTimeout(() => setClabeCopiada(false), 2000);
+    } catch {
+      // Si el navegador bloquea el portapapeles, el usuario puede copiar a mano
+    }
+  };
+
   const confirmarOrden = async () => {
     if (carrito.length === 0) return;
 
@@ -329,19 +352,22 @@ export default function Home() {
           notas: notas.trim(),
           horaRecoleccion: '',
           beneficioCanjeado: beneficioCanjeadoStr,
-          pagoEnLinea,
+          pagoEnLinea: formaPago === 'linea',
+          metodoPago: formaPago === 'transferencia' ? 'Transferencia' : '',
         }),
       });
 
       const data = await res.json();
 
       if (data.success) {
+        const fueTransferencia = formaPago === 'transferencia';
         setCarrito([]);
         localStorage.removeItem(CARRITO_KEY);
         setVerCarrito(false);
         setNotas('');
         setBeneficioAplicado(false);
         setLealtad(null);
+        setFormaPago('recoger');
 
         if (data.checkoutUrl) {
           // Ir al checkout de Mercado Pago; al terminar regresa con ?pago=...
@@ -349,6 +375,7 @@ export default function Home() {
           return;
         }
 
+        setPedidoPorTransferencia(fueTransferencia);
         setPedidoConfirmado(data.idPedido);
       } else {
         alert('Hubo un error al procesar tu pedido. Intenta de nuevo.');
@@ -373,6 +400,25 @@ export default function Home() {
           <p className="text-lg font-mono font-bold text-black bg-neutral-100 px-4 py-2 rounded-xl mb-6">
             {pedidoConfirmado}
           </p>
+          {pedidoPorTransferencia && TRANSFERENCIA_HABILITADA && (
+            <div className="w-full bg-neutral-50 border border-neutral-200 rounded-2xl p-4 mb-6 text-left">
+              <p className="text-sm font-semibold text-black mb-2">📲 Falta tu transferencia</p>
+              <p className="text-xs text-neutral-600 mb-2">
+                Transfiere el total a la CLABE y muestra tu comprobante al recoger:
+              </p>
+              <div className="flex items-center justify-between gap-2 bg-white rounded-xl border border-neutral-200 p-2.5">
+                <span className="font-mono font-bold text-black text-sm break-all">{TRANSFERENCIA.clabe}</span>
+                <button
+                  onClick={copiarClabe}
+                  className={`shrink-0 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${
+                    clabeCopiada ? 'bg-green-600 text-white' : 'bg-black text-white'
+                  }`}
+                >
+                  {clabeCopiada ? '✓' : 'Copiar'}
+                </button>
+              </div>
+            </div>
+          )}
           <p className="text-sm text-neutral-500 leading-relaxed mb-8">
             Recibirás una notificación cuando tu pedido esté listo para recoger.
           </p>
@@ -674,28 +720,82 @@ export default function Home() {
               {session && (
                 <div className="mb-4">
                   <p className="text-xs font-semibold text-neutral-500 mb-2">¿Cómo quieres pagar?</p>
-                  <div className="flex gap-2">
+                  <div className="grid grid-cols-1 gap-2">
                     <button
-                      onClick={() => setPagoEnLinea(false)}
-                      className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
-                        !pagoEnLinea ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-600'
+                      onClick={() => setFormaPago('recoger')}
+                      className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                        formaPago === 'recoger' ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-600'
                       }`}
                     >
                       🏪 Pagar al recoger
                     </button>
+                    {TRANSFERENCIA_HABILITADA && (
+                      <button
+                        onClick={() => setFormaPago('transferencia')}
+                        className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                          formaPago === 'transferencia' ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-600'
+                        }`}
+                      >
+                        📲 Transferencia
+                      </button>
+                    )}
                     <button
-                      onClick={() => setPagoEnLinea(true)}
-                      className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
-                        pagoEnLinea ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-600'
+                      onClick={() => setFormaPago('linea')}
+                      className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                        formaPago === 'linea' ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-600'
                       }`}
                     >
-                      💳 Pagar en línea
+                      💳 Pagar en línea (tarjeta)
                     </button>
                   </div>
-                  {pagoEnLinea && (
+
+                  {formaPago === 'linea' && (
                     <p className="text-xs text-neutral-500 mt-2">
                       Te llevaremos a Mercado Pago para completar el pago de forma segura.
                     </p>
+                  )}
+
+                  {formaPago === 'transferencia' && (
+                    <div className="mt-3 bg-neutral-50 border border-neutral-200 rounded-2xl p-4">
+                      <p className="text-xs text-neutral-600 mb-3">
+                        Transfiere <span className="font-bold text-black">${totalPagar.toFixed(2)}</span> a
+                        esta cuenta (SPEI, desde cualquier banco):
+                      </p>
+                      <div className="bg-white rounded-xl border border-neutral-200 p-3 space-y-2">
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-semibold">CLABE</p>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-mono font-bold text-black text-base tracking-wide break-all">
+                              {TRANSFERENCIA.clabe}
+                            </span>
+                            <button
+                              onClick={copiarClabe}
+                              className={`shrink-0 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${
+                                clabeCopiada ? 'bg-green-600 text-white' : 'bg-black text-white'
+                              }`}
+                            >
+                              {clabeCopiada ? '✓ Copiada' : 'Copiar'}
+                            </button>
+                          </div>
+                        </div>
+                        {TRANSFERENCIA.titular && (
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-semibold">Titular</p>
+                            <p className="text-sm text-neutral-800">{TRANSFERENCIA.titular}</p>
+                          </div>
+                        )}
+                        {TRANSFERENCIA.banco && (
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-semibold">Banco</p>
+                            <p className="text-sm text-neutral-800">{TRANSFERENCIA.banco}</p>
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-xs text-neutral-500 mt-3 leading-relaxed">
+                        Al confirmar registramos tu pedido. Haz la transferencia y muestra tu comprobante
+                        al recoger (o envíalo por WhatsApp).
+                      </p>
+                    </div>
                   )}
                 </div>
               )}

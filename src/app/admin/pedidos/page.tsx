@@ -147,6 +147,21 @@ export default function PedidosPage() {
     }
   };
 
+  const confirmarPago = async (idPedido: string) => {
+    setActualizando(true);
+    try {
+      await fetch('/api/admin/pedidos', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idPedido, estadoPago: 'Pagado' }),
+      });
+      cargarPedidos();
+      abrirDetalle(idPedido);
+    } finally {
+      setActualizando(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 flex flex-wrap items-center gap-3">
@@ -188,7 +203,7 @@ export default function PedidosPage() {
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-neutral-900 truncate">
                   {p.Origen_Venta === 'Local' && <span title="Venta en local">🏪 </span>}
-                  {p.Estado_Pago === 'Pagado' && <span title="Pagado en línea">✅ </span>}
+                  {p.Estado_Pago === 'Pagado' && <span title="Pagado">✅ </span>}
                   {p.Nombre_Cliente_Snap}
                 </p>
                 <p className="text-xs text-neutral-500 font-mono">{p.ID_Pedido}</p>
@@ -240,12 +255,12 @@ export default function PedidosPage() {
                       </div>
                       {detalle.pedido.Estado_Pago === 'Pagado' && (
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
-                          ✅ Pagado en línea
+                          ✅ Pagado
                         </span>
                       )}
                       {detalle.pedido.Estado_Pago === 'Pendiente' && (
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
-                          🕓 Pago en línea pendiente
+                          🕓 Pago pendiente
                         </span>
                       )}
                     </div>
@@ -319,6 +334,18 @@ export default function PedidosPage() {
                         );
                       })}
                     </div>
+                    {detalle.pedido.Estado_Pago === 'Pendiente' && (
+                      <button
+                        onClick={() => confirmarPago(detalle.pedido.ID_Pedido)}
+                        disabled={actualizando}
+                        className="mt-2 w-full bg-green-600 text-white font-semibold py-2.5 rounded-xl active:scale-95 transition-transform disabled:opacity-50"
+                      >
+                        ✅ Confirmar pago recibido
+                      </button>
+                    )}
+                    {detalle.pedido.Estado_Pago === 'Pagado' && (
+                      <p className="mt-2 text-xs font-semibold text-green-700">✅ Pago confirmado</p>
+                    )}
                   </div>
                   <p className="text-xs font-semibold text-neutral-500 mb-2">
                     {actualizando ? 'Actualizando...' : 'Cambiar estado'}

@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
-  const { nombre, telefono, metodoPago, estado, notas, items } = await req.json();
+  const { nombre, telefono, metodoPago, estado, notas, items, estadoPago } = await req.json();
 
   if (!nombre || typeof nombre !== 'string' || !nombre.trim()) {
     return NextResponse.json({ error: 'El nombre del cliente es obligatorio' }, { status: 400 });
@@ -97,6 +97,12 @@ export async function POST(req: NextRequest) {
   if (typeof telefono === 'string' && telefono.trim()) {
     const colTelefono = await ensureColumn('PEDIDOS', 'Telefono_Cliente');
     await updateCell('PEDIDOS', filaPedido, colTelefono, telefono.trim());
+  }
+
+  // Cobro ya aprobado (ej. terminal Point): marcar el pago como confirmado
+  if (estadoPago === 'Pagado') {
+    const colEstadoPago = await ensureColumn('PEDIDOS', 'Estado_Pago');
+    await updateCell('PEDIDOS', filaPedido, colEstadoPago, 'Pagado');
   }
 
   // Detalle de items

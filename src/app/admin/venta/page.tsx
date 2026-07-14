@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface Producto {
   ID_Producto: string;
@@ -38,6 +38,13 @@ export default function VentaPage() {
   const [registrando, setRegistrando] = useState(false);
   const [error, setError] = useState('');
   const [ventaOk, setVentaOk] = useState<string | null>(null);
+  // Cobro en terminal Point
+  const [esperandoTerminal, setEsperandoTerminal] = useState(false);
+  const [mensajeTerminal, setMensajeTerminal] = useState('');
+  const [terminalTerminado, setTerminalTerminado] = useState(false); // true = ya no seguir esperando
+  const intentoRef = useRef<{ intentId: string; deviceId: string } | null>(null);
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const registrandoRef = useRef(false);
 
   useEffect(() => {
     fetch('/api/admin/productos')
@@ -49,6 +56,13 @@ export default function VentaPage() {
         setProductos(disponibles);
       })
       .finally(() => setCargando(false));
+  }, []);
+
+  // Detener el polling si se sale de la página con un cobro en curso
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearTimeout(pollRef.current);
+    };
   }, []);
 
   const cantidadDe = (idProducto: string) =>
@@ -88,6 +102,133 @@ export default function VentaPage() {
 
   const total = items.reduce((sum, i) => sum + i.precio * i.cantidad, 0);
 
+  // Registra la venta en el sheet. estadoPago='Pagado' cuando el cobro ya
+  // se aprobó (ej. terminal). Limpia el formulario al terminar.
+  const registrarVenta = async (estadoPago?: string) => {
+    const res = await fetch('/api/admin/ventas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nombre: nombre.trim(),
+        telefono: telefono.trim(),
+        metodoPago,
+        estado,
+        notas: notas.trim(),
+        items,
+        estadoPago,
+      }),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Error al registrar');
+
+    setVentaOk(data.idPedido);
+    setItems([]);
+    setNombre('');
+    setTelefono('');
+    setMetodoPago('Efectivo');
+    setEstado('Recibido');
+    setNotas('');
+  };
+
+  const detenerPoll = () => {
+    if (pollRef.current) {
+      clearTimeout(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+
+  const cerrarTerminal = () => {
+    detenerPoll();
+    setEsperandoTerminal(false);
+    setTerminalTerminado(false);
+    intentoRef.current = null;
+  };
+
+  // Consulta el estado del cobro; se re-agenda hasta que haya resultado.
+  const pollTerminal = async () => {
+    const intento = intentoRef.current;
+    if (!intento) return;
+    try {
+      const res = await fetch(
+        `/api/admin/ventas/terminal?intentId=${encodeURIComponent(intento.intentId)}`
+      );
+      const data = await res.json();
+
+      if (data.resultado === 'aprobado') {
+        if (registrandoRef.current) return;
+        registrandoRef.current = true;
+        detenerPoll();
+        setMensajeTerminal('Pago aprobado ✅ Registrando venta...');
+        try {
+          await registrarVenta('Pagado');
+          cerrarTerminal();
+        } catch {
+          setTerminalTerminado(true);
+          setMensajeTerminal('El pago se aprobó, pero falló el registro. Revisa el pedido antes de reintentar.');
+        } finally {
+          registrandoRef.current = false;
+        }
+        return;
+      }
+
+      if (['rechazado', 'cancelado', 'error'].includes(data.resultado)) {
+        detenerPoll();
+        setTerminalTerminado(true);
+        setMensajeTerminal(
+          data.resultado === 'rechazado'
+            ? '❌ Pago rechazado. La venta no se registró.'
+            : data.resultado === 'cancelado'
+            ? 'Cobro cancelado. La venta no se registró.'
+            : '⚠️ Hubo un error con la terminal. La venta no se registró.'
+        );
+        return;
+      }
+
+      // pendiente → seguir esperando
+      pollRef.current = setTimeout(pollTerminal, 2500);
+    } catch {
+      pollRef.current = setTimeout(pollTerminal, 3000);
+    }
+  };
+
+  const iniciarCobroTerminal = async () => {
+    setEsperandoTerminal(true);
+    setTerminalTerminado(false);
+    registrandoRef.current = false;
+    setMensajeTerminal('Enviando el monto a la terminal...');
+    try {
+      const res = await fetch('/api/admin/ventas/terminal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ total }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || 'No se pudo iniciar el cobro');
+
+      intentoRef.current = { intentId: data.intentId, deviceId: data.deviceId };
+      setMensajeTerminal('Esperando que el cliente pague en la terminal...');
+      pollRef.current = setTimeout(pollTerminal, 2500);
+    } catch (err: any) {
+      detenerPoll();
+      setTerminalTerminado(true);
+      setMensajeTerminal(err.message || 'No se pudo iniciar el cobro');
+    }
+  };
+
+  const cancelarCobroTerminal = async () => {
+    const intento = intentoRef.current;
+    detenerPoll();
+    if (intento) {
+      try {
+        await fetch(
+          `/api/admin/ventas/terminal?intentId=${encodeURIComponent(intento.intentId)}&deviceId=${encodeURIComponent(intento.deviceId)}`,
+          { method: 'DELETE' }
+        );
+      } catch {}
+    }
+    cerrarTerminal();
+  };
+
   const registrar = async () => {
     setError('');
     if (items.length === 0) {
@@ -99,30 +240,16 @@ export default function VentaPage() {
       return;
     }
 
+    // Terminal: primero se cobra en la Point; la venta se registra solo si
+    // el pago se aprueba (dentro del polling).
+    if (metodoPago === 'Terminal') {
+      await iniciarCobroTerminal();
+      return;
+    }
+
     setRegistrando(true);
     try {
-      const res = await fetch('/api/admin/ventas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nombre: nombre.trim(),
-          telefono: telefono.trim(),
-          metodoPago,
-          estado,
-          notas: notas.trim(),
-          items,
-        }),
-      });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'Error al registrar');
-
-      setVentaOk(data.idPedido);
-      setItems([]);
-      setNombre('');
-      setTelefono('');
-      setMetodoPago('Efectivo');
-      setEstado('Recibido');
-      setNotas('');
+      await registrarVenta();
     } catch (err: any) {
       setError(err.message || 'Error al registrar la venta');
     } finally {
@@ -281,12 +408,49 @@ export default function VentaPage() {
 
         <button
           onClick={registrar}
-          disabled={registrando}
+          disabled={registrando || esperandoTerminal}
           className="w-full bg-black text-white font-bold text-lg py-4 rounded-2xl active:scale-95 transition-transform shadow-md disabled:opacity-50 disabled:scale-100"
         >
-          {registrando ? 'Registrando...' : `Registrar venta${total > 0 ? ` — $${total.toFixed(2)}` : ''}`}
+          {registrando
+            ? 'Registrando...'
+            : metodoPago === 'Terminal'
+            ? `Cobrar en terminal${total > 0 ? ` — $${total.toFixed(2)}` : ''}`
+            : `Registrar venta${total > 0 ? ` — $${total.toFixed(2)}` : ''}`}
         </button>
       </div>
+
+      {/* Modal: cobro en la terminal Point */}
+      {esperandoTerminal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl text-center">
+            <div className="text-5xl mb-3">{terminalTerminado ? '💳' : '⏳'}</div>
+            <p className="text-lg font-bold text-black mb-1">Cobro en terminal</p>
+            <p className="text-2xl font-bold text-black mb-3">${total.toFixed(2)}</p>
+            <p className="text-sm text-neutral-600 mb-6 min-h-[40px]">{mensajeTerminal}</p>
+
+            {!terminalTerminado ? (
+              <>
+                <div className="flex justify-center mb-4">
+                  <div className="w-8 h-8 border-4 border-neutral-200 border-t-black rounded-full animate-spin" />
+                </div>
+                <button
+                  onClick={cancelarCobroTerminal}
+                  className="w-full border border-red-200 text-red-600 font-semibold py-3 rounded-2xl active:scale-95 transition-transform"
+                >
+                  Cancelar cobro
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={cerrarTerminal}
+                className="w-full bg-black text-white font-semibold py-3 rounded-2xl active:scale-95 transition-transform"
+              >
+                Cerrar
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

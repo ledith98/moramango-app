@@ -101,6 +101,101 @@ export async function obtenerPago(idPago: string): Promise<{
   };
 }
 
+// ── Terminal física (API Point) ───────────────────────────────────────────────
+
+/**
+ * Devuelve el device_id de la terminal Point a usar. Se puede fijar con
+ * MP_POINT_DEVICE_ID; si no, toma la primera terminal en modo integrado
+ * (PDV) que tenga la cuenta.
+ */
+export async function obtenerDeviceIdPoint(): Promise<string | null> {
+  if (process.env.MP_POINT_DEVICE_ID) return process.env.MP_POINT_DEVICE_ID;
+  const token = process.env.MP_ACCESS_TOKEN;
+  if (!token) return null;
+
+  const res = await fetch(`${MP_API}/point/integration-api/devices`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const devices = data.devices || [];
+  const dev = devices.find((d: any) => d.operating_mode === 'PDV') || devices[0];
+  return dev?.id ?? null;
+}
+
+/**
+ * Crea una intención de pago en la terminal: la Point "despierta" y pide
+ * la tarjeta por el monto indicado. Monto en pesos (se convierte a
+ * centavos internamente).
+ */
+export async function crearIntentoPagoPoint(
+  deviceId: string,
+  montoPesos: number,
+  externalReference: string
+): Promise<{ id?: string; error?: string }> {
+  const token = process.env.MP_ACCESS_TOKEN;
+  if (!token) return { error: 'Mercado Pago no está configurado' };
+
+  const res = await fetch(`${MP_API}/point/integration-api/devices/${deviceId}/payment-intents`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      amount: Math.round(montoPesos * 100),
+      additional_info: { external_reference: externalReference, print_on_terminal: true },
+    }),
+  });
+
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    console.error('Error creando intento Point', res.status, JSON.stringify(data));
+    return { error: data?.message || `Error ${res.status} de la terminal` };
+  }
+  return { id: data.id };
+}
+
+/**
+ * Consulta el estado de una intención de pago. Devuelve un resultado
+ * simplificado para el punto de venta.
+ */
+export async function obtenerIntentoPagoPoint(
+  intentId: string
+): Promise<{ resultado: 'aprobado' | 'rechazado' | 'cancelado' | 'error' | 'pendiente'; estado: string; paymentId?: string }> {
+  const token = process.env.MP_ACCESS_TOKEN;
+  if (!token) return { resultado: 'error', estado: 'SIN_TOKEN' };
+
+  const res = await fetch(`${MP_API}/point/integration-api/payment-intents/${intentId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return { resultado: 'error', estado: `HTTP_${res.status}` };
+
+  const data = await res.json().catch(() => null);
+  const estado = data?.state || '';
+  const payment = data?.payment;
+
+  let resultado: 'aprobado' | 'rechazado' | 'cancelado' | 'error' | 'pendiente' = 'pendiente';
+  if (estado === 'FINISHED') {
+    // Aprobado salvo que el pago traiga un status distinto de approved
+    resultado = payment?.status && payment.status !== 'approved' ? 'rechazado' : 'aprobado';
+  } else if (estado === 'CANCELED') {
+    resultado = 'cancelado';
+  } else if (estado === 'ERROR' || estado === 'ABANDONED') {
+    resultado = estado === 'ABANDONED' ? 'cancelado' : 'error';
+  }
+
+  return { resultado, estado, paymentId: payment?.id ? String(payment.id) : undefined };
+}
+
+/** Cancela una intención de pago pendiente en la terminal. */
+export async function cancelarIntentoPagoPoint(deviceId: string, intentId: string): Promise<boolean> {
+  const token = process.env.MP_ACCESS_TOKEN;
+  if (!token) return false;
+  const res = await fetch(
+    `${MP_API}/point/integration-api/devices/${deviceId}/payment-intents/${intentId}`,
+    { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }
+  );
+  return res.ok;
+}
+
 /**
  * Base pública de la app derivada de la petición (Vercel setea los
  * headers x-forwarded-*). Necesaria para back_urls y notification_url.

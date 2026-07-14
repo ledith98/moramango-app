@@ -448,9 +448,9 @@ export default function Home() {
           <header className="bg-white pt-6 pb-2 sticky top-0 z-20 shadow-sm rounded-b-3xl shrink-0">
             <div className="px-5 flex justify-between items-center">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-neutral-100 rounded-full overflow-hidden flex items-center justify-center shrink-0">
+                <div className="w-11 h-11 flex items-center justify-center shrink-0">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/logo.png" alt="Logo" className="w-full h-full object-cover"
+                  <img src="/logo.png" alt="Moramango" className="w-full h-full object-contain"
                     onError={(e) => e.currentTarget.style.display = 'none'} />
                 </div>
                 <div>
@@ -500,7 +500,15 @@ export default function Home() {
             </div>
           </header>
 
-          <div className="p-4 flex-1 overflow-y-auto pb-32">
+          <div
+            className="p-4 flex-1 overflow-y-auto pb-32"
+            style={{
+              backgroundImage:
+                'linear-gradient(rgba(250,250,249,0.85), rgba(250,250,249,0.85)), url(/fondo-menu.jpg)',
+              backgroundSize: 'cover, 460px',
+              backgroundRepeat: 'no-repeat, repeat',
+            }}
+          >
             {avisoPago && (
               <div className="mb-4 bg-amber-50 border border-amber-200 rounded-2xl p-3.5 flex gap-3 items-start">
                 <span className="text-base leading-none mt-0.5">⚠️</span>

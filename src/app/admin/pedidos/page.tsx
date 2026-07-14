@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { fechaHoyMTY } from '@/lib/pedidoFecha';
 
 interface Pedido {
   ID_Pedido: string;
@@ -78,10 +79,9 @@ const linkWhatsApp = (telefono: string, mensaje: string): string => {
   return `https://wa.me/${digitos}?text=${encodeURIComponent(mensaje)}`;
 };
 
-const hoyISO = () => new Date().toISOString().slice(0, 10);
 
 export default function PedidosPage() {
-  const [fecha, setFecha] = useState(hoyISO());
+  const [fecha, setFecha] = useState(fechaHoyMTY());
   const [estadoFiltro, setEstadoFiltro] = useState('Todos');
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [cargando, setCargando] = useState(true);

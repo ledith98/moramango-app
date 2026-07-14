@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { fechaHoyMTY } from '@/lib/pedidoFecha';
 
 interface Metricas {
   fecha: string;
@@ -25,10 +26,9 @@ const METODOS_CORTE = [
 // Filas que solo se muestran cuando tienen datos
 const METODOS_CONDICIONALES = ['Mercado Pago', 'Sin registrar'];
 
-const hoyISO = () => new Date().toISOString().slice(0, 10);
 
 export default function MetricasPage() {
-  const [fecha, setFecha] = useState(hoyISO());
+  const [fecha, setFecha] = useState(fechaHoyMTY());
   const [metricas, setMetricas] = useState<Metricas | null>(null);
   const [cargando, setCargando] = useState(true);
 

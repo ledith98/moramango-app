@@ -44,11 +44,24 @@ const ICONO_GRUPO: Record<string, string> = {
   [SIN_CATEGORIA]: '❔',
 };
 
+const NIVELES_FILTRO = [
+  { valor: 'todos', etiqueta: 'Todos' },
+  { valor: 'porAcabarse', etiqueta: '🔴 Por acabarse' },
+  { valor: 'bajo', etiqueta: '🟡 Bajo' },
+  { valor: 'bien', etiqueta: '🟢 Bien' },
+  { valor: 'revisarFrescura', etiqueta: '🥬 Revisar frescura' },
+];
+
 export default function InsumosPage() {
   const [insumos, setInsumos] = useState<Insumo[]>([]);
   const [diasAnalisis, setDiasAnalisis] = useState(7);
   const [cargando, setCargando] = useState(true);
   const [ocupado, setOcupado] = useState(false);
+  // Filtros
+  const [busqueda, setBusqueda] = useState('');
+  const [filtroGrupo, setFiltroGrupo] = useState('Todos');
+  const [filtroNivel, setFiltroNivel] = useState('todos');
+  const [listaCopiada, setListaCopiada] = useState(false);
 
   const cargar = useCallback(() => {
     setCargando(true);
@@ -151,13 +164,62 @@ export default function InsumosPage() {
   // Frescos comprados hace más del margen permitido
   const alertasFrescura = insumos.filter((i) => i.fresco === false);
 
+  // ── Filtros ────────────────────────────────────────────────────────────────
+  const coincideNivel = (i: Insumo) => {
+    switch (filtroNivel) {
+      case 'porAcabarse': return i.nivel === 'rojo';
+      case 'bajo': return i.nivel === 'amarillo';
+      case 'bien': return i.nivel === 'verde';
+      case 'revisarFrescura': return i.fresco === false;
+      default: return true;
+    }
+  };
+  const termino = busqueda.trim().toLowerCase();
+  const insumosFiltrados = insumos.filter(
+    (i) =>
+      (termino === '' || i.nombre.toLowerCase().includes(termino)) &&
+      (filtroGrupo === 'Todos' || (i.categoria || SIN_CATEGORIA) === filtroGrupo) &&
+      coincideNivel(i)
+  );
+  const hayFiltro = termino !== '' || filtroGrupo !== 'Todos' || filtroNivel !== 'todos';
+
   // Agrupar por categoría en el orden fijo, con "Sin categoría" al final
   const grupos = [...CATEGORIAS_INSUMOS, SIN_CATEGORIA]
     .map((cat) => ({
       categoria: cat,
-      items: insumos.filter((i) => (i.categoria || SIN_CATEGORIA) === cat),
+      items: insumosFiltrados.filter((i) => (i.categoria || SIN_CATEGORIA) === cat),
     }))
     .filter((g) => g.items.length > 0);
+
+  // Lista de compra: lo que hay que reabastecer, agrupado por proveedor,
+  // en texto listo para pegar en WhatsApp al proveedor.
+  const copiarListaCompra = async () => {
+    const porProveedor = new Map<string, string[]>();
+    for (const i of alertas) {
+      if (i.sugerenciaCompra <= 0 && i.stock > 0) continue;
+      const prov = i.proveedor || 'Sin proveedor';
+      const cantidad = i.sugerenciaCompra > 0 ? `${i.sugerenciaCompra} ${i.unidad}` : 'reabastecer';
+      if (!porProveedor.has(prov)) porProveedor.set(prov, []);
+      porProveedor.get(prov)!.push(`• ${i.nombre}: ${cantidad}`);
+    }
+    if (porProveedor.size === 0) {
+      alert('No hay insumos por reabastecer 🎉');
+      return;
+    }
+    const texto = ['🛒 Lista de compra — Moramango', '']
+      .concat(
+        [...porProveedor.entries()].flatMap(([prov, lineas]) => [`${prov}:`, ...lineas, ''])
+      )
+      .join('\n')
+      .trim();
+    try {
+      await navigator.clipboard.writeText(texto);
+      setListaCopiada(true);
+      setTimeout(() => setListaCopiada(false), 2000);
+    } catch {
+      alert(texto);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -220,6 +282,59 @@ export default function InsumosPage() {
               <h2 className="font-bold text-neutral-900">Inventario</h2>
               <span className="text-xs text-neutral-500">
                 Consumo calculado con las ventas de los últimos {diasAnalisis} días
+              </span>
+            </div>
+
+            {/* Filtros */}
+            <div className="bg-white rounded-2xl p-3 shadow-sm border border-neutral-100 mb-3 flex flex-wrap items-center gap-2">
+              <input
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                placeholder="🔎 Buscar insumo..."
+                className="flex-1 min-w-[160px] bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-black"
+              />
+              <select
+                value={filtroGrupo}
+                onChange={(e) => setFiltroGrupo(e.target.value)}
+                className="bg-neutral-50 border border-neutral-200 rounded-xl px-2 py-2 text-sm text-neutral-700 focus:outline-none focus:border-black"
+              >
+                <option value="Todos">Todos los grupos</option>
+                {[...CATEGORIAS_INSUMOS, SIN_CATEGORIA].map((c) => (
+                  <option key={c} value={c}>
+                    {ICONO_GRUPO[c] ?? ''} {c}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={filtroNivel}
+                onChange={(e) => setFiltroNivel(e.target.value)}
+                className="bg-neutral-50 border border-neutral-200 rounded-xl px-2 py-2 text-sm text-neutral-700 focus:outline-none focus:border-black"
+              >
+                {NIVELES_FILTRO.map((n) => (
+                  <option key={n.valor} value={n.valor}>
+                    {n.etiqueta}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={copiarListaCompra}
+                className={`text-sm font-semibold px-3 py-2 rounded-xl active:scale-95 transition-transform ${
+                  listaCopiada ? 'bg-green-600 text-white' : 'bg-black text-white'
+                }`}
+                title="Copia la lista de lo que hay que reabastecer, agrupada por proveedor"
+              >
+                {listaCopiada ? '✓ Copiada' : '🛒 Lista de compra'}
+              </button>
+              {hayFiltro && (
+                <button
+                  onClick={() => { setBusqueda(''); setFiltroGrupo('Todos'); setFiltroNivel('todos'); }}
+                  className="text-sm font-semibold text-neutral-600 bg-neutral-100 px-3 py-2 rounded-xl active:scale-95 transition-transform"
+                >
+                  ✕ Limpiar
+                </button>
+              )}
+              <span className="text-xs text-neutral-500 ml-auto">
+                {insumosFiltrados.length} de {insumos.length}
               </span>
             </div>
 
@@ -379,6 +494,11 @@ export default function InsumosPage() {
               {insumos.length === 0 && (
                 <p className="p-6 text-neutral-500 text-center">
                   No hay insumos registrados en la hoja "Insumos".
+                </p>
+              )}
+              {insumos.length > 0 && insumosFiltrados.length === 0 && (
+                <p className="p-6 text-neutral-500 text-center">
+                  Ningún insumo coincide con el filtro.
                 </p>
               )}
             </div>

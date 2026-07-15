@@ -17,14 +17,21 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url);
-  const fechaISO = searchParams.get('fecha') || fechaHoyMTY();
+  // Rango de fechas; si solo llega una, se usa como desde y hasta (un día).
+  const hoy = fechaHoyMTY();
+  const desde = searchParams.get('desde') || searchParams.get('fecha') || hoy;
+  const hasta = searchParams.get('hasta') || desde;
 
   const [pedidos, detalles] = await Promise.all([
     getSheetData('PEDIDOS'),
     getSheetData('DT PEDIDOS'),
   ]);
 
-  const delDia = pedidos.filter((p) => parsearFechaHora(p.Fecha_Hora)?.fechaISO === fechaISO);
+  // Las fechas ISO (YYYY-MM-DD) se comparan como texto sin problema
+  const delDia = pedidos.filter((p) => {
+    const f = parsearFechaHora(p.Fecha_Hora)?.fechaISO;
+    return !!f && f >= desde && f <= hasta;
+  });
   const validos = delDia.filter((p) => p.Estado !== 'Cancelado');
 
   const totalVentas = validos.reduce((sum, p) => sum + (parseFloat(p.Total_Final) || 0), 0);
@@ -59,7 +66,8 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({
-    fecha: fechaISO,
+    desde,
+    hasta,
     totalVentas,
     numPedidos,
     ticketPromedio,

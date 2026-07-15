@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { fechaHoyMTY } from '@/lib/pedidoFecha';
 
 interface Metricas {
-  fecha: string;
+  desde: string;
+  hasta: string;
   totalVentas: number;
   numPedidos: number;
   ticketPromedio: number;
@@ -27,23 +28,48 @@ const METODOS_CORTE = [
 const METODOS_CONDICIONALES = ['Mercado Pago', 'Sin registrar'];
 
 
+// Atajos de rango rápidos
+const restarDias = (iso: string, dias: number) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  const base = new Date(Date.UTC(y, m - 1, d));
+  base.setUTCDate(base.getUTCDate() - dias);
+  return base.toISOString().slice(0, 10);
+};
+
 export default function MetricasPage() {
-  const [fecha, setFecha] = useState(fechaHoyMTY());
+  const hoy = fechaHoyMTY();
+  const [desde, setDesde] = useState(hoy);
+  const [hasta, setHasta] = useState(hoy);
   const [metricas, setMetricas] = useState<Metricas | null>(null);
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
     setCargando(true);
-    fetch(`/api/admin/metricas?fecha=${fecha}`)
+    fetch(`/api/admin/metricas?desde=${desde}&hasta=${hasta}`)
       .then((res) => res.json())
       .then((data) => setMetricas(data))
       .finally(() => setCargando(false));
-  }, [fecha]);
+  }, [desde, hasta]);
+
+  const aplicarRango = (dias: number) => {
+    const h = fechaHoyMTY();
+    setHasta(h);
+    setDesde(dias === 0 ? h : restarDias(h, dias));
+  };
+
+  const exportar = (detalle: boolean) => {
+    const params = new URLSearchParams({ desde, hasta });
+    if (detalle) params.set('detalle', '1');
+    // Descarga directa: el endpoint responde con Content-Disposition attachment
+    window.location.href = `/api/admin/reportes/ventas?${params}`;
+  };
+
+  const unDia = desde === hasta;
 
   const tarjetas = metricas
     ? [
-        { label: 'Ventas del día', valor: `$${metricas.totalVentas.toFixed(2)}`, icon: '💰' },
-        { label: 'Pedidos del día', valor: metricas.numPedidos, icon: '🧾' },
+        { label: unDia ? 'Ventas del día' : 'Ventas del periodo', valor: `$${metricas.totalVentas.toFixed(2)}`, icon: '💰' },
+        { label: unDia ? 'Pedidos del día' : 'Pedidos del periodo', valor: metricas.numPedidos, icon: '🧾' },
         {
           label: 'Producto más vendido',
           valor: metricas.productoMasVendido
@@ -57,19 +83,69 @@ export default function MetricasPage() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 flex items-center gap-3">
-        <label className="text-sm font-semibold text-neutral-700">Fecha</label>
-        <input
-          type="date"
-          value={fecha}
-          onChange={(e) => setFecha(e.target.value)}
-          className="bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-black"
-        />
-        {metricas && metricas.pedidosCancelados > 0 && (
-          <span className="text-xs text-neutral-500 ml-auto">
-            ({metricas.pedidosCancelados} cancelado{metricas.pedidosCancelados === 1 ? '' : 's'}, no incluido{metricas.pedidosCancelados === 1 ? '' : 's'})
-          </span>
-        )}
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-semibold text-neutral-700">Desde</label>
+            <input
+              type="date"
+              value={desde}
+              max={hasta}
+              onChange={(e) => setDesde(e.target.value)}
+              className="bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-black"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-semibold text-neutral-700">Hasta</label>
+            <input
+              type="date"
+              value={hasta}
+              min={desde}
+              max={hoy}
+              onChange={(e) => setHasta(e.target.value)}
+              className="bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-black"
+            />
+          </div>
+          {metricas && metricas.pedidosCancelados > 0 && (
+            <span className="text-xs text-neutral-500 ml-auto">
+              ({metricas.pedidosCancelados} cancelado{metricas.pedidosCancelados === 1 ? '' : 's'}, no incluido{metricas.pedidosCancelados === 1 ? '' : 's'})
+            </span>
+          )}
+        </div>
+
+        {/* Atajos de rango */}
+        <div className="flex flex-wrap gap-2">
+          {[
+            { label: 'Hoy', dias: 0 },
+            { label: 'Últimos 7 días', dias: 6 },
+            { label: 'Últimos 30 días', dias: 29 },
+          ].map((r) => (
+            <button
+              key={r.label}
+              onClick={() => aplicarRango(r.dias)}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-neutral-100 text-neutral-600 active:scale-95 transition-transform"
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Exportar */}
+        <div className="flex flex-wrap gap-2 pt-1 border-t border-neutral-100">
+          <span className="text-xs font-semibold text-neutral-500 w-full pt-2">Exportar a Excel</span>
+          <button
+            onClick={() => exportar(false)}
+            className="text-sm font-semibold px-3 py-2 rounded-xl bg-black text-white active:scale-95 transition-transform"
+          >
+            📊 Ventas (por pedido)
+          </button>
+          <button
+            onClick={() => exportar(true)}
+            className="text-sm font-semibold px-3 py-2 rounded-xl bg-neutral-100 text-neutral-700 active:scale-95 transition-transform"
+          >
+            📋 Detalle (por producto)
+          </button>
+        </div>
       </div>
 
       {cargando ? (

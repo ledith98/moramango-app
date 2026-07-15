@@ -115,6 +115,7 @@ export default function Home() {
   const [formaPago, setFormaPago] = useState<'recoger' | 'transferencia' | 'linea'>('recoger');
   const [pedidoPorTransferencia, setPedidoPorTransferencia] = useState(false);
   const [clabeCopiada, setClabeCopiada] = useState(false);
+  const [codigoCopiado, setCodigoCopiado] = useState(false);
   const [avisoPago, setAvisoPago] = useState('');
   const [notas, setNotas] = useState('');
   const [lealtad, setLealtad] = useState<DatosLealtad | null>(null);
@@ -160,8 +161,10 @@ export default function Home() {
     }
   }, []);
 
+  // La lealtad se necesita en el carrito (para canjear) y en el perfil
+  // (para mostrarle su avance junto a su código)
   useEffect(() => {
-    if (session && verCarrito && !lealtad) {
+    if (session && (verCarrito || verPerfil) && !lealtad) {
       setCargandoLealtad(true);
       fetch('/api/usuario')
         .then((res) => res.json())
@@ -171,7 +174,7 @@ export default function Home() {
         .catch(() => {})
         .finally(() => setCargandoLealtad(false));
     }
-  }, [session, verCarrito, lealtad]);
+  }, [session, verCarrito, verPerfil, lealtad]);
 
   // Precargar nombre/teléfono desde el sheet cuando abre Mis Datos
   // (solo si los campos locales están vacíos, para no sobreescribir cambios sin guardar)
@@ -510,6 +513,18 @@ export default function Home() {
     );
     setVerMisPedidos(false);
     setVerCarrito(true);
+  };
+
+  const copiarCodigo = async () => {
+    const codigo = (session?.user as any)?.id_usuario;
+    if (!codigo) return;
+    try {
+      await navigator.clipboard.writeText(codigo);
+      setCodigoCopiado(true);
+      setTimeout(() => setCodigoCopiado(false), 2000);
+    } catch {
+      // Si el navegador bloquea el portapapeles, el código se ve igual en pantalla
+    }
   };
 
   const copiarClabe = async () => {
@@ -1269,6 +1284,78 @@ export default function Home() {
                     <p className="font-semibold text-neutral-900">{session.user?.name}</p>
                     <p className="text-xs text-neutral-500">{session.user?.email}</p>
                   </div>
+                </div>
+              )}
+
+              {/* Tarjeta de cliente: su código para acumular lealtad al
+                  comprar en el local, más su avance */}
+              {session && (session.user as any)?.id_usuario && (
+                <div className="bg-gradient-to-br from-neutral-900 to-neutral-700 rounded-2xl p-5 text-white shadow-lg">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-widest text-white/50 font-semibold">
+                        Cliente Moramango
+                      </p>
+                      <p className="font-bold text-lg leading-tight mt-0.5">{session.user?.name}</p>
+                    </div>
+                    <span className="text-2xl">🥭</span>
+                  </div>
+
+                  <div className="mt-4">
+                    <p className="text-[10px] uppercase tracking-widest text-white/50 font-semibold">
+                      Tu código
+                    </p>
+                    <div className="flex items-center justify-between gap-2 mt-1">
+                      <span className="font-mono font-bold text-2xl tracking-widest">
+                        {(session.user as any).id_usuario}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={copiarCodigo}
+                        className={`shrink-0 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${
+                          codigoCopiado ? 'bg-green-500 text-white' : 'bg-white/15 text-white'
+                        }`}
+                      >
+                        {codigoCopiado ? '✓ Copiado' : 'Copiar'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Avance de lealtad */}
+                  {lealtad && (
+                    <div className="mt-4 pt-4 border-t border-white/15">
+                      {lealtad.beneficioDisponible !== 'Ninguno' ? (
+                        <p className="text-sm font-bold text-amber-300">
+                          🎁 Tienes disponible: {lealtad.beneficioDisponible}
+                        </p>
+                      ) : (
+                        <>
+                          <div className="flex justify-between text-xs text-white/70 mb-1.5">
+                            <span>{lealtad.cicloActual} de 5 pedidos</span>
+                            <span>
+                              {lealtad.pedidosParaDescuento > 0
+                                ? `Faltan ${lealtad.pedidosParaDescuento} para tu 15%`
+                                : '¡Ya casi!'}
+                            </span>
+                          </div>
+                          <div className="flex gap-1">
+                            {[1, 2, 3, 4, 5].map((n) => (
+                              <div
+                                key={n}
+                                className={`h-1.5 flex-1 rounded-full ${
+                                  n <= lealtad.cicloActual ? 'bg-amber-400' : 'bg-white/20'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  <p className="text-[11px] text-white/50 mt-4 leading-relaxed">
+                    Muestra este código al comprar en el local para que tus pedidos también sumen.
+                  </p>
                 </div>
               )}
 

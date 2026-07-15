@@ -79,7 +79,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Método de pago inválido' }, { status: 400 });
   }
 
-  if (estadoPago && !['Pagado', 'Pendiente'].includes(estadoPago)) {
+  if (estadoPago && !['Pagado', 'Pendiente', 'Reembolsado'].includes(estadoPago)) {
     return NextResponse.json({ error: 'Estado de pago inválido' }, { status: 400 });
   }
 

@@ -32,7 +32,17 @@ export async function GET(req: NextRequest) {
     const f = parsearFechaHora(p.Fecha_Hora)?.fechaISO;
     return !!f && f >= desde && f <= hasta;
   });
-  const validos = delDia.filter((p) => p.Estado !== 'Cancelado');
+  // Un pedido reembolsado no es una venta: el dinero se devolvió. Se
+  // excluye aunque no lo hayan marcado como Cancelado, para que los
+  // ingresos nunca cuenten dinero que ya salió de vuelta.
+  const estaReembolsado = (p: Record<string, string>) => p.Estado_Pago === 'Reembolsado';
+  const validos = delDia.filter((p) => p.Estado !== 'Cancelado' && !estaReembolsado(p));
+
+  const reembolsadosDelDia = delDia.filter(estaReembolsado);
+  const reembolsos = {
+    total: reembolsadosDelDia.reduce((sum, p) => sum + (parseFloat(p.Total_Final) || 0), 0),
+    pedidos: reembolsadosDelDia.length,
+  };
 
   const totalVentas = validos.reduce((sum, p) => sum + (parseFloat(p.Total_Final) || 0), 0);
   const numPedidos = validos.length;
@@ -73,6 +83,8 @@ export async function GET(req: NextRequest) {
     ticketPromedio,
     productoMasVendido,
     ventasPorMetodo,
-    pedidosCancelados: delDia.length - validos.length,
+    reembolsos,
+    // Cancelados "puros": los reembolsados se reportan aparte
+    pedidosCancelados: delDia.filter((p) => p.Estado === 'Cancelado' && !estaReembolsado(p)).length,
   });
 }

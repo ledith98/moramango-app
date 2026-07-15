@@ -11,6 +11,7 @@ interface Metricas {
   ticketPromedio: number;
   productoMasVendido: { nombre: string; cantidad: number } | null;
   ventasPorMetodo: Record<string, { total: number; pedidos: number }>;
+  reembolsos: { total: number; pedidos: number };
   pedidosCancelados: number;
 }
 
@@ -190,6 +191,25 @@ export default function MetricasPage() {
                 <p className="text-xs text-neutral-400 mt-3">
                   💡 "Sin registrar" son pedidos sin método de pago asignado — puedes ponérselo desde el detalle del pedido al cobrar.
                 </p>
+              )}
+
+              {metricas.reembolsos?.pedidos > 0 && (
+                <div className="mt-3 pt-3 border-t border-neutral-100">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-red-700">
+                      💸 Reembolsado
+                      <span className="text-neutral-400 ml-1.5">
+                        ({metricas.reembolsos.pedidos} pedido{metricas.reembolsos.pedidos === 1 ? '' : 's'})
+                      </span>
+                    </span>
+                    <span className="font-bold text-red-700 tabular-nums">
+                      −${metricas.reembolsos.total.toFixed(2)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-neutral-400 mt-1">
+                    Dinero devuelto al cliente. Ya está descontado de los ingresos de arriba.
+                  </p>
+                </div>
               )}
             </div>
           )}

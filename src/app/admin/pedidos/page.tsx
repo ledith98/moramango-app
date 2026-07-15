@@ -186,6 +186,33 @@ export default function PedidosPage() {
     }
   };
 
+  /**
+   * Marca un pedido como reembolsado. El dinero se devuelve en Mercado
+   * Pago (o en efectivo); aquí solo se deja el registro. Se cancela el
+   * pedido a la vez, porque una venta devuelta no debe contar.
+   */
+  const marcarReembolsado = async (idPedido: string) => {
+    if (
+      !confirm(
+        `¿Marcar ${idPedido} como REEMBOLSADO?\n\nOjo: esto NO devuelve el dinero — eso se hace en Mercado Pago (o en efectivo). Aquí solo se registra, y el pedido dejará de contar en tus ventas.`
+      )
+    )
+      return;
+
+    setActualizando(true);
+    try {
+      await fetch('/api/admin/pedidos', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idPedido, estadoPago: 'Reembolsado', nuevoEstado: 'Cancelado' }),
+      });
+      cargarPedidos();
+      abrirDetalle(idPedido);
+    } finally {
+      setActualizando(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 flex flex-wrap items-center gap-3">
@@ -380,7 +407,21 @@ export default function PedidosPage() {
                       </button>
                     )}
                     {detalle.pedido.Estado_Pago === 'Pagado' && (
-                      <p className="mt-2 text-xs font-semibold text-green-700">✅ Pago confirmado</p>
+                      <>
+                        <p className="mt-2 text-xs font-semibold text-green-700">✅ Pago confirmado</p>
+                        <button
+                          onClick={() => marcarReembolsado(detalle.pedido.ID_Pedido)}
+                          disabled={actualizando}
+                          className="mt-2 w-full border border-red-200 text-red-600 text-sm font-semibold py-2.5 rounded-xl active:scale-95 transition-transform disabled:opacity-50"
+                        >
+                          💸 Marcar como reembolsado
+                        </button>
+                      </>
+                    )}
+                    {detalle.pedido.Estado_Pago === 'Reembolsado' && (
+                      <p className="mt-2 text-xs font-semibold text-red-700">
+                        💸 Reembolsado — no cuenta en tus ventas
+                      </p>
                     )}
                   </div>
                   <p className="text-xs font-semibold text-neutral-500 mb-2">

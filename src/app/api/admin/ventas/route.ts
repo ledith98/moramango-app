@@ -15,6 +15,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { appendRow, ensureColumn, getSheetData, updateCell } from '@/lib/googleSheets';
+import { actualizarLealtad, descuentoPorBeneficio } from '@/lib/lealtad';
 import { getAdminSession } from '@/lib/roles';
 
 const ESTADOS_VALIDOS = [
@@ -33,7 +34,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
-  const { nombre, telefono, metodoPago, estado, notas, items, estadoPago } = await req.json();
+  const { nombre, telefono, metodoPago, estado, notas, items, estadoPago, idUsuario, beneficioCanjeado } =
+    await req.json();
 
   if (!nombre || typeof nombre !== 'string' || !nombre.trim()) {
     return NextResponse.json({ error: 'El nombre del cliente es obligatorio' }, { status: 400 });
@@ -68,22 +70,30 @@ export async function POST(req: NextRequest) {
   ).length;
   const idPedido = `PED-${fechaCorta}-${String(delMismoDia + 1).padStart(3, '0')}`;
 
-  const total = items.reduce(
+  const totalBruto = items.reduce(
     (sum: number, item: any) => sum + (parseFloat(item.precio) || 0) * (parseInt(item.cantidad) || 0),
     0
   );
 
-  // Fila en PEDIDOS — venta local: sin usuario, sin beneficios de lealtad
+  // Lealtad: si la venta se ligó a un cliente, se le puede canjear su
+  // beneficio y el pedido le suma a su ciclo (igual que en la app).
+  const canjea = idUsuario && beneficioCanjeado && beneficioCanjeado !== 'Ninguno'
+    ? beneficioCanjeado
+    : 'Ninguno';
+  const descuento = descuentoPorBeneficio(canjea, totalBruto);
+  const total = totalBruto - descuento;
+
+  // Fila en PEDIDOS — venta de mostrador
   const filaPedido = await appendRow('PEDIDOS', [
     idPedido,
-    '',                                       // ID_Usuario — no aplica
+    idUsuario || '',                          // ID_Usuario — si se identificó al cliente
     nombre.trim(),                            // Nombre_Cliente_Snap
     fechaStr,
     estadoInicial,
     '',                                       // Hora_Recoleccion
-    total,                                    // Total_Bruto
-    'Ninguno',                                // Beneficio_Canjeado
-    0,                                        // Descuento_Monto
+    totalBruto,                               // Total_Bruto
+    canjea,                                   // Beneficio_Canjeado
+    descuento,                                // Descuento_Monto
     total,                                    // Total_Final
     notas?.trim() || '',
     'Local',                                  // Origen_Venta
@@ -125,5 +135,10 @@ export async function POST(req: NextRequest) {
     ]);
   }
 
-  return NextResponse.json({ success: true, idPedido, total });
+  // Lealtad del cliente identificado (si la venta se ligó a alguien)
+  if (idUsuario) {
+    await actualizarLealtad(idUsuario, canjea);
+  }
+
+  return NextResponse.json({ success: true, idPedido, total, descuento });
 }

@@ -17,6 +17,16 @@ interface ItemVenta {
   cantidad: number;
 }
 
+interface Cliente {
+  id: string;
+  nombre: string;
+  telefono: string;
+  ciclo: number;
+  beneficio: string;
+  faltanParaDescuento: number;
+  faltanParaArticulo: number;
+}
+
 const ESTADOS = ['Recibido', 'En preparación', 'Listo para recoger', 'Entregado', 'Cancelado'];
 const METODOS = ['Efectivo', 'Terminal', 'Transferencia'];
 
@@ -45,6 +55,11 @@ export default function VentaPage() {
   const intentoRef = useRef<{ intentId: string; deviceId: string } | null>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const registrandoRef = useRef(false);
+  // Cliente identificado (para acumular lealtad en ventas de mostrador)
+  const [busquedaCliente, setBusquedaCliente] = useState('');
+  const [resultados, setResultados] = useState<Cliente[]>([]);
+  const [cliente, setCliente] = useState<Cliente | null>(null);
+  const [aplicarBeneficio, setAplicarBeneficio] = useState(false);
 
   useEffect(() => {
     fetch('/api/admin/productos')
@@ -64,6 +79,37 @@ export default function VentaPage() {
       if (pollRef.current) clearTimeout(pollRef.current);
     };
   }, []);
+
+  // Buscar cliente (con pequeña espera para no consultar en cada tecla)
+  useEffect(() => {
+    if (cliente) return; // ya hay uno elegido
+    const q = busquedaCliente.trim();
+    if (q.length < 3) {
+      setResultados([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      fetch(`/api/admin/clientes?q=${encodeURIComponent(q)}`)
+        .then((res) => res.json())
+        .then((data) => setResultados(data.clientes || []))
+        .catch(() => setResultados([]));
+    }, 350);
+    return () => clearTimeout(t);
+  }, [busquedaCliente, cliente]);
+
+  const elegirCliente = (c: Cliente) => {
+    setCliente(c);
+    setNombre(c.nombre);
+    if (c.telefono) setTelefono(c.telefono);
+    setResultados([]);
+    setBusquedaCliente('');
+    setAplicarBeneficio(false);
+  };
+
+  const quitarCliente = () => {
+    setCliente(null);
+    setAplicarBeneficio(false);
+  };
 
   const cantidadDe = (idProducto: string) =>
     items.find((i) => i.id === idProducto)?.cantidad ?? 0;
@@ -100,7 +146,12 @@ export default function VentaPage() {
     });
   };
 
-  const total = items.reduce((sum, i) => sum + i.precio * i.cantidad, 0);
+  const totalBruto = items.reduce((sum, i) => sum + i.precio * i.cantidad, 0);
+  // Solo el 15% se descuenta automático; el artículo gratis se elige a mano
+  const beneficioCanjeado =
+    aplicarBeneficio && cliente ? cliente.beneficio : 'Ninguno';
+  const descuento = beneficioCanjeado === '15% Descuento' ? totalBruto * 0.15 : 0;
+  const total = totalBruto - descuento;
 
   // Registra la venta en el sheet. estadoPago='Pagado' cuando el cobro ya
   // se aprobó (ej. terminal). Limpia el formulario al terminar.
@@ -116,6 +167,8 @@ export default function VentaPage() {
         notas: notas.trim(),
         items,
         estadoPago,
+        idUsuario: cliente?.id,
+        beneficioCanjeado,
       }),
     });
     const data = await res.json();
@@ -128,6 +181,9 @@ export default function VentaPage() {
     setMetodoPago('Efectivo');
     setEstado('Recibido');
     setNotas('');
+    setCliente(null);
+    setAplicarBeneficio(false);
+    setBusquedaCliente('');
   };
 
   const detenerPoll = () => {
@@ -320,12 +376,105 @@ export default function VentaPage() {
                 </span>
               </div>
             ))}
+            {descuento > 0 && (
+              <>
+                <div className="flex justify-between text-sm pt-2 border-t border-neutral-100">
+                  <span className="text-neutral-500">Subtotal</span>
+                  <span className="text-neutral-500">${totalBruto.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm text-green-600 font-medium">
+                  <span>🎁 Descuento 15% (lealtad)</span>
+                  <span>−${descuento.toFixed(2)}</span>
+                </div>
+              </>
+            )}
             <div className="flex justify-between items-center pt-2 border-t border-neutral-100">
               <span className="font-medium text-neutral-500">Total</span>
               <span className="text-xl font-bold text-black">${total.toFixed(2)}</span>
             </div>
           </div>
         )}
+
+        {/* Cliente registrado — para que la venta sume a su lealtad */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 space-y-3">
+          <label className="text-sm font-semibold text-neutral-700">
+            Cliente registrado{' '}
+            <span className="font-normal text-neutral-400">(opcional, para su lealtad)</span>
+          </label>
+
+          {!cliente ? (
+            <>
+              <input
+                value={busquedaCliente}
+                onChange={(e) => setBusquedaCliente(e.target.value)}
+                placeholder="🔎 Buscar por teléfono, nombre o código..."
+                className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black"
+              />
+              {resultados.length > 0 && (
+                <div className="border border-neutral-200 rounded-xl divide-y divide-neutral-100 overflow-hidden">
+                  {resultados.map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => elegirCliente(c)}
+                      className="w-full text-left p-3 hover:bg-neutral-50 transition-colors"
+                    >
+                      <p className="font-semibold text-neutral-900 text-sm">{c.nombre}</p>
+                      <p className="text-xs text-neutral-500">
+                        {c.telefono || 'sin teléfono'} · {c.ciclo} pedido{c.ciclo === 1 ? '' : 's'}
+                        {c.beneficio !== 'Ninguno' && (
+                          <span className="text-green-600 font-semibold"> · 🎁 {c.beneficio}</span>
+                        )}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {busquedaCliente.trim().length >= 3 && resultados.length === 0 && (
+                <p className="text-xs text-neutral-400">
+                  Sin coincidencias. Puedes seguir sin identificarlo (venta normal).
+                </p>
+              )}
+            </>
+          ) : (
+            <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="font-bold text-neutral-900">👤 {cliente.nombre}</p>
+                  <p className="text-xs text-neutral-500">
+                    {cliente.telefono} · {cliente.ciclo} pedido{cliente.ciclo === 1 ? '' : 's'} acumulados
+                  </p>
+                </div>
+                <button
+                  onClick={quitarCliente}
+                  className="text-xs font-semibold text-neutral-500 bg-neutral-200 px-2 py-1 rounded-lg active:scale-95"
+                >
+                  Quitar
+                </button>
+              </div>
+
+              {cliente.beneficio !== 'Ninguno' ? (
+                <button
+                  onClick={() => setAplicarBeneficio((v) => !v)}
+                  className={`mt-2 w-full text-sm font-bold py-2.5 rounded-xl transition-colors ${
+                    aplicarBeneficio ? 'bg-green-600 text-white' : 'bg-black text-white'
+                  }`}
+                >
+                  {aplicarBeneficio ? `✓ Aplicado: ${cliente.beneficio}` : `🎁 Aplicar ${cliente.beneficio}`}
+                </button>
+              ) : (
+                <p className="text-xs text-neutral-500 mt-2">
+                  Le faltan {cliente.faltanParaDescuento} pedido
+                  {cliente.faltanParaDescuento === 1 ? '' : 's'} para su 15% de descuento.
+                </p>
+              )}
+              {aplicarBeneficio && cliente.beneficio === 'Articulo Gratis' && (
+                <p className="text-xs text-amber-700 mt-2">
+                  ⚠️ El artículo gratis (≤$35) no se descuenta solo: quítalo del total tú al cobrar.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 space-y-4">
           <div className="space-y-1.5">

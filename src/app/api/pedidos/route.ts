@@ -18,7 +18,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/authOptions';
-import { appendRow, ensureColumn, getSheetData, findRow, updateCell } from '@/lib/googleSheets';
+import { appendRow, ensureColumn, getSheetData, updateCell } from '@/lib/googleSheets';
+import { actualizarLealtad } from '@/lib/lealtad';
 import { baseUrlDesdeRequest, crearPreferencia, mpConfigurado } from '@/lib/mercadoPago';
 import { enviarTelegram } from '@/lib/telegram';
 
@@ -130,45 +131,9 @@ export async function POST(req: NextRequest) {
     ]);
   }
 
-  // 3. Actualizar lealtad — se acumula por PEDIDO, no por artículos
-  const usuarioRow = await findRow('USUARIOS', 'ID_Usuario', usuario.id_usuario);
-  if (usuarioRow) {
-    const cicloActual = parseInt(usuarioRow.data.Ciclo_Actual) || 0;
-    const historicoActual = parseInt(usuarioRow.data.Total_Articulos_Historico) || 0;
-    const nuevoCiclo = cicloActual + 1;
-
-    let beneficioNuevo = usuarioRow.data.Beneficio_Disponible || 'Ninguno';
-    let cicloFinal = nuevoCiclo;
-
-    if (beneficioCanjeado === 'Articulo Gratis') {
-      // Solo el artículo gratis reinicia el ciclo
-      cicloFinal = 0;
-      beneficioNuevo = 'Ninguno';
-    } else if (beneficioCanjeado === '15% Descuento') {
-      // El descuento NO reinicia el ciclo, sigue acumulando
-      beneficioNuevo = 'Ninguno';
-    } else {
-      // No se canjeó nada — calcular si se ganó un beneficio nuevo
-      if (nuevoCiclo >= 10) {
-        beneficioNuevo = 'Articulo Gratis';
-      } else if (nuevoCiclo >= 5) {
-        beneficioNuevo = '15% Descuento';
-      }
-    }
-
-    // Las columnas se resuelven por NOMBRE de encabezado, nunca por índice
-    // fijo: antes estaban corridas una columna y el ciclo se escribía sobre
-    // Fecha_Registro, dejando Beneficio_Disponible siempre vacío (nadie
-    // podía canjear). ensureColumn devuelve el índice real del encabezado.
-    const [colCiclo, colHistorico, colBeneficio] = await Promise.all([
-      ensureColumn('USUARIOS', 'Ciclo_Actual'),
-      ensureColumn('USUARIOS', 'Total_Articulos_Historico'),
-      ensureColumn('USUARIOS', 'Beneficio_Disponible'),
-    ]);
-    await updateCell('USUARIOS', usuarioRow.rowIndex, colCiclo, cicloFinal);
-    await updateCell('USUARIOS', usuarioRow.rowIndex, colHistorico, historicoActual + 1);
-    await updateCell('USUARIOS', usuarioRow.rowIndex, colBeneficio, beneficioNuevo);
-  }
+  // 3. Actualizar lealtad — se acumula por PEDIDO, no por artículos.
+  // Las reglas viven en src/lib/lealtad.ts, compartidas con el mostrador.
+  await actualizarLealtad(usuario.id_usuario, beneficioCanjeado);
 
   // 4. Aviso a Telegram (si está configurado). Se hace await para que el
   // envío alcance a completarse antes de que termine la función en Vercel,

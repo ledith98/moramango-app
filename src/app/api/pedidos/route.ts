@@ -156,9 +156,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    await updateCell('USUARIOS', usuarioRow.rowIndex, 6, cicloFinal);
-    await updateCell('USUARIOS', usuarioRow.rowIndex, 7, historicoActual + 1);
-    await updateCell('USUARIOS', usuarioRow.rowIndex, 8, beneficioNuevo);
+    // Las columnas se resuelven por NOMBRE de encabezado, nunca por índice
+    // fijo: antes estaban corridas una columna y el ciclo se escribía sobre
+    // Fecha_Registro, dejando Beneficio_Disponible siempre vacío (nadie
+    // podía canjear). ensureColumn devuelve el índice real del encabezado.
+    const [colCiclo, colHistorico, colBeneficio] = await Promise.all([
+      ensureColumn('USUARIOS', 'Ciclo_Actual'),
+      ensureColumn('USUARIOS', 'Total_Articulos_Historico'),
+      ensureColumn('USUARIOS', 'Beneficio_Disponible'),
+    ]);
+    await updateCell('USUARIOS', usuarioRow.rowIndex, colCiclo, cicloFinal);
+    await updateCell('USUARIOS', usuarioRow.rowIndex, colHistorico, historicoActual + 1);
+    await updateCell('USUARIOS', usuarioRow.rowIndex, colBeneficio, beneficioNuevo);
   }
 
   // 4. Aviso a Telegram (si está configurado). Se hace await para que el

@@ -38,6 +38,38 @@ interface DatosLealtad {
   pedidosParaArticulo: number;
 }
 
+interface MiPedido {
+  idPedido: string;
+  fecha: string;
+  hora: string;
+  estado: string;
+  estadoPago: string;
+  total: number;
+  items: { idProducto: string; nombre: string; cantidad: number; subtotal: number }[];
+}
+
+// Avance visual del pedido; 'Cancelado' se muestra aparte
+const FLUJO_ESTADOS = ['Recibido', 'En preparación', 'Listo para recoger', 'Entregado'];
+
+const colorEstadoCliente = (estado: string) => {
+  switch (estado) {
+    case 'Recibido': return 'bg-blue-100 text-blue-700';
+    case 'En preparación': return 'bg-amber-100 text-amber-700';
+    case 'Listo para recoger': return 'bg-green-100 text-green-700';
+    case 'Entregado': return 'bg-neutral-200 text-neutral-600';
+    case 'Cancelado': return 'bg-red-100 text-red-700';
+    default: return 'bg-neutral-100 text-neutral-600';
+  }
+};
+
+// "2026-07-14" → "14 jul 2026"
+const fechaBonita = (iso: string) => {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-').map(Number);
+  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  return `${d} ${meses[m - 1] ?? ''} ${y}`;
+};
+
 const CARRITO_KEY = 'moramango_carrito';
 
 // Datos de la cuenta para pago por transferencia (SPEI).
@@ -60,6 +92,10 @@ export default function Home() {
   const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
   const [verCarrito, setVerCarrito] = useState(false);
   const [verPerfil, setVerPerfil] = useState(false);
+  const [verMisPedidos, setVerMisPedidos] = useState(false);
+  const [misPedidos, setMisPedidos] = useState<MiPedido[]>([]);
+  const [cargandoPedidos, setCargandoPedidos] = useState(false);
+  const [avisoRepetir, setAvisoRepetir] = useState('');
   const [nombreUsuario, setNombreUsuario] = useState('');
   const [telefonoUsuario, setTelefonoUsuario] = useState('');
   const [ladaUsuario, setLadaUsuario] = useState('52');
@@ -318,6 +354,66 @@ export default function Home() {
     return null;
   })();
 
+  // Cargar "Mis pedidos" al abrir la pantalla
+  useEffect(() => {
+    if (!session || !verMisPedidos) return;
+    setCargandoPedidos(true);
+    fetch('/api/pedidos')
+      .then((res) => res.json())
+      .then((data) => setMisPedidos(data.pedidos || []))
+      .catch(() => {})
+      .finally(() => setCargandoPedidos(false));
+  }, [session, verMisPedidos]);
+
+  /**
+   * Vuelve a pedir un pedido anterior. Usa los precios y disponibilidad
+   * ACTUALES del menú (no los del pedido viejo): los precios cambian, y
+   * un producto puede estar agotado o ya no existir.
+   */
+  const volverAPedir = (pedido: MiPedido) => {
+    const disponibles: ItemCarrito[] = [];
+    const noDisponibles: string[] = [];
+
+    for (const item of pedido.items) {
+      const actual = productos.find((p) => p.id === item.idProducto);
+      if (!actual) {
+        noDisponibles.push(item.nombre);
+        continue;
+      }
+      disponibles.push({
+        id: actual.id,
+        nombre: actual.nombre,
+        precio: limpiarPrecio(actual.precio),
+        categoria: actual.categoria,
+        cantidad: item.cantidad,
+      });
+    }
+
+    if (disponibles.length === 0) {
+      setAvisoRepetir('Ninguno de esos productos está disponible ahora mismo.');
+      return;
+    }
+
+    // Se suman al carrito respetando lo que ya hubiera dentro
+    setCarrito((prev) => {
+      const nuevo = [...prev];
+      for (const item of disponibles) {
+        const existe = nuevo.find((i) => i.id === item.id);
+        if (existe) existe.cantidad += item.cantidad;
+        else nuevo.push(item);
+      }
+      return nuevo;
+    });
+
+    setAvisoRepetir(
+      noDisponibles.length > 0
+        ? `Agregamos tu pedido, pero ${noDisponibles.join(', ')} ya no está disponible.`
+        : ''
+    );
+    setVerMisPedidos(false);
+    setVerCarrito(true);
+  };
+
   const copiarClabe = async () => {
     try {
       await navigator.clipboard.writeText(TRANSFERENCIA.clabe);
@@ -444,7 +540,7 @@ export default function Home() {
       <div className="w-full max-w-md bg-neutral-50 shadow-2xl flex flex-col relative h-full">
 
         {/* PANTALLA 1: MENÚ */}
-        <div className={`flex flex-col h-full ${verCarrito || verPerfil ? 'hidden' : 'flex'}`}>
+        <div className={`flex flex-col h-full ${verCarrito || verPerfil || verMisPedidos ? 'hidden' : 'flex'}`}>
           <header className="bg-white pt-6 pb-2 sticky top-0 z-20 shadow-sm rounded-b-3xl shrink-0">
             <div className="px-5 flex justify-between items-center">
               <div className="flex items-center gap-3">
@@ -459,6 +555,15 @@ export default function Home() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {session && (
+                  <button
+                    onClick={() => setVerMisPedidos(true)}
+                    className="w-10 h-10 rounded-full bg-neutral-100 text-black flex items-center justify-center text-lg active:scale-90 transition-transform"
+                    title="Mis pedidos"
+                  >
+                    🧾
+                  </button>
+                )}
                 {(session?.user as any)?.rol === 'admin' && (
                   <Link
                     href="/admin"
@@ -648,6 +753,19 @@ export default function Home() {
             </header>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {avisoRepetir && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3.5 flex gap-3 items-start">
+                  <span className="text-base leading-none mt-0.5">⚠️</span>
+                  <p className="flex-1 text-xs text-amber-800 leading-relaxed">{avisoRepetir}</p>
+                  <button
+                    onClick={() => setAvisoRepetir('')}
+                    className="text-amber-400 text-sm font-bold px-1"
+                    aria-label="Cerrar aviso"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
               {carrito.map((item) => (
                 <div key={item.id} className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-neutral-100">
                   <div className="pr-4 flex-1">
@@ -824,6 +942,110 @@ export default function Home() {
               >
                 {enviando ? 'Enviando...' : session ? 'Confirmar Orden' : 'Iniciar sesión para pedir'}
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* PANTALLA 4: MIS PEDIDOS */}
+        {verMisPedidos && (
+          <div className="absolute inset-0 bg-neutral-50 z-50 flex flex-col h-full">
+            <header className="bg-white p-4 flex items-center shadow-sm shrink-0">
+              <button
+                onClick={() => setVerMisPedidos(false)}
+                className="w-10 h-10 flex items-center justify-center bg-neutral-100 rounded-full font-bold active:scale-90 mr-3"
+              >
+                ←
+              </button>
+              <h2 className="text-xl font-bold text-black">Mis pedidos</h2>
+            </header>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {cargandoPedidos ? (
+                <p className="text-neutral-500 animate-pulse text-center py-8">Cargando tus pedidos...</p>
+              ) : misPedidos.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="text-5xl mb-3">🧾</div>
+                  <p className="text-neutral-500">Todavía no has hecho ningún pedido.</p>
+                  <button
+                    onClick={() => setVerMisPedidos(false)}
+                    className="mt-4 bg-black text-white font-bold py-3 px-6 rounded-2xl active:scale-95 transition-transform"
+                  >
+                    Ver el menú
+                  </button>
+                </div>
+              ) : (
+                misPedidos.map((p) => {
+                  const paso = FLUJO_ESTADOS.indexOf(p.estado);
+                  const activo = paso >= 0 && p.estado !== 'Entregado';
+                  return (
+                    <div
+                      key={p.idPedido}
+                      className={`bg-white rounded-2xl p-4 shadow-sm border ${
+                        activo ? 'border-black' : 'border-neutral-100'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="min-w-0">
+                          <p className="text-xs text-neutral-400 font-mono">{p.idPedido}</p>
+                          <p className="text-sm text-neutral-500">
+                            {fechaBonita(p.fecha)} · {p.hora}
+                          </p>
+                        </div>
+                        <span
+                          className={`text-xs font-semibold px-2.5 py-1 rounded-full shrink-0 ${colorEstadoCliente(p.estado)}`}
+                        >
+                          {p.estado}
+                        </span>
+                      </div>
+
+                      {/* Avance del pedido */}
+                      {paso >= 0 && p.estado !== 'Cancelado' && (
+                        <div className="flex gap-1 mt-3">
+                          {FLUJO_ESTADOS.map((_, i) => (
+                            <div
+                              key={i}
+                              className={`h-1.5 flex-1 rounded-full ${
+                                i <= paso ? 'bg-black' : 'bg-neutral-200'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="mt-3 space-y-1">
+                        {p.items.map((item, idx) => (
+                          <div key={idx} className="flex justify-between text-sm">
+                            <span className="text-neutral-700">
+                              {item.cantidad}× {item.nombre}
+                            </span>
+                            <span className="text-neutral-500">${item.subtotal.toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="flex justify-between items-center mt-3 pt-3 border-t border-neutral-100">
+                        <div>
+                          <span className="font-bold text-black">${p.total.toFixed(2)}</span>
+                          {p.estadoPago === 'Pagado' && (
+                            <span className="ml-2 text-xs font-semibold text-green-600">✅ Pagado</span>
+                          )}
+                          {p.estadoPago === 'Pendiente' && p.estado !== 'Cancelado' && (
+                            <span className="ml-2 text-xs font-semibold text-amber-600">🕓 Pago pendiente</span>
+                          )}
+                        </div>
+                        {p.items.length > 0 && (
+                          <button
+                            onClick={() => volverAPedir(p)}
+                            className="bg-black text-white text-sm font-bold px-4 py-2 rounded-xl active:scale-95 transition-transform"
+                          >
+                            🔁 Volver a pedir
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         )}

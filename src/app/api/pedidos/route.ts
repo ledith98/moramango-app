@@ -20,9 +20,15 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/authOptions';
 import { appendRow, ensureColumn, getSheetData, updateCell } from '@/lib/googleSheets';
 import { actualizarLealtad } from '@/lib/lealtad';
+import { parsearFechaHora } from '@/lib/pedidoFecha';
 import { baseUrlDesdeRequest, crearPreferencia, mpConfigurado } from '@/lib/mercadoPago';
 import { enviarTelegram } from '@/lib/telegram';
 
+/**
+ * Devuelve los pedidos del usuario logueado, del más reciente al más
+ * antiguo y con sus productos, para la pantalla "Mis pedidos" (ver el
+ * estado y poder volver a pedir).
+ */
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) {
@@ -30,8 +36,39 @@ export async function GET() {
   }
 
   const idUsuario = (session.user as any).id_usuario;
-  const todos = await getSheetData('PEDIDOS');
-  const misPedidos = todos.filter((p) => p.ID_Usuario === idUsuario);
+  if (!idUsuario) return NextResponse.json({ pedidos: [] });
+
+  const [todos, detalles] = await Promise.all([
+    getSheetData('PEDIDOS'),
+    getSheetData('DT PEDIDOS'),
+  ]);
+
+  const itemsPorPedido = new Map<string, Record<string, string>[]>();
+  for (const d of detalles) {
+    if (!itemsPorPedido.has(d.ID_Pedido)) itemsPorPedido.set(d.ID_Pedido, []);
+    itemsPorPedido.get(d.ID_Pedido)!.push(d);
+  }
+
+  const misPedidos = todos
+    .filter((p) => p.ID_Usuario === idUsuario)
+    .map((p) => ({ p, info: parsearFechaHora(p.Fecha_Hora) }))
+    .sort((a, b) => (b.info?.timestamp ?? 0) - (a.info?.timestamp ?? 0))
+    .map(({ p, info }) => ({
+      idPedido: p.ID_Pedido,
+      fecha: info?.fechaISO ?? '',
+      hora: info?.horaLegible ?? '',
+      estado: p.Estado || 'Recibido',
+      estadoPago: p.Estado_Pago || '',
+      metodoPago: p.Metodo_Pago || '',
+      total: parseFloat(p.Total_Final) || 0,
+      notas: p.Notas_Pedido || '',
+      items: (itemsPorPedido.get(p.ID_Pedido) || []).map((d) => ({
+        idProducto: d.ID_Producto,
+        nombre: d.Nombre_Producto_Snap,
+        cantidad: parseInt(d.Cantidad) || 1,
+        subtotal: parseFloat(d.Subtotal) || 0,
+      })),
+    }));
 
   return NextResponse.json({ pedidos: misPedidos });
 }

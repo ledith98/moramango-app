@@ -1,7 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { fechaHoyMTY } from '@/lib/pedidoFecha';
+import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
+import { TicketBotones } from '../TicketBotones';
+import type { DatosTicket } from '@/lib/ticket';
 
 interface Pedido {
   ID_Pedido: string;
@@ -10,6 +12,7 @@ interface Pedido {
   Fecha_Hora: string;
   Estado: string;
   Hora_Recoleccion: string;
+  Total_Bruto: string;
   Total_Final: string;
   Notas_Pedido: string;
   Telefono: string;
@@ -79,6 +82,27 @@ const linkWhatsApp = (telefono: string, mensaje: string): string => {
   return `https://wa.me/${digitos}?text=${encodeURIComponent(mensaje)}`;
 };
 
+/** Arma los datos del ticket a partir del detalle del pedido. */
+const ticketDelPedido = (d: Detalle): DatosTicket => {
+  const info = parsearFechaHora(d.pedido.Fecha_Hora);
+  const bruto = parseFloat(d.pedido.Total_Bruto || '0') || 0;
+  const total = parseFloat(d.pedido.Total_Final || '0') || 0;
+  const base = bruto || total;
+  return {
+    idPedido: d.pedido.ID_Pedido,
+    fecha: info ? `${info.fechaISO} ${info.horaLegible}` : d.pedido.Fecha_Hora,
+    cliente: d.cliente?.nombre || d.pedido.Nombre_Cliente_Snap || undefined,
+    items: d.items.map((i) => ({
+      cantidad: parseInt(i.Cantidad) || 1,
+      nombre: i.Nombre_Producto_Snap,
+      subtotal: parseFloat(i.Subtotal || '0') || 0,
+    })),
+    totalBruto: base,
+    descuento: Math.max(0, base - total),
+    total,
+    metodoPago: d.pedido.Metodo_Pago || undefined,
+  };
+};
 
 export default function PedidosPage() {
   const [fecha, setFecha] = useState(fechaHoyMTY());
@@ -291,6 +315,9 @@ export default function PedidosPage() {
                       💬 Avisar por WhatsApp
                     </a>
                   )}
+                  <div className="mt-2">
+                    <TicketBotones datos={ticketDelPedido(detalle)} compacto />
+                  </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-5 space-y-3">

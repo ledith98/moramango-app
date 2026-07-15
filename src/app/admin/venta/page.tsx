@@ -1,6 +1,19 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { TicketBotones } from '../TicketBotones';
+import type { DatosTicket } from '@/lib/ticket';
+
+/** Fecha/hora en formato de ticket: 2026-07-14 16:25:30 (zona Monterrey) */
+const fechaTicket = () => {
+  const p = new Intl.DateTimeFormat('es-MX', {
+    timeZone: 'America/Monterrey',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).formatToParts(new Date());
+  const g = (t: string) => p.find((x) => x.type === t)?.value ?? '';
+  return `${g('year')}-${g('month')}-${g('day')} ${g('hour')}:${g('minute')}:${g('second')}`;
+};
 
 interface Producto {
   ID_Producto: string;
@@ -48,6 +61,7 @@ export default function VentaPage() {
   const [registrando, setRegistrando] = useState(false);
   const [error, setError] = useState('');
   const [ventaOk, setVentaOk] = useState<string | null>(null);
+  const [ultimoTicket, setUltimoTicket] = useState<DatosTicket | null>(null);
   // Cobro en terminal Point
   const [esperandoTerminal, setEsperandoTerminal] = useState(false);
   const [mensajeTerminal, setMensajeTerminal] = useState('');
@@ -173,6 +187,27 @@ export default function VentaPage() {
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'Error al registrar');
+
+    // Guardar el ticket ANTES de limpiar el formulario
+    const faltan = cliente ? Math.max(0, 5 - (cliente.ciclo + 1)) : 0;
+    setUltimoTicket({
+      idPedido: data.idPedido,
+      fecha: fechaTicket(),
+      cliente: nombre.trim() || undefined,
+      items: items.map((i) => ({
+        cantidad: i.cantidad,
+        nombre: i.nombre,
+        subtotal: i.precio * i.cantidad,
+      })),
+      totalBruto,
+      descuento,
+      total,
+      metodoPago,
+      lealtad:
+        cliente && faltan > 0
+          ? `Llevas ${cliente.ciclo + 1} de 5 pedidos para tu 15% de descuento`
+          : undefined,
+    });
 
     setVentaOk(data.idPedido);
     setItems([]);
@@ -549,9 +584,12 @@ export default function VentaPage() {
 
         {error && <p className="text-sm text-red-600">{error}</p>}
         {ventaOk && (
-          <div className="bg-green-50 border border-green-200 rounded-2xl p-4 text-center">
-            <p className="text-green-700 font-semibold">✅ Venta registrada</p>
-            <p className="font-mono text-sm text-green-800 mt-1">{ventaOk}</p>
+          <div className="bg-green-50 border border-green-200 rounded-2xl p-4 space-y-3">
+            <div className="text-center">
+              <p className="text-green-700 font-semibold">✅ Venta registrada</p>
+              <p className="font-mono text-sm text-green-800 mt-1">{ventaOk}</p>
+            </div>
+            {ultimoTicket && <TicketBotones datos={ultimoTicket} />}
           </div>
         )}
 

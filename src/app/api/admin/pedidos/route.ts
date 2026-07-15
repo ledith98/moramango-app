@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
 }
 
 // ── PATCH: cambiar estado y/o método de pago de un pedido ────────────────────
-const METODOS_PAGO = ['Efectivo', 'Terminal', 'Transferencia'];
+const METODOS_PAGO = ['Efectivo', 'Terminal', 'Transferencia', 'Mercado Pago'];
 
 export async function PATCH(req: NextRequest) {
   if (!(await getAdminSession())) {

@@ -209,9 +209,18 @@ export default function PedidosPage() {
                 <p className="text-xs text-neutral-500 font-mono">{p.ID_Pedido}</p>
               </div>
               <span className="font-bold text-neutral-900 shrink-0">${parseFloat(p.Total_Final || '0').toFixed(2)}</span>
-              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full shrink-0 ${colorEstado(p.Estado)}`}>
-                {p.Estado}
-              </span>
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${colorEstado(p.Estado)}`}>
+                  {p.Estado}
+                </span>
+                {/* Pago iniciado (en línea o transferencia) que nunca se confirmó:
+                    debe verse a simple vista para no preparar un pedido sin pagar. */}
+                {p.Estado_Pago === 'Pendiente' && p.Estado !== 'Cancelado' && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                    🕓 SIN PAGAR
+                  </span>
+                )}
+              </div>
             </button>
           ))}
         </div>
@@ -316,7 +325,7 @@ export default function PedidosPage() {
                   <div>
                     <p className="text-xs font-semibold text-neutral-500 mb-2">Método de pago</p>
                     <div className="flex flex-wrap gap-2">
-                      {['Efectivo', 'Terminal', 'Transferencia'].map((m) => {
+                      {['Efectivo', 'Terminal', 'Transferencia', 'Mercado Pago'].map((m) => {
                         const activo = detalle.pedido.Metodo_Pago === m;
                         return (
                           <button
@@ -329,7 +338,7 @@ export default function PedidosPage() {
                                 : 'bg-neutral-100 text-neutral-600 active:scale-95'
                             } ${actualizando && !activo ? 'opacity-50' : ''}`}
                           >
-                            {m === 'Efectivo' ? '💵' : m === 'Transferencia' ? '📲' : '💳'} {m}
+                            {m === 'Efectivo' ? '💵' : m === 'Transferencia' ? '📲' : m === 'Mercado Pago' ? '🛍️' : '💳'} {m}
                           </button>
                         );
                       })}

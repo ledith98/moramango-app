@@ -180,10 +180,13 @@ export async function POST(req: NextRequest) {
       (sum: number, item: any) => sum + (parseInt(item.cantidad) || 1),
       0
     );
+    // Ojo: este aviso sale al CREAR el pedido, antes de que el cliente
+    // pague. Por eso el pago en línea se anuncia como pendiente; cuando
+    // Mercado Pago confirme, el webhook manda un segundo aviso.
     const formaPagoTexto = esTransferencia
-      ? '📲 Transferencia (por confirmar)'
+      ? '📲 Transferencia — ⏳ POR CONFIRMAR'
       : pagoEnLinea
-      ? '💳 Pago en línea (Mercado Pago)'
+      ? '💳 Pago en línea — ⏳ PENDIENTE (aún no paga)'
       : '🏪 Pagar al recoger';
     const listaItems = items
       .map((it: any) => `• ${parseInt(it.cantidad) || 1}× ${it.nombre}`)

@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ensureColumn, findRow, updateCell } from '@/lib/googleSheets';
 import { obtenerPago } from '@/lib/mercadoPago';
+import { enviarTelegram } from '@/lib/telegram';
 
 export async function POST(req: NextRequest) {
   try {
@@ -45,11 +46,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
+    // Si ya estaba marcado como pagado, no volver a avisar (MP puede
+    // reenviar la misma notificación varias veces)
+    const yaEstabaPagado = pedidoRow.data.Estado_Pago === 'Pagado';
+
     const colEstadoPago = await ensureColumn('PEDIDOS', 'Estado_Pago');
     await updateCell('PEDIDOS', pedidoRow.rowIndex, colEstadoPago, 'Pagado');
 
     const colMetodo = await ensureColumn('PEDIDOS', 'Metodo_Pago');
     await updateCell('PEDIDOS', pedidoRow.rowIndex, colMetodo, 'Mercado Pago');
+
+    // Segundo aviso: el primero salió al crear el pedido diciendo que el
+    // pago estaba pendiente; este confirma que el dinero sí entró.
+    if (!yaEstabaPagado) {
+      const total = parseFloat(pedidoRow.data.Total_Final) || 0;
+      await enviarTelegram(
+        `✅ <b>Pago confirmado</b> — ${pago.external_reference}\n` +
+          `👤 ${pedidoRow.data.Nombre_Cliente_Snap || 'Cliente'}\n` +
+          `💳 Mercado Pago — <b>$${total.toFixed(2)}</b>`
+      );
+    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {

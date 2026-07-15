@@ -96,6 +96,7 @@ export default function Home() {
   const [misPedidos, setMisPedidos] = useState<MiPedido[]>([]);
   const [cargandoPedidos, setCargandoPedidos] = useState(false);
   const [avisoRepetir, setAvisoRepetir] = useState('');
+  const [accionPedido, setAccionPedido] = useState<string | null>(null);
   const [nombreUsuario, setNombreUsuario] = useState('');
   const [telefonoUsuario, setTelefonoUsuario] = useState('');
   const [ladaUsuario, setLadaUsuario] = useState('52');
@@ -364,6 +365,54 @@ export default function Home() {
       .catch(() => {})
       .finally(() => setCargandoPedidos(false));
   }, [session, verMisPedidos]);
+
+  // Liquidar un pedido que quedó pendiente de pago
+  const pagarPendiente = async (idPedido: string) => {
+    setAccionPedido(idPedido);
+    try {
+      const res = await fetch(`/api/pedidos/${idPedido}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'pagar' }),
+      });
+      const data = await res.json();
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+        return;
+      }
+      alert(data.error || 'No se pudo iniciar el pago.');
+    } catch {
+      alert('Error de conexión. Intenta de nuevo.');
+    } finally {
+      setAccionPedido(null);
+    }
+  };
+
+  // El cliente cancela su propio pedido (solo si no se prepara ni está pagado)
+  const cancelarMiPedido = async (idPedido: string) => {
+    if (!confirm(`¿Cancelar tu pedido ${idPedido}?`)) return;
+    setAccionPedido(idPedido);
+    try {
+      const res = await fetch(`/api/pedidos/${idPedido}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'cancelar' }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        alert(data.error || 'No se pudo cancelar.');
+        return;
+      }
+      // Refrescar la lista
+      const r = await fetch('/api/pedidos');
+      const d = await r.json();
+      setMisPedidos(d.pedidos || []);
+    } catch {
+      alert('Error de conexión. Intenta de nuevo.');
+    } finally {
+      setAccionPedido(null);
+    }
+  };
 
   /**
    * Vuelve a pedir un pedido anterior. Usa los precios y disponibilidad
@@ -1042,6 +1091,33 @@ export default function Home() {
                           </button>
                         )}
                       </div>
+
+                      {/* Pago pendiente: liquidarlo o cancelar */}
+                      {p.estadoPago === 'Pendiente' && p.estado !== 'Cancelado' && (
+                        <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                          <p className="text-xs text-amber-800 mb-2">
+                            Este pedido quedó <b>sin pagar</b>. Puedes completarlo ahora o cancelarlo.
+                          </p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => pagarPendiente(p.idPedido)}
+                              disabled={accionPedido === p.idPedido}
+                              className="flex-1 bg-black text-white text-sm font-bold py-2.5 rounded-xl active:scale-95 transition-transform disabled:opacity-50"
+                            >
+                              {accionPedido === p.idPedido ? 'Abriendo...' : '💳 Pagar ahora'}
+                            </button>
+                            {p.estado === 'Recibido' && (
+                              <button
+                                onClick={() => cancelarMiPedido(p.idPedido)}
+                                disabled={accionPedido === p.idPedido}
+                                className="flex-1 border border-red-200 text-red-600 text-sm font-semibold py-2.5 rounded-xl active:scale-95 transition-transform disabled:opacity-50"
+                              >
+                                Cancelar
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })

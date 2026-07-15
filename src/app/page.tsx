@@ -45,6 +45,7 @@ interface MiPedido {
   estado: string;
   estadoPago: string;
   total: number;
+  yaOpino: boolean;
   items: { idProducto: string; nombre: string; cantidad: number; subtotal: number }[];
 }
 
@@ -97,6 +98,14 @@ export default function Home() {
   const [cargandoPedidos, setCargandoPedidos] = useState(false);
   const [avisoRepetir, setAvisoRepetir] = useState('');
   const [accionPedido, setAccionPedido] = useState<string | null>(null);
+  // Opiniones: qué pedido se está calificando y con qué notas
+  const [opinando, setOpinando] = useState<string | null>(null);
+  const [sabor, setSabor] = useState(0);
+  const [calidad, setCalidad] = useState(0);
+  const [comentario, setComentario] = useState('');
+  const [opinionAnonima, setOpinionAnonima] = useState(false);
+  const [enviandoOpinion, setEnviandoOpinion] = useState(false);
+  const [graciasOpinion, setGraciasOpinion] = useState<string | null>(null);
   const [nombreUsuario, setNombreUsuario] = useState('');
   const [telefonoUsuario, setTelefonoUsuario] = useState('');
   const [ladaUsuario, setLadaUsuario] = useState('52');
@@ -365,6 +374,46 @@ export default function Home() {
       .catch(() => {})
       .finally(() => setCargandoPedidos(false));
   }, [session, verMisPedidos]);
+
+  const abrirOpinion = (idPedido: string) => {
+    setOpinando(idPedido);
+    setSabor(0);
+    setCalidad(0);
+    setComentario('');
+    setOpinionAnonima(false);
+  };
+
+  const enviarOpinion = async (idPedido: string) => {
+    if (sabor === 0 || calidad === 0) return;
+    setEnviandoOpinion(true);
+    try {
+      const res = await fetch('/api/opiniones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          idPedido,
+          sabor,
+          calidad,
+          comentario: comentario.trim(),
+          anonimo: opinionAnonima,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        alert(data.error || 'No se pudo enviar tu opinión.');
+        return;
+      }
+      setOpinando(null);
+      setGraciasOpinion(idPedido);
+      setMisPedidos((prev) =>
+        prev.map((p) => (p.idPedido === idPedido ? { ...p, yaOpino: true } : p))
+      );
+    } catch {
+      alert('Error de conexión. Intenta de nuevo.');
+    } finally {
+      setEnviandoOpinion(false);
+    }
+  };
 
   // Liquidar un pedido que quedó pendiente de pago
   const pagarPendiente = async (idPedido: string) => {
@@ -1091,6 +1140,84 @@ export default function Home() {
                           </button>
                         )}
                       </div>
+
+                      {/* Tu opinión nos interesa — solo si ya lo recibió */}
+                      {p.estado === 'Entregado' && !p.yaOpino && opinando !== p.idPedido && (
+                        <button
+                          onClick={() => abrirOpinion(p.idPedido)}
+                          className="mt-3 w-full bg-amber-50 border border-amber-200 text-amber-800 text-sm font-semibold py-2.5 rounded-xl active:scale-95 transition-transform"
+                        >
+                          ⭐ Tu opinión nos interesa
+                        </button>
+                      )}
+                      {p.estado === 'Entregado' && p.yaOpino && (
+                        <p className="mt-3 text-xs text-center text-neutral-400">
+                          {graciasOpinion === p.idPedido
+                            ? '💛 ¡Gracias por tu opinión!'
+                            : '✅ Ya calificaste este pedido'}
+                        </p>
+                      )}
+
+                      {opinando === p.idPedido && (
+                        <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-3">
+                          <p className="text-sm font-bold text-neutral-900">¿Cómo estuvo tu pedido?</p>
+
+                          {[
+                            { etiqueta: 'Sabor', valor: sabor, set: setSabor },
+                            { etiqueta: 'Calidad', valor: calidad, set: setCalidad },
+                          ].map((fila) => (
+                            <div key={fila.etiqueta} className="flex items-center justify-between">
+                              <span className="text-sm text-neutral-700">{fila.etiqueta}</span>
+                              <div className="flex gap-1">
+                                {[1, 2, 3, 4, 5].map((n) => (
+                                  <button
+                                    key={n}
+                                    onClick={() => fila.set(n)}
+                                    className="text-2xl leading-none active:scale-90 transition-transform"
+                                    aria-label={`${fila.etiqueta} ${n} de 5`}
+                                  >
+                                    {n <= fila.valor ? '⭐' : '☆'}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+
+                          <textarea
+                            value={comentario}
+                            onChange={(e) => setComentario(e.target.value)}
+                            rows={2}
+                            placeholder="¿Algo que quieras contarnos? (opcional)"
+                            className="w-full bg-white border border-amber-200 rounded-xl p-2.5 text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none focus:border-black resize-none"
+                          />
+
+                          <label className="flex items-center gap-2 text-xs text-neutral-600">
+                            <input
+                              type="checkbox"
+                              checked={opinionAnonima}
+                              onChange={(e) => setOpinionAnonima(e.target.checked)}
+                              className="w-4 h-4 accent-black"
+                            />
+                            Enviar sin mi nombre
+                          </label>
+
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setOpinando(null)}
+                              className="flex-1 text-sm font-semibold text-neutral-600 bg-white border border-neutral-200 py-2.5 rounded-xl active:scale-95 transition-transform"
+                            >
+                              Ahora no
+                            </button>
+                            <button
+                              onClick={() => enviarOpinion(p.idPedido)}
+                              disabled={sabor === 0 || calidad === 0 || enviandoOpinion}
+                              className="flex-1 bg-black text-white text-sm font-bold py-2.5 rounded-xl active:scale-95 transition-transform disabled:opacity-40"
+                            >
+                              {enviandoOpinion ? 'Enviando...' : 'Enviar'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Pago pendiente: liquidarlo o cancelar */}
                       {p.estadoPago === 'Pendiente' && p.estado !== 'Cancelado' && (

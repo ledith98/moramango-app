@@ -97,6 +97,36 @@ export async function findRow(tabName: string, columnName: string, value: string
 }
 
 /**
+ * Garantiza que una pestaña exista, creándola con sus encabezados si no
+ * está. Permite estrenar funciones nuevas sin que nadie tenga que
+ * preparar el Sheet a mano.
+ */
+export async function ensureSheet(tabName: string, headers: string[]): Promise<void> {
+  const auth = getAuthClient();
+  const sheets = google.sheets({ version: 'v4', auth });
+
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+    fields: 'sheets.properties.title',
+  });
+  const existe = (meta.data.sheets || []).some((s) => s.properties?.title === tabName);
+  if (existe) return;
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+    requestBody: { requests: [{ addSheet: { properties: { title: tabName } } }] },
+  });
+
+  const endCol = String.fromCharCode(64 + headers.length);
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+    range: `${tabName}!A1:${endCol}1`,
+    valueInputOption: 'USER_ENTERED',
+    requestBody: { values: [headers] },
+  });
+}
+
+/**
  * Garantiza que una columna exista en la hoja (por nombre de encabezado).
  * Si ya existe, devuelve su índice (1-based). Si no, la agrega al final
  * de los encabezados y devuelve el nuevo índice.

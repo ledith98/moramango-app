@@ -43,6 +43,16 @@ export async function GET() {
     getSheetData('DT PEDIDOS'),
   ]);
 
+  // Pedidos que este cliente ya calificó (para no volver a pedirle opinión).
+  // La hoja puede no existir todavía si nadie ha opinado.
+  let yaOpinados = new Set<string>();
+  try {
+    const opiniones = await getSheetData('OPINIONES');
+    yaOpinados = new Set(opiniones.filter((o) => o.ID_Usuario === idUsuario).map((o) => o.ID_Pedido));
+  } catch {
+    // sin opiniones aún
+  }
+
   const itemsPorPedido = new Map<string, Record<string, string>[]>();
   for (const d of detalles) {
     if (!itemsPorPedido.has(d.ID_Pedido)) itemsPorPedido.set(d.ID_Pedido, []);
@@ -62,6 +72,7 @@ export async function GET() {
       metodoPago: p.Metodo_Pago || '',
       total: parseFloat(p.Total_Final) || 0,
       notas: p.Notas_Pedido || '',
+      yaOpino: yaOpinados.has(p.ID_Pedido),
       items: (itemsPorPedido.get(p.ID_Pedido) || []).map((d) => ({
         idProducto: d.ID_Producto,
         nombre: d.Nombre_Producto_Snap,

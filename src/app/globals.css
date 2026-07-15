@@ -3,11 +3,19 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Café marrón de Moramango: se usa en lo seleccionado y en los botones
+     principales (antes era negro). Cambia SOLO esta línea para ajustar
+     el tono en toda la app. */
+  --marca-marron: #5c3a21;
+  --marca-marron-oscuro: #46301c;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-marron: var(--marca-marron);
+  --color-marron-oscuro: var(--marca-marron-oscuro);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

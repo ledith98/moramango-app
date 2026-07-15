@@ -620,7 +620,7 @@ export default function Home() {
                 <button
                   onClick={copiarClabe}
                   className={`shrink-0 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${
-                    clabeCopiada ? 'bg-green-600 text-white' : 'bg-black text-white'
+                    clabeCopiada ? 'bg-green-600 text-white' : 'bg-marron text-white'
                   }`}
                 >
                   {clabeCopiada ? '✓' : 'Copiar'}
@@ -633,7 +633,7 @@ export default function Home() {
           </p>
           <button
             onClick={() => setPedidoConfirmado(null)}
-            className="bg-black text-white font-bold py-3 px-8 rounded-2xl active:scale-95 transition-transform"
+            className="bg-marron text-white font-bold py-3 px-8 rounded-2xl active:scale-95 transition-transform"
           >
             Hacer otro pedido
           </button>
@@ -689,7 +689,7 @@ export default function Home() {
                 <button
                   onClick={() => session ? setVerPerfil(true) : signIn('google', { callbackUrl: '/' })}
                   className={`w-10 h-10 rounded-full flex items-center justify-center text-lg active:scale-90 transition-transform ${
-                    session ? 'bg-black text-white' : 'bg-neutral-100 text-black'
+                    session ? 'bg-marron text-white' : 'bg-neutral-100 text-black'
                   }`}
                 >
                   {session ? '👤' : '🔑'}
@@ -706,7 +706,7 @@ export default function Home() {
                   className="flex flex-col items-center justify-center min-w-[70px] transition-transform active:scale-95"
                 >
                   <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-2 shadow-sm transition-colors ${
-                    categoriaActiva === cat ? 'bg-black text-white' : 'bg-neutral-100 text-black'
+                    categoriaActiva === cat ? 'bg-marron text-white' : 'bg-neutral-100 text-black'
                   }`}>
                     {cat === 'Todos' ? '✨' : getIcono(cat)}
                   </div>
@@ -797,7 +797,7 @@ export default function Home() {
 
                                 {/* Indicador + para agregar (solo si no está en el carrito) */}
                                 {cantidadAgregada === 0 && (
-                                  <div className="absolute -bottom-2 -right-2 w-9 h-9 bg-black text-white rounded-full flex items-center justify-center shadow-lg pointer-events-none">
+                                  <div className="absolute -bottom-2 -right-2 w-9 h-9 bg-marron text-white rounded-full flex items-center justify-center shadow-lg pointer-events-none">
                                     <span className="text-xl font-medium leading-none">+</span>
                                   </div>
                                 )}
@@ -821,7 +821,7 @@ export default function Home() {
                                     </span>
                                     <button
                                       onClick={() => agregarAlCarrito(producto)}
-                                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-black text-white active:scale-90 transition-transform"
+                                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-marron text-white active:scale-90 transition-transform"
                                     >
                                       <span className="text-base font-medium leading-none">+</span>
                                     </button>
@@ -843,7 +843,7 @@ export default function Home() {
             <div className="absolute bottom-6 left-4 right-4 z-30">
               <button
                 onClick={() => setVerCarrito(true)}
-                className="w-full bg-black text-white p-4 rounded-2xl flex justify-between items-center shadow-[0_10px_40px_rgba(0,0,0,0.3)] active:scale-95 transition-transform"
+                className="w-full bg-marron text-white p-4 rounded-2xl flex justify-between items-center shadow-[0_10px_40px_rgba(0,0,0,0.3)] active:scale-95 transition-transform"
               >
                 <div className="flex items-center gap-3">
                   <div className="bg-white text-black w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">
@@ -913,7 +913,7 @@ export default function Home() {
                             className={`mt-2 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${
                               beneficioAplicado
                                 ? 'bg-green-600 text-white'
-                                : 'bg-black text-white'
+                                : 'bg-marron text-white'
                             }`}
                           >
                             {beneficioAplicado ? '✓ Descuento aplicado' : 'Aplicar 15% de descuento'}
@@ -932,7 +932,7 @@ export default function Home() {
                   onChange={(e) => setNotas(e.target.value)}
                   placeholder="Ej: Sin mayonesa, sin tomate, extra salsa..."
                   rows={3}
-                  className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none focus:border-black transition-colors resize-none"
+                  className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none focus:border-marron transition-colors resize-none"
                 />
               </div>
             </div>
@@ -963,7 +963,7 @@ export default function Home() {
                     <button
                       onClick={() => setFormaPago('recoger')}
                       className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-colors ${
-                        formaPago === 'recoger' ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-600'
+                        formaPago === 'recoger' ? 'bg-marron text-white' : 'bg-neutral-100 text-neutral-600'
                       }`}
                     >
                       🏪 Pagar al recoger
@@ -972,7 +972,7 @@ export default function Home() {
                       <button
                         onClick={() => setFormaPago('transferencia')}
                         className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-colors ${
-                          formaPago === 'transferencia' ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-600'
+                          formaPago === 'transferencia' ? 'bg-marron text-white' : 'bg-neutral-100 text-neutral-600'
                         }`}
                       >
                         📲 Transferencia
@@ -981,7 +981,7 @@ export default function Home() {
                     <button
                       onClick={() => setFormaPago('linea')}
                       className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-colors ${
-                        formaPago === 'linea' ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-600'
+                        formaPago === 'linea' ? 'bg-marron text-white' : 'bg-neutral-100 text-neutral-600'
                       }`}
                     >
                       💳 Pagar en línea (tarjeta)
@@ -1010,7 +1010,7 @@ export default function Home() {
                             <button
                               onClick={copiarClabe}
                               className={`shrink-0 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${
-                                clabeCopiada ? 'bg-green-600 text-white' : 'bg-black text-white'
+                                clabeCopiada ? 'bg-green-600 text-white' : 'bg-marron text-white'
                               }`}
                             >
                               {clabeCopiada ? '✓ Copiada' : 'Copiar'}
@@ -1051,7 +1051,7 @@ export default function Home() {
               <button
                 onClick={confirmarOrden}
                 disabled={enviando}
-                className="w-full bg-black text-white font-bold text-lg py-4 rounded-2xl active:scale-95 transition-transform shadow-md flex items-center justify-center gap-2 disabled:opacity-60 disabled:scale-100"
+                className="w-full bg-marron text-white font-bold text-lg py-4 rounded-2xl active:scale-95 transition-transform shadow-md flex items-center justify-center gap-2 disabled:opacity-60 disabled:scale-100"
               >
                 {enviando ? 'Enviando...' : session ? 'Confirmar Orden' : 'Iniciar sesión para pedir'}
               </button>
@@ -1081,7 +1081,7 @@ export default function Home() {
                   <p className="text-neutral-500">Todavía no has hecho ningún pedido.</p>
                   <button
                     onClick={() => setVerMisPedidos(false)}
-                    className="mt-4 bg-black text-white font-bold py-3 px-6 rounded-2xl active:scale-95 transition-transform"
+                    className="mt-4 bg-marron text-white font-bold py-3 px-6 rounded-2xl active:scale-95 transition-transform"
                   >
                     Ver el menú
                   </button>
@@ -1094,7 +1094,7 @@ export default function Home() {
                     <div
                       key={p.idPedido}
                       className={`bg-white rounded-2xl p-4 shadow-sm border ${
-                        activo ? 'border-black' : 'border-neutral-100'
+                        activo ? 'border-marron' : 'border-neutral-100'
                       }`}
                     >
                       <div className="flex justify-between items-start gap-2">
@@ -1118,7 +1118,7 @@ export default function Home() {
                             <div
                               key={i}
                               className={`h-1.5 flex-1 rounded-full ${
-                                i <= paso ? 'bg-black' : 'bg-neutral-200'
+                                i <= paso ? 'bg-marron' : 'bg-neutral-200'
                               }`}
                             />
                           ))}
@@ -1149,7 +1149,7 @@ export default function Home() {
                         {p.items.length > 0 && (
                           <button
                             onClick={() => volverAPedir(p)}
-                            className="bg-black text-white text-sm font-bold px-4 py-2 rounded-xl active:scale-95 transition-transform"
+                            className="bg-marron text-white text-sm font-bold px-4 py-2 rounded-xl active:scale-95 transition-transform"
                           >
                             🔁 Volver a pedir
                           </button>
@@ -1203,7 +1203,7 @@ export default function Home() {
                             onChange={(e) => setComentario(e.target.value)}
                             rows={2}
                             placeholder="¿Algo que quieras contarnos? (opcional)"
-                            className="w-full bg-white border border-amber-200 rounded-xl p-2.5 text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none focus:border-black resize-none"
+                            className="w-full bg-white border border-amber-200 rounded-xl p-2.5 text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none focus:border-marron resize-none"
                           />
 
                           <label className="flex items-center gap-2 text-xs text-neutral-600">
@@ -1226,7 +1226,7 @@ export default function Home() {
                             <button
                               onClick={() => enviarOpinion(p.idPedido)}
                               disabled={sabor === 0 || calidad === 0 || enviandoOpinion}
-                              className="flex-1 bg-black text-white text-sm font-bold py-2.5 rounded-xl active:scale-95 transition-transform disabled:opacity-40"
+                              className="flex-1 bg-marron text-white text-sm font-bold py-2.5 rounded-xl active:scale-95 transition-transform disabled:opacity-40"
                             >
                               {enviandoOpinion ? 'Enviando...' : 'Enviar'}
                             </button>
@@ -1244,7 +1244,7 @@ export default function Home() {
                             <button
                               onClick={() => pagarPendiente(p.idPedido)}
                               disabled={accionPedido === p.idPedido}
-                              className="flex-1 bg-black text-white text-sm font-bold py-2.5 rounded-xl active:scale-95 transition-transform disabled:opacity-50"
+                              className="flex-1 bg-marron text-white text-sm font-bold py-2.5 rounded-xl active:scale-95 transition-transform disabled:opacity-50"
                             >
                               {accionPedido === p.idPedido ? 'Abriendo...' : '💳 Pagar ahora'}
                             </button>
@@ -1290,7 +1290,7 @@ export default function Home() {
               {/* Tarjeta de cliente: su código para acumular lealtad al
                   comprar en el local, más su avance */}
               {session && (session.user as any)?.id_usuario && (
-                <div className="bg-gradient-to-br from-neutral-900 to-neutral-700 rounded-2xl p-5 text-white shadow-lg">
+                <div className="bg-gradient-to-br from-marron-oscuro to-marron rounded-2xl p-5 text-white shadow-lg">
                   <div className="flex justify-between items-start">
                     <div>
                       <p className="text-[10px] uppercase tracking-widest text-white/50 font-semibold">
@@ -1363,7 +1363,7 @@ export default function Home() {
                 <label className="text-sm font-semibold text-neutral-700 block">Nombre Completo</label>
                 <input type="text" value={nombreUsuario} onChange={(e) => setNombreUsuario(e.target.value)}
                   placeholder="Ej. Laura Edith"
-                  className="w-full bg-white border border-neutral-300 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black transition-colors shadow-sm" required />
+                  className="w-full bg-white border border-neutral-300 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-marron transition-colors shadow-sm" required />
               </div>
 
               <div className="space-y-2">
@@ -1378,7 +1378,7 @@ export default function Home() {
                       onChange={(e) => setLadaUsuario(e.target.value.replace(/\D/g, '').slice(0, 3))}
                       placeholder="52"
                       maxLength={3}
-                      className="w-full bg-white border border-neutral-300 rounded-xl pl-7 pr-2 py-3 text-neutral-900 focus:outline-none focus:border-black transition-colors shadow-sm"
+                      className="w-full bg-white border border-neutral-300 rounded-xl pl-7 pr-2 py-3 text-neutral-900 focus:outline-none focus:border-marron transition-colors shadow-sm"
                       required
                     />
                   </div>
@@ -1388,7 +1388,7 @@ export default function Home() {
                     value={telefonoUsuario}
                     onChange={(e) => setTelefonoUsuario(e.target.value.replace(/\D/g, '').slice(0, 15))}
                     placeholder={ladaUsuario === '52' ? '8186003207 (10 dígitos)' : 'Número sin lada'}
-                    className="flex-1 bg-white border border-neutral-300 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black transition-colors shadow-sm"
+                    className="flex-1 bg-white border border-neutral-300 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-marron transition-colors shadow-sm"
                     required
                   />
                 </div>
@@ -1402,7 +1402,7 @@ export default function Home() {
                 </p>
               </div>
 
-              <button type="submit" className="w-full bg-black text-white font-bold text-lg py-4 rounded-2xl active:scale-95 transition-transform shadow-md mt-8">
+              <button type="submit" className="w-full bg-marron text-white font-bold text-lg py-4 rounded-2xl active:scale-95 transition-transform shadow-md mt-8">
                 Guardar Datos
               </button>
             </form>
@@ -1510,7 +1510,7 @@ export default function Home() {
                 {cantidadEnCarritoDetalle === 0 ? (
                   <button
                     onClick={() => agregarAlCarrito(productoDetalle)}
-                    className="w-full bg-black text-white font-bold text-base py-4 rounded-2xl active:scale-95 transition-transform shadow-md"
+                    className="w-full bg-marron text-white font-bold text-base py-4 rounded-2xl active:scale-95 transition-transform shadow-md"
                   >
                     Agregar al pedido
                   </button>
@@ -1528,7 +1528,7 @@ export default function Home() {
                       </span>
                       <button
                         onClick={() => agregarAlCarrito(productoDetalle)}
-                        className="w-11 h-11 flex items-center justify-center bg-black text-white rounded-xl font-medium shadow-sm active:scale-90 text-lg"
+                        className="w-11 h-11 flex items-center justify-center bg-marron text-white rounded-xl font-medium shadow-sm active:scale-90 text-lg"
                       >
                         +
                       </button>

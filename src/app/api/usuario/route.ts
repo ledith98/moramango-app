@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/authOptions';
 import { findRow, updateCell } from '@/lib/googleSheets';
+import { beneficioVigente } from '@/lib/lealtad';
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -27,7 +28,7 @@ export async function GET() {
   }
 
   const cicloActual = parseInt(usuarioRow.data.Ciclo_Actual) || 0;
-  const beneficioDisponible = usuarioRow.data.Beneficio_Disponible || 'Ninguno';
+  const beneficioDisponible = beneficioVigente(usuarioRow.data);
 
   return NextResponse.json({
     // Datos de perfil (para precargar formulario)

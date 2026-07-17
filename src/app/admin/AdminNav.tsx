@@ -11,6 +11,7 @@ const TABS = [
   { href: '/admin/insumos', label: 'Insumos', icon: '📦' },
   { href: '/admin/usuarios', label: 'Usuarios', icon: '👥' },
   { href: '/admin/opiniones', label: 'Opiniones', icon: '⭐' },
+  { href: '/admin/reactivacion', label: 'Reactivación', icon: '💛' },
   { href: '/admin/avisos', label: 'Avisos', icon: '🔔' },
 ];
 

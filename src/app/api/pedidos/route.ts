@@ -18,8 +18,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/authOptions';
-import { appendRow, ensureColumn, getSheetData, updateCell } from '@/lib/googleSheets';
-import { actualizarLealtad } from '@/lib/lealtad';
+import { appendRow, ensureColumn, findRow, getSheetData, updateCell } from '@/lib/googleSheets';
+import { actualizarLealtad, beneficioVigente, descuentoPorBeneficio } from '@/lib/lealtad';
 import { parsearFechaHora } from '@/lib/pedidoFecha';
 import { baseUrlDesdeRequest, crearPreferencia, mpConfigurado } from '@/lib/mercadoPago';
 import { enviarTelegram } from '@/lib/telegram';
@@ -134,14 +134,17 @@ export async function POST(req: NextRequest) {
     0
   );
 
-  // Calcular descuento según beneficio canjeado
-  let descuento = 0;
-  if (beneficioCanjeado === '15% Descuento') {
-    descuento = totalBruto * 0.15;
-  } else if (beneficioCanjeado === 'Articulo Gratis') {
-    // El artículo gratis se descuenta cuando implementemos el UI de selección
-    descuento = 0;
-  }
+  // El descuento se calcula sobre lo que el Sheet dice que el cliente
+  // tiene disponible AHORA (respetando vencimiento), no sobre lo que
+  // mande el navegador — así un cupón vencido o ya usado no se puede
+  // reintentar aunque la app del cliente no se haya actualizado.
+  const usuarioRowPrevio = await findRow('USUARIOS', 'ID_Usuario', usuario.id_usuario);
+  const beneficioReal = usuarioRowPrevio ? beneficioVigente(usuarioRowPrevio.data) : 'Ninguno';
+  const beneficioValido = beneficioCanjeado && beneficioCanjeado === beneficioReal ? beneficioCanjeado : 'Ninguno';
+
+  // El artículo gratis se descuenta cuando implementemos el UI de selección
+  const descuento =
+    beneficioValido === 'Articulo Gratis' ? 0 : descuentoPorBeneficio(beneficioValido, totalBruto);
   const totalFinal = totalBruto - descuento;
 
   // 1. Fila en PEDIDOS
@@ -153,7 +156,7 @@ export async function POST(req: NextRequest) {
     'Recibido',
     horaRecoleccion ?? '',
     totalBruto,
-    beneficioCanjeado ?? 'Ninguno',
+    beneficioValido,
     descuento,
     totalFinal,
     notas ?? '',
@@ -181,7 +184,7 @@ export async function POST(req: NextRequest) {
 
   // 3. Actualizar lealtad — se acumula por PEDIDO, no por artículos.
   // Las reglas viven en src/lib/lealtad.ts, compartidas con el mostrador.
-  await actualizarLealtad(usuario.id_usuario, beneficioCanjeado);
+  await actualizarLealtad(usuario.id_usuario, beneficioValido);
 
   // 4. Aviso a Telegram (si está configurado). Se hace await para que el
   // envío alcance a completarse antes de que termine la función en Vercel,

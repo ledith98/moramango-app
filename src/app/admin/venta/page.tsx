@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { TicketBotones } from '../TicketBotones';
 import type { DatosTicket } from '@/lib/ticket';
+import { esBeneficioReactivacion, montoReactivacion } from '@/lib/beneficioCliente';
 
 /** Fecha/hora en formato de ticket: 2026-07-14 16:25:30 (zona Monterrey) */
 const fechaTicket = () => {
@@ -42,6 +43,9 @@ interface Cliente {
 
 const ESTADOS = ['Recibido', 'En preparación', 'Listo para recoger', 'Entregado', 'Cancelado'];
 const METODOS = ['Efectivo', 'Terminal', 'Transferencia'];
+
+const etiquetaBeneficio = (b: string) =>
+  esBeneficioReactivacion(b) ? `$${montoReactivacion(b)} de descuento` : b;
 
 const ICONO_METODO: Record<string, string> = {
   Efectivo: '💵',
@@ -161,10 +165,15 @@ export default function VentaPage() {
   };
 
   const totalBruto = items.reduce((sum, i) => sum + i.precio * i.cantidad, 0);
-  // Solo el 15% se descuenta automático; el artículo gratis se elige a mano
+  // Solo 15% y reactivación se descuentan automático; el artículo gratis se elige a mano
   const beneficioCanjeado =
     aplicarBeneficio && cliente ? cliente.beneficio : 'Ninguno';
-  const descuento = beneficioCanjeado === '15% Descuento' ? totalBruto * 0.15 : 0;
+  const descuento =
+    beneficioCanjeado === '15% Descuento'
+      ? totalBruto * 0.15
+      : esBeneficioReactivacion(beneficioCanjeado)
+      ? Math.min(montoReactivacion(beneficioCanjeado), totalBruto)
+      : 0;
   const total = totalBruto - descuento;
 
   // Registra la venta en el sheet. estadoPago='Pagado' cuando el cobro ya
@@ -457,7 +466,7 @@ export default function VentaPage() {
                       <p className="text-xs text-neutral-500">
                         {c.telefono || 'sin teléfono'} · {c.ciclo} pedido{c.ciclo === 1 ? '' : 's'}
                         {c.beneficio !== 'Ninguno' && (
-                          <span className="text-green-600 font-semibold"> · 🎁 {c.beneficio}</span>
+                          <span className="text-green-600 font-semibold"> · 🎁 {etiquetaBeneficio(c.beneficio)}</span>
                         )}
                       </p>
                     </button>
@@ -494,7 +503,9 @@ export default function VentaPage() {
                     aplicarBeneficio ? 'bg-green-600 text-white' : 'bg-black text-white'
                   }`}
                 >
-                  {aplicarBeneficio ? `✓ Aplicado: ${cliente.beneficio}` : `🎁 Aplicar ${cliente.beneficio}`}
+                  {aplicarBeneficio
+                    ? `✓ Aplicado: ${etiquetaBeneficio(cliente.beneficio)}`
+                    : `🎁 Aplicar ${etiquetaBeneficio(cliente.beneficio)}`}
                 </button>
               ) : (
                 <p className="text-xs text-neutral-500 mt-2">

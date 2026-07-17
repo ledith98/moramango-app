@@ -9,23 +9,46 @@
  * - 5 pedidos  → 15% de descuento (canjearlo NO reinicia el ciclo).
  * - 10 pedidos → Artículo gratis ≤ $35 (canjearlo SÍ reinicia el ciclo).
  * - Un solo beneficio activo a la vez.
+ * - "Reactivacion:<monto>" → cupón de monto fijo que un admin genera a
+ *   mano para clientes inactivos (campaña de reactivación). Es de un
+ *   solo uso y puede vencer (Fecha_Expiracion_Beneficio).
  *
  * Importante: las columnas de USUARIOS se resuelven por NOMBRE de
  * encabezado (ensureColumn), nunca por índice fijo.
  */
 
 import { ensureColumn, findRow, updateCell } from './googleSheets';
+import { esBeneficioReactivacion, montoReactivacion } from './beneficioCliente';
+import { fechaHoyMTY } from './pedidoFecha';
+
+export { esBeneficioReactivacion, crearBeneficioReactivacion, montoReactivacion } from './beneficioCliente';
 
 export const META_DESCUENTO = 5;
 export const META_ARTICULO = 10;
 
-export type Beneficio = 'Ninguno' | '15% Descuento' | 'Articulo Gratis';
+export type Beneficio = 'Ninguno' | '15% Descuento' | 'Articulo Gratis' | string;
 
 /** Descuento en pesos que otorga un beneficio sobre el total bruto. */
 export function descuentoPorBeneficio(beneficio: string, totalBruto: number): number {
   if (beneficio === '15% Descuento') return totalBruto * 0.15;
+  if (esBeneficioReactivacion(beneficio)) return Math.min(montoReactivacion(beneficio), totalBruto);
   // El artículo gratis se descuenta al elegir el artículo, no aquí
   return 0;
+}
+
+/**
+ * El beneficio "de verdad" de un usuario, respetando vencimiento. Los
+ * cupones de reactivación llevan fecha límite; si ya pasó, se trata
+ * como si no tuviera nada (sin necesidad de una limpieza aparte).
+ */
+export function beneficioVigente(datos: {
+  Beneficio_Disponible?: string;
+  Fecha_Expiracion_Beneficio?: string;
+}): string {
+  const beneficio = datos.Beneficio_Disponible || 'Ninguno';
+  const vence = (datos.Fecha_Expiracion_Beneficio || '').trim();
+  if (vence && vence < fechaHoyMTY()) return 'Ninguno';
+  return beneficio;
 }
 
 interface EstadoLealtad {
@@ -52,6 +75,11 @@ export function siguienteEstadoLealtad({
     beneficioNuevo = 'Ninguno';
   } else if (beneficioCanjeado === '15% Descuento') {
     // El descuento NO reinicia el ciclo, sigue acumulando
+    beneficioNuevo = 'Ninguno';
+  } else if (typeof beneficioCanjeado === 'string' && esBeneficioReactivacion(beneficioCanjeado)) {
+    // Cupón de un solo uso: se limpia explícito. Si cayera en el "else"
+    // de abajo, un ciclo que aún no llega a 5 lo dejaría intacto y el
+    // cliente podría reusarlo en cada pedido.
     beneficioNuevo = 'Ninguno';
   } else {
     // No se canjeó nada — ¿se ganó un beneficio nuevo?

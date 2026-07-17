@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSession, signIn, signOut } from 'next-auth/react';
+import { esBeneficioReactivacion as esReactivacion, montoReactivacion } from '@/lib/beneficioCliente';
 
 // Separa un teléfono guardado tipo "+528186003207" en lada y número
 const parsearTelefono = (telefonoCompleto: string): { lada: string; numero: string } => {
@@ -327,7 +328,9 @@ export default function Home() {
 
   const descuentoAplicado = (() => {
     if (!beneficioAplicado || !lealtad) return 0;
-    if (lealtad.beneficioDisponible === '15% Descuento') return totalBruto * 0.15;
+    const b = lealtad.beneficioDisponible;
+    if (b === '15% Descuento') return totalBruto * 0.15;
+    if (esReactivacion(b)) return Math.min(montoReactivacion(b), totalBruto);
     return 0;
   })();
 
@@ -354,6 +357,13 @@ export default function Home() {
       return {
         emoji: '🏷️',
         texto: '¡Tienes 15% de descuento disponible! Puedes aplicarlo a este pedido.',
+        tipo: 'descuento',
+      };
+    }
+    if (esReactivacion(b)) {
+      return {
+        emoji: '💛',
+        texto: `¡Te extrañamos! Tienes $${montoReactivacion(b)} de descuento disponible. Puedes aplicarlo a este pedido.`,
         tipo: 'descuento',
       };
     }
@@ -916,7 +926,11 @@ export default function Home() {
                                 : 'bg-marron text-white'
                             }`}
                           >
-                            {beneficioAplicado ? '✓ Descuento aplicado' : 'Aplicar 15% de descuento'}
+                            {beneficioAplicado
+                              ? '✓ Descuento aplicado'
+                              : lealtad?.beneficioDisponible === '15% Descuento'
+                              ? 'Aplicar 15% de descuento'
+                              : `Aplicar $${montoReactivacion(lealtad?.beneficioDisponible || '')} de descuento`}
                           </button>
                         )}
                       </div>
@@ -1326,7 +1340,10 @@ export default function Home() {
                     <div className="mt-4 pt-4 border-t border-white/15">
                       {lealtad.beneficioDisponible !== 'Ninguno' ? (
                         <p className="text-sm font-bold text-amber-300">
-                          🎁 Tienes disponible: {lealtad.beneficioDisponible}
+                          🎁 Tienes disponible:{' '}
+                          {esReactivacion(lealtad.beneficioDisponible)
+                            ? `$${montoReactivacion(lealtad.beneficioDisponible)} de descuento`
+                            : lealtad.beneficioDisponible}
                         </p>
                       ) : (
                         <>

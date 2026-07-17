@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSheetData } from '@/lib/googleSheets';
-import { META_ARTICULO, META_DESCUENTO } from '@/lib/lealtad';
+import { beneficioVigente, META_ARTICULO, META_DESCUENTO } from '@/lib/lealtad';
 import { getAdminSession } from '@/lib/roles';
 
 const LIMITE = 8;
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
     .slice(0, LIMITE)
     .map((u) => {
       const ciclo = parseInt(u.Ciclo_Actual) || 0;
-      const beneficio = u.Beneficio_Disponible || 'Ninguno';
+      const beneficio = beneficioVigente(u);
       return {
         id: u.ID_Usuario,
         nombre: u.Nombre || '',

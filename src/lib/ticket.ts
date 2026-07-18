@@ -44,24 +44,15 @@ export interface DatosTicket {
   lealtad?: string;
 }
 
-// 384px ≈ ancho útil de un rollo térmico de 58mm (el tamaño más común en
-// impresoras chicas de mostrador). Si tu rollo es de 80mm, súbelo a 576.
-const ANCHO = 384;
-const MARGEN = 18;
+// 576px ≈ ancho útil de un rollo térmico de 80mm. Si el rollo fuera de
+// 58mm, bájalo a 384.
+const ANCHO = 576;
+const MARGEN = 24;
 const NEGRO = '#111111';
 const GRIS = '#555555';
 const MONO = 'ui-monospace, "Courier New", monospace';
 
 const dinero = (n: number) => `$${n.toFixed(2)}`;
-
-function cargarLogo(): Promise<HTMLImageElement | null> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
-    img.src = '/logo.png';
-  });
-}
 
 /** Parte un texto en líneas que quepan en maxAncho. */
 function envolver(ctx: CanvasRenderingContext2D, texto: string, maxAncho: number): string[] {
@@ -89,8 +80,6 @@ function recortar(ctx: CanvasRenderingContext2D, texto: string, maxAncho: number
 }
 
 export async function generarTicket(datos: DatosTicket): Promise<HTMLCanvasElement> {
-  const logo = await cargarLogo();
-
   // Medir cuántas líneas ocupará la dirección para calcular la altura
   const medidor = document.createElement('canvas').getContext('2d')!;
   medidor.font = `13px ${MONO}`;
@@ -129,13 +118,7 @@ export async function generarTicket(datos: DatosTicket): Promise<HTMLCanvasEleme
     y += 16;
   };
 
-  // ── Encabezado ──
-  if (logo) {
-    const tam = 92;
-    ctx.drawImage(logo, centro - tam / 2, y, tam, tam);
-    y += tam + 16;
-  }
-
+  // ── Encabezado (sin logo: solo texto y datos del local) ──
   ctx.textAlign = 'center';
   ctx.fillStyle = NEGRO;
   ctx.font = `bold 28px ${MONO}`;

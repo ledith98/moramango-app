@@ -44,8 +44,10 @@ export interface DatosTicket {
   lealtad?: string;
 }
 
-const ANCHO = 560;
-const MARGEN = 30;
+// 384px ≈ ancho útil de un rollo térmico de 58mm (el tamaño más común en
+// impresoras chicas de mostrador). Si tu rollo es de 80mm, súbelo a 576.
+const ANCHO = 384;
+const MARGEN = 18;
 const NEGRO = '#111111';
 const GRIS = '#555555';
 const MONO = 'ui-monospace, "Courier New", monospace';
@@ -295,9 +297,13 @@ export async function imprimirTicket(datos: DatosTicket): Promise<void> {
   }
   win.document.write(
     `<html><head><title>Ticket ${datos.idPedido}</title><style>
-      @page { margin: 5mm; }
-      body { margin:0; display:flex; justify-content:center; background:#fff; }
-      img { width:100%; max-width:380px; height:auto; }
+      /* Sin margen de página ni tope de ancho: la imagen ya viene al
+         ancho justo del rollo (ver ANCHO en este archivo). Agregar
+         márgenes o un max-width aquí hace que apps como RawBT vuelvan
+         a reescalar la imagen y termine viéndose aplastada/angosta. */
+      @page { margin: 0; }
+      body { margin:0; background:#fff; }
+      img { display:block; width:100%; height:auto; }
     </style></head><body>
       <img src="${url}" onload="window.focus();window.print();">
     </body></html>`

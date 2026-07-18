@@ -54,6 +54,15 @@ const MONO = 'ui-monospace, "Courier New", monospace';
 
 const dinero = (n: number) => `$${n.toFixed(2)}`;
 
+function cargarLogo(): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = '/logo.png';
+  });
+}
+
 /** Parte un texto en líneas que quepan en maxAncho. */
 function envolver(ctx: CanvasRenderingContext2D, texto: string, maxAncho: number): string[] {
   const palabras = texto.split(' ');
@@ -80,9 +89,11 @@ function recortar(ctx: CanvasRenderingContext2D, texto: string, maxAncho: number
 }
 
 export async function generarTicket(datos: DatosTicket): Promise<HTMLCanvasElement> {
+  const logo = await cargarLogo();
+
   // Medir cuántas líneas ocupará la dirección para calcular la altura
   const medidor = document.createElement('canvas').getContext('2d')!;
-  medidor.font = `bold 15px ${MONO}`;
+  medidor.font = `bold 17px ${MONO}`;
   const lineasDir = NEGOCIO.direccion ? envolver(medidor, NEGOCIO.direccion, ANCHO - MARGEN * 2) : [];
 
   // Se dibuja en un lienzo holgado y al final se recorta a la altura real
@@ -118,36 +129,42 @@ export async function generarTicket(datos: DatosTicket): Promise<HTMLCanvasEleme
     y += 16;
   };
 
-  // ── Encabezado (sin logo: solo texto y datos del local) ──
+  // ── Encabezado (con logo) ──
+  if (logo) {
+    const tam = 130;
+    ctx.drawImage(logo, centro - tam / 2, y, tam, tam);
+    y += tam + 18;
+  }
+
   ctx.textAlign = 'center';
   ctx.fillStyle = NEGRO;
-  ctx.font = `bold 32px ${MONO}`;
+  ctx.font = `bold 36px ${MONO}`;
   ctx.fillText(NEGOCIO.nombre.toUpperCase(), centro, y);
-  y += 36;
+  y += 40;
 
   ctx.fillStyle = GRIS;
-  ctx.font = `bold 16px ${MONO}`;
+  ctx.font = `bold 18px ${MONO}`;
   ctx.fillText(NEGOCIO.lema, centro, y);
-  y += 28;
+  y += 30;
 
   ctx.fillStyle = NEGRO;
-  ctx.font = `bold 16px ${MONO}`;
+  ctx.font = `bold 18px ${MONO}`;
   ctx.fillText(datos.fecha, centro, y);
-  y += 26;
+  y += 28;
 
   ctx.fillStyle = GRIS;
-  ctx.font = `bold 15px ${MONO}`;
+  ctx.font = `bold 17px ${MONO}`;
   for (const linea of lineasDir) {
     ctx.fillText(linea, centro, y);
-    y += 20;
+    y += 22;
   }
   if (NEGOCIO.telefono) {
     ctx.fillText(`Tel: ${NEGOCIO.telefono}`, centro, y);
-    y += 20;
+    y += 22;
   }
   if (NEGOCIO.rfc) {
     ctx.fillText(`RFC: ${NEGOCIO.rfc}`, centro, y);
-    y += 20;
+    y += 22;
   }
   y += 6;
   punteado();
@@ -155,105 +172,105 @@ export async function generarTicket(datos: DatosTicket): Promise<HTMLCanvasEleme
   // ── Datos del pedido ──
   ctx.textAlign = 'left';
   ctx.fillStyle = NEGRO;
-  ctx.font = `bold 15px ${MONO}`;
+  ctx.font = `bold 17px ${MONO}`;
   ctx.fillText(`TICKET: ${datos.idPedido}`, MARGEN, y);
-  y += 21;
+  y += 23;
   if (datos.cliente) {
     ctx.fillText(recortar(ctx, `CLIENTE: ${datos.cliente}`, ANCHO - MARGEN * 2), MARGEN, y);
-    y += 21;
+    y += 23;
   }
   y += 4;
   punteado();
 
   // ── Productos ──
   ctx.fillStyle = GRIS;
-  ctx.font = `bold 14px ${MONO}`;
+  ctx.font = `bold 16px ${MONO}`;
   ctx.textAlign = 'left';
   ctx.fillText('CANT  PRODUCTO', MARGEN, y);
   ctx.textAlign = 'right';
   ctx.fillText('TOTAL', derecha, y);
-  y += 24;
+  y += 26;
 
   ctx.fillStyle = NEGRO;
   for (const item of datos.items) {
-    ctx.font = `bold 16px ${MONO}`;
+    ctx.font = `bold 18px ${MONO}`;
     ctx.textAlign = 'left';
     // Nombre en su propia línea (como el ticket de referencia)
     ctx.fillText(recortar(ctx, item.nombre, ANCHO - MARGEN * 2), MARGEN, y);
-    y += 21;
+    y += 23;
     ctx.fillStyle = GRIS;
-    ctx.font = `bold 15px ${MONO}`;
+    ctx.font = `bold 17px ${MONO}`;
     ctx.fillText(`${item.cantidad}x`, MARGEN, y);
     ctx.fillStyle = NEGRO;
     ctx.textAlign = 'right';
     ctx.fillText(dinero(item.subtotal), derecha, y);
-    y += 23;
+    y += 25;
   }
   y += 2;
   punteado();
 
   // ── Totales ──
-  ctx.font = `bold 16px ${MONO}`;
+  ctx.font = `bold 18px ${MONO}`;
   if (datos.descuento > 0) {
     ctx.fillStyle = GRIS;
     ctx.textAlign = 'left';
     ctx.fillText('SUBTOTAL:', MARGEN, y);
     ctx.textAlign = 'right';
     ctx.fillText(dinero(datos.totalBruto), derecha, y);
-    y += 24;
+    y += 26;
 
     ctx.fillStyle = '#15803d';
     ctx.textAlign = 'left';
     ctx.fillText('DESCUENTO:', MARGEN, y);
     ctx.textAlign = 'right';
     ctx.fillText(`-${dinero(datos.descuento)}`, derecha, y);
-    y += 26;
+    y += 28;
   }
 
   ctx.fillStyle = NEGRO;
-  ctx.font = `bold 26px ${MONO}`;
+  ctx.font = `bold 30px ${MONO}`;
   ctx.textAlign = 'left';
   ctx.fillText('TOTAL:', MARGEN, y);
   ctx.textAlign = 'right';
   ctx.fillText(dinero(datos.total), derecha, y);
-  y += 34;
+  y += 38;
   punteado();
 
   if (datos.metodoPago) {
     ctx.fillStyle = NEGRO;
-    ctx.font = `bold 15px ${MONO}`;
+    ctx.font = `bold 17px ${MONO}`;
     ctx.textAlign = 'left';
     ctx.fillText(`FORMA PAGO: ${datos.metodoPago.toUpperCase()}`, MARGEN, y);
-    y += 24;
+    y += 26;
     punteado();
   }
 
   // ── Pie ──
   ctx.textAlign = 'center';
   ctx.fillStyle = NEGRO;
-  ctx.font = `bold 18px ${MONO}`;
+  ctx.font = `bold 20px ${MONO}`;
   ctx.fillText('GRACIAS POR SU COMPRA', centro, y);
-  y += 26;
+  y += 28;
 
   if (datos.lealtad) {
     ctx.fillStyle = '#b45309';
-    ctx.font = `bold 14px ${MONO}`;
+    ctx.font = `bold 16px ${MONO}`;
     for (const linea of envolver(ctx, datos.lealtad, ANCHO - MARGEN * 2)) {
       ctx.fillText(linea, centro, y);
-      y += 19;
+      y += 21;
     }
     y += 6;
   }
 
   ctx.fillStyle = GRIS;
-  ctx.font = `bold 14px ${MONO}`;
+  ctx.font = `bold 16px ${MONO}`;
   if (NEGOCIO.instagram) {
     ctx.fillText(`IG: @${NEGOCIO.instagram}`, centro, y);
-    y += 19;
+    y += 21;
   }
   if (NEGOCIO.facebook) {
     ctx.fillText(`FB: ${NEGOCIO.facebook}`, centro, y);
-    y += 19;
+    y += 21;
   }
 
   // Recortar a la altura real del contenido

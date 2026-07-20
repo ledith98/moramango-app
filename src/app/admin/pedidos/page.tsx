@@ -367,7 +367,6 @@ export default function PedidosPage() {
                   <div className="mt-2">
                     <TicketBotones
                       datos={ticketDelPedido(detalle)}
-                      telefono={detalle.cliente?.telefono}
                       compacto
                     />
                   </div>

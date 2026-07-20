@@ -66,7 +66,6 @@ export default function VentaPage() {
   const [error, setError] = useState('');
   const [ventaOk, setVentaOk] = useState<string | null>(null);
   const [ultimoTicket, setUltimoTicket] = useState<DatosTicket | null>(null);
-  const [ultimoTelefono, setUltimoTelefono] = useState('');
   // Cobro en terminal Point
   const [esperandoTerminal, setEsperandoTerminal] = useState(false);
   const [mensajeTerminal, setMensajeTerminal] = useState('');
@@ -200,7 +199,6 @@ export default function VentaPage() {
 
     // Guardar el ticket ANTES de limpiar el formulario
     const faltan = cliente ? Math.max(0, 5 - (cliente.ciclo + 1)) : 0;
-    setUltimoTelefono(telefono.trim());
     setUltimoTicket({
       idPedido: data.idPedido,
       fecha: fechaTicket(),
@@ -602,7 +600,7 @@ export default function VentaPage() {
               <p className="text-green-700 font-semibold">✅ Venta registrada</p>
               <p className="font-mono text-sm text-green-800 mt-1">{ventaOk}</p>
             </div>
-            {ultimoTicket && <TicketBotones datos={ultimoTicket} telefono={ultimoTelefono} />}
+            {ultimoTicket && <TicketBotones datos={ultimoTicket} />}
           </div>
         )}
 

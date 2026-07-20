@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/authOptions';
-import { findRow, updateCell } from '@/lib/googleSheets';
+import { findRow, getSheetData, updateCell } from '@/lib/googleSheets';
 import { beneficioVigente } from '@/lib/lealtad';
 
 export async function GET() {
@@ -63,7 +63,24 @@ export async function PATCH(req: NextRequest) {
     await updateCell('USUARIOS', usuarioRow.rowIndex, 2, nombre.trim());
   }
   if (typeof telefono === 'string') {
-    await updateCell('USUARIOS', usuarioRow.rowIndex, 3, telefono.trim());
+    const nuevoTel = telefono.trim();
+    // Un teléfono no puede quedar registrado en dos cuentas distintas.
+    const soloDigitos = (t: string) => (t || '').replace(/\D/g, '');
+    if (soloDigitos(nuevoTel).length >= 8) {
+      const usuarios = await getSheetData('USUARIOS');
+      const enOtraCuenta = usuarios.some(
+        (u) =>
+          u.ID_Usuario !== usuario.id_usuario &&
+          soloDigitos(u.Telefono) === soloDigitos(nuevoTel)
+      );
+      if (enOtraCuenta) {
+        return NextResponse.json(
+          { error: 'Ese número ya está registrado en otra cuenta.' },
+          { status: 409 }
+        );
+      }
+    }
+    await updateCell('USUARIOS', usuarioRow.rowIndex, 3, nuevoTel);
   }
 
   return NextResponse.json({ success: true });

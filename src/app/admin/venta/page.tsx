@@ -66,6 +66,7 @@ export default function VentaPage() {
   const [error, setError] = useState('');
   const [ventaOk, setVentaOk] = useState<string | null>(null);
   const [ultimoTicket, setUltimoTicket] = useState<DatosTicket | null>(null);
+  const [ultimoTelefono, setUltimoTelefono] = useState('');
   // Cobro en terminal Point
   const [esperandoTerminal, setEsperandoTerminal] = useState(false);
   const [mensajeTerminal, setMensajeTerminal] = useState('');
@@ -199,6 +200,7 @@ export default function VentaPage() {
 
     // Guardar el ticket ANTES de limpiar el formulario
     const faltan = cliente ? Math.max(0, 5 - (cliente.ciclo + 1)) : 0;
+    setUltimoTelefono(telefono.trim());
     setUltimoTicket({
       idPedido: data.idPedido,
       fecha: fechaTicket(),
@@ -384,11 +386,11 @@ export default function VentaPage() {
                     <div className="mt-2 flex items-center justify-between bg-neutral-100 rounded-lg p-1">
                       <button
                         onClick={() => quitar(p.ID_Producto)}
-                        className="w-7 h-7 flex items-center justify-center bg-white rounded-md font-medium shadow-sm active:scale-90"
+                        className="w-7 h-7 flex items-center justify-center bg-white rounded-md font-bold text-neutral-900 shadow-sm active:scale-90"
                       >
                         −
                       </button>
-                      <span className="font-bold text-sm tabular-nums">{cant}</span>
+                      <span className="font-bold text-sm text-neutral-900 tabular-nums">{cant}</span>
                       <button
                         onClick={() => agregar(p)}
                         className="w-7 h-7 flex items-center justify-center bg-black text-white rounded-md font-medium active:scale-90"
@@ -412,7 +414,7 @@ export default function VentaPage() {
           <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 space-y-2">
             {items.map((i) => (
               <div key={i.id} className="flex justify-between text-sm">
-                <span className="text-neutral-700">
+                <span className="text-neutral-900 font-medium">
                   {i.cantidad}× {i.nombre}
                 </span>
                 <span className="font-semibold text-neutral-900">
@@ -423,8 +425,8 @@ export default function VentaPage() {
             {descuento > 0 && (
               <>
                 <div className="flex justify-between text-sm pt-2 border-t border-neutral-100">
-                  <span className="text-neutral-500">Subtotal</span>
-                  <span className="text-neutral-500">${totalBruto.toFixed(2)}</span>
+                  <span className="text-neutral-700">Subtotal</span>
+                  <span className="text-neutral-700">${totalBruto.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm text-green-600 font-medium">
                   <span>🎁 Descuento 15% (lealtad)</span>
@@ -600,7 +602,7 @@ export default function VentaPage() {
               <p className="text-green-700 font-semibold">✅ Venta registrada</p>
               <p className="font-mono text-sm text-green-800 mt-1">{ventaOk}</p>
             </div>
-            {ultimoTicket && <TicketBotones datos={ultimoTicket} />}
+            {ultimoTicket && <TicketBotones datos={ultimoTicket} telefono={ultimoTelefono} />}
           </div>
         )}
 

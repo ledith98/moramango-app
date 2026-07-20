@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSheetData, findRow, updateCell, ensureColumn } from '@/lib/googleSheets';
 import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
+import { METODO_PAGO_EN_LINEA } from '@/lib/negocio';
 import { consumoPorInsumo, normalizarNombre } from '@/lib/insumos';
 import { getAdminSession } from '@/lib/roles';
 
@@ -58,7 +59,8 @@ export async function GET(req: NextRequest) {
 }
 
 // ── PATCH: cambiar estado y/o método de pago de un pedido ────────────────────
-const METODOS_PAGO = ['Efectivo', 'Terminal', 'Transferencia', 'Mercado Pago'];
+// 'Mercado Pago' se acepta por compatibilidad con pedidos viejos
+const METODOS_PAGO = ['Efectivo', 'Terminal', 'Transferencia', METODO_PAGO_EN_LINEA, 'Mercado Pago'];
 
 export async function PATCH(req: NextRequest) {
   if (!(await getAdminSession())) {

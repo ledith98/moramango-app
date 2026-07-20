@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSheetData } from '@/lib/googleSheets';
+import { normalizarMetodoPago } from '@/lib/negocio';
 import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 import { getAdminSession } from '@/lib/roles';
 
@@ -53,7 +54,7 @@ export async function GET(req: NextRequest) {
   // caen en 'Sin registrar'.
   const ventasPorMetodo: Record<string, { total: number; pedidos: number }> = {};
   for (const p of validos) {
-    const metodo = p.Metodo_Pago || 'Sin registrar';
+    const metodo = normalizarMetodoPago(p.Metodo_Pago) || 'Sin registrar';
     if (!ventasPorMetodo[metodo]) ventasPorMetodo[metodo] = { total: 0, pedidos: 0 };
     ventasPorMetodo[metodo].total += parseFloat(p.Total_Final) || 0;
     ventasPorMetodo[metodo].pedidos += 1;

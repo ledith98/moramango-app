@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSession, signIn, signOut } from 'next-auth/react';
 import { esBeneficioReactivacion as esReactivacion, montoReactivacion } from '@/lib/beneficioCliente';
+import { TRANSFERENCIA, TRANSFERENCIA_HABILITADA } from '@/lib/negocio';
 
 // Separa un teléfono guardado tipo "+528186003207" en lada y número
 const parsearTelefono = (telefonoCompleto: string): { lada: string; numero: string } => {
@@ -74,16 +75,6 @@ const fechaBonita = (iso: string) => {
 
 const CARRITO_KEY = 'moramango_carrito';
 
-// Datos de la cuenta para pago por transferencia (SPEI).
-// Se configuran con variables de entorno NEXT_PUBLIC_* (en .env.local y
-// Vercel) para no dejar los datos bancarios dentro del código/GitHub.
-// Si no hay CLABE configurada, la opción de transferencia no aparece.
-const TRANSFERENCIA = {
-  clabe: process.env.NEXT_PUBLIC_TRANSFER_CLABE || '',
-  titular: process.env.NEXT_PUBLIC_TRANSFER_TITULAR || '',
-  banco: process.env.NEXT_PUBLIC_TRANSFER_BANCO || '',
-};
-const TRANSFERENCIA_HABILITADA = TRANSFERENCIA.clabe.length > 0;
 
 export default function Home() {
   const { data: session } = useSession();
@@ -295,12 +286,9 @@ export default function Home() {
     // Formato final: +528186003207
     const telefonoCompleto = `+${ladaLimpia}${numeroLimpio}`;
 
-    localStorage.setItem('moramango_nombre', nombreUsuario);
-    localStorage.setItem('moramango_telefono', telefonoCompleto);
-
     if (session) {
       try {
-        await fetch('/api/usuario', {
+        const res = await fetch('/api/usuario', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -308,11 +296,19 @@ export default function Home() {
             telefono: telefonoCompleto,
           }),
         });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          // Ej: el número ya está registrado en otra cuenta (409)
+          setErrorTelefono(data.error || 'No se pudo guardar. Intenta de nuevo.');
+          return;
+        }
       } catch {
-        // Si falla el sync, ya está en localStorage. No bloqueamos al usuario.
+        // Si falla por red, ya quedará en localStorage abajo. No bloqueamos.
       }
     }
 
+    localStorage.setItem('moramango_nombre', nombreUsuario);
+    localStorage.setItem('moramango_telefono', telefonoCompleto);
     setVerPerfil(false);
   };
 
@@ -816,7 +812,7 @@ export default function Home() {
                                   <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between bg-white/90 backdrop-blur-sm rounded-b-2xl px-1.5 py-1 shadow-sm">
                                     <button
                                       onClick={() => eliminarDelCarrito(producto.id)}
-                                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-neutral-100 active:scale-90 transition-transform text-neutral-700"
+                                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-neutral-100 active:scale-90 transition-transform text-neutral-900"
                                     >
                                       {cantidadAgregada === 1 ? (
                                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -893,12 +889,12 @@ export default function Home() {
                 <div key={item.id} className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-neutral-100">
                   <div className="pr-4 flex-1">
                     <h3 className="font-semibold text-neutral-900 leading-tight">{item.nombre}</h3>
-                    <p className="text-neutral-500 font-medium text-sm mt-1">${(item.precio * item.cantidad).toFixed(2)}</p>
+                    <p className="text-neutral-800 font-semibold text-sm mt-1">${(item.precio * item.cantidad).toFixed(2)}</p>
                   </div>
                   <div className="flex items-center bg-neutral-100 rounded-xl p-1 gap-2 shrink-0">
-                    <button onClick={() => eliminarDelCarrito(item.id)} className="w-8 h-8 flex items-center justify-center bg-white rounded-lg font-medium text-neutral-700 shadow-sm active:scale-90">-</button>
+                    <button onClick={() => eliminarDelCarrito(item.id)} className="w-8 h-8 flex items-center justify-center bg-white rounded-lg font-bold text-neutral-900 shadow-sm active:scale-90">-</button>
                     <span className="font-bold text-neutral-900 px-1 min-w-[16px] text-center">{item.cantidad}</span>
-                    <button onClick={() => agregarAlCarrito(item)} className="w-8 h-8 flex items-center justify-center bg-white rounded-lg font-medium text-neutral-700 shadow-sm active:scale-90">+</button>
+                    <button onClick={() => agregarAlCarrito(item)} className="w-8 h-8 flex items-center justify-center bg-white rounded-lg font-bold text-neutral-900 shadow-sm active:scale-90">+</button>
                   </div>
                 </div>
               ))}

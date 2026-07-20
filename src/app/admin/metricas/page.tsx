@@ -21,12 +21,12 @@ const METODOS_CORTE = [
   { clave: 'Efectivo', icono: '💵' },
   { clave: 'Terminal', icono: '💳' },
   { clave: 'Transferencia', icono: '📲' },
-  { clave: 'Mercado Pago', icono: '🛍️' },
+  { clave: 'Pago en línea', icono: '🛍️' },
   { clave: 'Sin registrar', icono: '❔' },
 ];
 
 // Filas que solo se muestran cuando tienen datos
-const METODOS_CONDICIONALES = ['Mercado Pago', 'Sin registrar'];
+const METODOS_CONDICIONALES = ['Pago en línea', 'Sin registrar'];
 
 
 // Atajos de rango rápidos

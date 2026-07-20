@@ -286,6 +286,34 @@ export async function generarTicket(datos: DatosTicket): Promise<HTMLCanvasEleme
   return canvas;
 }
 
+/**
+ * Versión en TEXTO del ticket, para mandarla por WhatsApp directo al
+ * número del cliente. (Un link wa.me solo puede llevar texto, no una
+ * imagen; por eso el envío directo al número usa esta versión.)
+ */
+export function textoTicket(datos: DatosTicket): string {
+  const lineas: string[] = [];
+  lineas.push(`🥭 *${NEGOCIO.nombre.toUpperCase()}* — ${NEGOCIO.lema}`);
+  lineas.push(datos.fecha);
+  lineas.push(`Ticket: ${datos.idPedido}`);
+  if (datos.cliente) lineas.push(`Cliente: ${datos.cliente}`);
+  lineas.push('');
+  for (const it of datos.items) {
+    lineas.push(`${it.cantidad}x ${it.nombre} — $${it.subtotal.toFixed(2)}`);
+  }
+  lineas.push('');
+  if (datos.descuento > 0) {
+    lineas.push(`Subtotal: $${datos.totalBruto.toFixed(2)}`);
+    lineas.push(`Descuento: -$${datos.descuento.toFixed(2)}`);
+  }
+  lineas.push(`*TOTAL: $${datos.total.toFixed(2)}*`);
+  if (datos.metodoPago) lineas.push(`Pago: ${datos.metodoPago}`);
+  lineas.push('');
+  lineas.push('¡Gracias por tu compra! 💛');
+  if (datos.lealtad) lineas.push(datos.lealtad);
+  return lineas.join('\n');
+}
+
 /** Abre el diálogo de impresión con el ticket. */
 export async function imprimirTicket(datos: DatosTicket): Promise<void> {
   const canvas = await generarTicket(datos);

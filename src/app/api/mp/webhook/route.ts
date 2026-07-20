@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ensureColumn, findRow, updateCell } from '@/lib/googleSheets';
 import { obtenerPago } from '@/lib/mercadoPago';
+import { METODO_PAGO_EN_LINEA } from '@/lib/negocio';
 import { enviarTelegram } from '@/lib/telegram';
 
 export async function POST(req: NextRequest) {
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest) {
     await updateCell('PEDIDOS', pedidoRow.rowIndex, colEstadoPago, 'Pagado');
 
     const colMetodo = await ensureColumn('PEDIDOS', 'Metodo_Pago');
-    await updateCell('PEDIDOS', pedidoRow.rowIndex, colMetodo, 'Mercado Pago');
+    await updateCell('PEDIDOS', pedidoRow.rowIndex, colMetodo, METODO_PAGO_EN_LINEA);
 
     // Segundo aviso: el primero salió al crear el pedido diciendo que el
     // pago estaba pendiente; este confirma que el dinero sí entró.
@@ -63,7 +64,7 @@ export async function POST(req: NextRequest) {
       await enviarTelegram(
         `✅ <b>Pago confirmado</b> — ${pago.external_reference}\n` +
           `👤 ${pedidoRow.data.Nombre_Cliente_Snap || 'Cliente'}\n` +
-          `💳 Mercado Pago — <b>$${total.toFixed(2)}</b>`
+          `💳 ${METODO_PAGO_EN_LINEA} — <b>$${total.toFixed(2)}</b>`
       );
     }
 

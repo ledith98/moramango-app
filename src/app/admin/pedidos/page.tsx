@@ -2,8 +2,18 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
+import {
+  linkWhatsApp,
+  mensajeTransferencia,
+  METODO_PAGO_EN_LINEA,
+  normalizarMetodoPago,
+  TRANSFERENCIA_HABILITADA,
+} from '@/lib/negocio';
 import { TicketBotones } from '../TicketBotones';
 import type { DatosTicket } from '@/lib/ticket';
+
+const iconoMetodo = (m: string) =>
+  m === 'Efectivo' ? '💵' : m === 'Transferencia' ? '📲' : m === METODO_PAGO_EN_LINEA ? '🛍️' : '💳';
 
 interface Pedido {
   ID_Pedido: string;
@@ -75,11 +85,6 @@ const mensajeWhatsApp = (estado: string, nombre: string, idPedido: string): stri
     default:
       return `¡Hola ${primerNombre}! Te escribimos de Moramango sobre tu pedido ${idPedido}.`;
   }
-};
-
-const linkWhatsApp = (telefono: string, mensaje: string): string => {
-  const digitos = telefono.replace(/\D/g, '');
-  return `https://wa.me/${digitos}?text=${encodeURIComponent(mensaje)}`;
 };
 
 /** Arma los datos del ticket a partir del detalle del pedido. */
@@ -309,7 +314,8 @@ export default function PedidosPage() {
                         </span>
                         {detalle.pedido.Metodo_Pago && (
                           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600">
-                            {detalle.pedido.Metodo_Pago === 'Efectivo' ? '💵' : detalle.pedido.Metodo_Pago === 'Transferencia' ? '📲' : detalle.pedido.Metodo_Pago === 'Mercado Pago' ? '🛍️' : '💳'} {detalle.pedido.Metodo_Pago}
+                            {iconoMetodo(normalizarMetodoPago(detalle.pedido.Metodo_Pago))}{' '}
+                            {normalizarMetodoPago(detalle.pedido.Metodo_Pago)}
                           </span>
                         )}
                       </div>
@@ -342,8 +348,28 @@ export default function PedidosPage() {
                       💬 Avisar por WhatsApp
                     </a>
                   )}
+                  {detalle.cliente?.telefono && TRANSFERENCIA_HABILITADA && (
+                    <a
+                      href={linkWhatsApp(
+                        detalle.cliente.telefono,
+                        mensajeTransferencia(
+                          detalle.cliente?.nombre || detalle.pedido.Nombre_Cliente_Snap,
+                          parseFloat(detalle.pedido.Total_Final || '0') || 0
+                        )
+                      )}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 w-full flex items-center justify-center gap-2 bg-neutral-100 text-neutral-700 font-semibold py-2.5 rounded-xl active:scale-95 transition-transform"
+                    >
+                      📲 Enviar datos de transferencia
+                    </a>
+                  )}
                   <div className="mt-2">
-                    <TicketBotones datos={ticketDelPedido(detalle)} compacto />
+                    <TicketBotones
+                      datos={ticketDelPedido(detalle)}
+                      telefono={detalle.cliente?.telefono}
+                      compacto
+                    />
                   </div>
                 </div>
 
@@ -379,8 +405,9 @@ export default function PedidosPage() {
                   <div>
                     <p className="text-xs font-semibold text-neutral-500 mb-2">Método de pago</p>
                     <div className="flex flex-wrap gap-2">
-                      {['Efectivo', 'Terminal', 'Transferencia', 'Mercado Pago'].map((m) => {
-                        const activo = detalle.pedido.Metodo_Pago === m;
+                      {['Efectivo', 'Terminal', 'Transferencia', METODO_PAGO_EN_LINEA].map((m) => {
+                        // Los pedidos viejos con 'Mercado Pago' cuentan como 'Pago en línea'
+                        const activo = normalizarMetodoPago(detalle.pedido.Metodo_Pago) === m;
                         return (
                           <button
                             key={m}
@@ -392,7 +419,7 @@ export default function PedidosPage() {
                                 : 'bg-neutral-100 text-neutral-600 active:scale-95'
                             } ${actualizando && !activo ? 'opacity-50' : ''}`}
                           >
-                            {m === 'Efectivo' ? '💵' : m === 'Transferencia' ? '📲' : m === 'Mercado Pago' ? '🛍️' : '💳'} {m}
+                            {iconoMetodo(m)} {m}
                           </button>
                         );
                       })}

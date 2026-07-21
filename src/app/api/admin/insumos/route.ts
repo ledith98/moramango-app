@@ -5,18 +5,21 @@
  *         stock teórico, consumo diario (ventas reales de los últimos
  *         7 días × recetas de Catalogo, con merma), días restantes,
  *         nivel de alarma y compra sugerida; más el conteo físico y su
- *         diferencia contra el teórico.
- * PATCH → { idInsumo, accion, cantidad? }
+ *         diferencia contra el teórico. Excluye eliminados.
+ * POST  → Crea un insumo nuevo (nombre, unidad, categoría, proveedor).
+ * PATCH → { idInsumo, accion, cantidad?, valor? }
  *         restock: suma cantidad al Stock_Actual
  *         conteo:  guarda Conteo_Fisico + Fecha_Conteo
  *         ajustar: Stock_Actual = Conteo_Fisico (cuadre de inventario)
+ *         ocultar: valor 'si'/'no' — lo saca de la vista y alertas
+ *         eliminar: baja lógica (columna Eliminado)
  *
- * Columnas Stock_Actual / Conteo_Fisico / Fecha_Conteo se crean solas
- * en la hoja Insumos la primera vez (ensureColumn).
+ * Columnas nuevas (Stock_Actual, Conteo_Fisico, Oculto, Eliminado, etc.)
+ * se crean solas en la hoja Insumos la primera vez (ensureColumn).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { ensureColumn, getSheetData, updateCell } from '@/lib/googleSheets';
+import { appendRow, ensureColumn, getSheetData, updateCell } from '@/lib/googleSheets';
 import {
   CATEGORIA_FRESCOS,
   CATEGORIAS_INSUMOS,
@@ -76,7 +79,11 @@ export async function GET() {
     catalogo.map((c) => normalizarNombre(c.Ingrediente)).filter(Boolean)
   );
 
-  const resultado = insumos.map((ins) => {
+  // Los eliminados (baja lógica, como en Productos) no se muestran nunca;
+  // los ocultos sí viajan al panel con su bandera para poder reactivarlos.
+  const visibles = insumos.filter((ins) => (ins.Eliminado || '').toLowerCase() !== 'si');
+
+  const resultado = visibles.map((ins) => {
     const clave = normalizarNombre(ins['Nombre insumo']);
     const stock = parseFloat(ins.Stock_Actual) || 0;
     const consumido = consumo.get(clave) || 0;
@@ -136,6 +143,7 @@ export async function GET() {
       // ISO (YYYY-MM-DD) para prellenar el <input type="date"> del panel
       fechaCompraISO: infoCompra?.fechaISO ?? '',
       enRecetas: nombresEnRecetas.has(clave),
+      oculto: (ins.Oculto || '').toLowerCase() === 'si',
     };
   });
 
@@ -149,7 +157,8 @@ export async function PATCH(req: NextRequest) {
 
   const { idInsumo, accion, cantidad, valor } = await req.json();
 
-  if (!idInsumo || !['restock', 'conteo', 'ajustar', 'categoria', 'fecha_compra'].includes(accion)) {
+  const ACCIONES = ['restock', 'conteo', 'ajustar', 'categoria', 'fecha_compra', 'ocultar', 'eliminar'];
+  if (!idInsumo || !ACCIONES.includes(accion)) {
     return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 });
   }
 
@@ -171,6 +180,26 @@ export async function PATCH(req: NextRequest) {
     }
     const colCategoria = await ensureColumn('Insumos', 'Categoria');
     await updateCell('Insumos', filaInsumo, colCategoria, valor);
+    return NextResponse.json({ success: true });
+  }
+
+  // Ocultar/mostrar: lo saca de la vista y de las alertas sin perder su
+  // historial (para insumos de temporada o que dejaste de usar por ahora)
+  if (accion === 'ocultar') {
+    if (valor !== 'si' && valor !== 'no') {
+      return NextResponse.json({ error: 'Valor inválido' }, { status: 400 });
+    }
+    const colOculto = await ensureColumn('Insumos', 'Oculto');
+    await updateCell('Insumos', filaInsumo, colOculto, valor);
+    return NextResponse.json({ success: true });
+  }
+
+  // Eliminar: baja lógica (mismo patrón que Productos). No se borra la
+  // fila del Sheet: las recetas de Catalogo lo referencian por nombre y
+  // el historial de consumo debe seguir cuadrando.
+  if (accion === 'eliminar') {
+    const colEliminado = await ensureColumn('Insumos', 'Eliminado');
+    await updateCell('Insumos', filaInsumo, colEliminado, 'si');
     return NextResponse.json({ success: true });
   }
 
@@ -230,4 +259,52 @@ export async function PATCH(req: NextRequest) {
   await updateCell('Insumos', filaInsumo, colStock, redondear(conteo, 3));
   await updateCell('Insumos', filaInsumo, colUltima, fecha);
   return NextResponse.json({ success: true, stock: redondear(conteo, 3) });
+}
+
+export async function POST(req: NextRequest) {
+  if (!(await getAdminSession())) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  }
+
+  const { nombre, unidad, categoria, proveedor } = await req.json();
+
+  if (!nombre || typeof nombre !== 'string' || !nombre.trim()) {
+    return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 });
+  }
+  if (categoria && !CATEGORIAS_INSUMOS.includes(categoria)) {
+    return NextResponse.json({ error: 'Categoría inválida' }, { status: 400 });
+  }
+
+  const insumos = await getSheetData('Insumos');
+
+  // Las recetas de Catalogo se unen por NOMBRE: un duplicado partiría el
+  // consumo entre dos filas y los números dejarían de cuadrar.
+  const clave = normalizarNombre(nombre);
+  if (insumos.some((i) => normalizarNombre(i['Nombre insumo']) === clave)) {
+    return NextResponse.json(
+      { error: 'Ya existe un insumo con ese nombre (aunque esté oculto o eliminado)' },
+      { status: 400 }
+    );
+  }
+
+  const nuevoId = `INS-${String(insumos.length + 1).padStart(3, '0')}`;
+  const fecha = new Date().toLocaleString('es-MX', { timeZone: 'America/Monterrey' });
+
+  // Columnas A–G de la hoja Insumos
+  const fila = await appendRow('Insumos', [
+    nuevoId,                    // A ID Insumo
+    nombre.trim(),              // B Nombre insumo
+    (unidad || '').trim(),      // C Unidad Medida
+    '',                         // D Costo por unidad
+    (proveedor || '').trim(),   // E Proveedor
+    '',                         // F Contacto Proveedor
+    fecha,                      // G Ultima actualizacion
+  ]);
+
+  if (categoria) {
+    const colCategoria = await ensureColumn('Insumos', 'Categoria');
+    await updateCell('Insumos', fila, colCategoria, categoria);
+  }
+
+  return NextResponse.json({ success: true, id: nuevoId });
 }

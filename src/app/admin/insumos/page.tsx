@@ -22,6 +22,7 @@ interface Insumo {
   diasDesdeCompra: number | null;
   fresco: boolean | null;
   enRecetas: boolean;
+  oculto: boolean;
 }
 
 const PUNTO_NIVEL: Record<string, string> = {
@@ -62,16 +63,30 @@ export default function InsumosPage() {
   const [filtroGrupo, setFiltroGrupo] = useState('Todos');
   const [filtroNivel, setFiltroNivel] = useState('todos');
   const [listaCopiada, setListaCopiada] = useState(false);
+  const [verOcultos, setVerOcultos] = useState(false);
+  // Formulario de insumo nuevo
+  const [mostrarNuevo, setMostrarNuevo] = useState(false);
+  const [nuevoNombre, setNuevoNombre] = useState('');
+  const [nuevaUnidad, setNuevaUnidad] = useState('');
+  const [nuevaCategoria, setNuevaCategoria] = useState('');
+  const [nuevoProveedor, setNuevoProveedor] = useState('');
 
-  const cargar = useCallback(() => {
-    setCargando(true);
+  /**
+   * Recarga el inventario. Con `silencioso` los datos se refrescan sin
+   * desmontar la tabla (no se muestra "Cargando..."): así el scroll se
+   * queda exactamente donde estaba después de editar un insumo.
+   */
+  const cargar = useCallback((silencioso = false) => {
+    if (!silencioso) setCargando(true);
     fetch('/api/admin/insumos')
       .then((res) => res.json())
       .then((data) => {
         setInsumos(data.insumos || []);
         if (data.diasAnalisis) setDiasAnalisis(data.diasAnalisis);
       })
-      .finally(() => setCargando(false));
+      .finally(() => {
+        if (!silencioso) setCargando(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -88,7 +103,7 @@ export default function InsumosPage() {
       });
       const data = await res.json();
       if (data.error) alert(data.error);
-      cargar();
+      cargar(true);
     } finally {
       setOcupado(false);
     }
@@ -137,7 +152,7 @@ export default function InsumosPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idInsumo: ins.id, accion: 'categoria', valor }),
       });
-      cargar();
+      cargar(true);
     } finally {
       setOcupado(false);
     }
@@ -151,18 +166,88 @@ export default function InsumosPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idInsumo: ins.id, accion: 'fecha_compra', valor }),
       });
-      cargar();
+      cargar(true);
     } finally {
       setOcupado(false);
     }
   };
 
-  const alertas = insumos
+  const alternarOculto = async (ins: Insumo) => {
+    setOcupado(true);
+    try {
+      await fetch('/api/admin/insumos', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idInsumo: ins.id, accion: 'ocultar', valor: ins.oculto ? 'no' : 'si' }),
+      });
+      cargar(true);
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  const eliminarInsumo = async (ins: Insumo) => {
+    if (
+      !confirm(
+        `¿Eliminar "${ins.nombre}"? Desaparece del panel (su historial se conserva en el Sheet). Si solo dejaste de usarlo por temporada, mejor usa Ocultar.`
+      )
+    )
+      return;
+    setOcupado(true);
+    try {
+      await fetch('/api/admin/insumos', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idInsumo: ins.id, accion: 'eliminar' }),
+      });
+      cargar(true);
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  const crearInsumo = async () => {
+    if (!nuevoNombre.trim()) {
+      alert('Escribe el nombre del insumo');
+      return;
+    }
+    setOcupado(true);
+    try {
+      const res = await fetch('/api/admin/insumos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nombre: nuevoNombre.trim(),
+          unidad: nuevaUnidad.trim(),
+          categoria: nuevaCategoria,
+          proveedor: nuevoProveedor.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        alert(data.error);
+        return;
+      }
+      setMostrarNuevo(false);
+      setNuevoNombre('');
+      setNuevaUnidad('');
+      setNuevaCategoria('');
+      setNuevoProveedor('');
+      cargar(true);
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  // Los ocultos no generan alertas ni entran a la lista de compra
+  const activos = insumos.filter((i) => !i.oculto);
+
+  const alertas = activos
     .filter((i) => i.nivel === 'rojo' || i.nivel === 'amarillo')
     .sort((a, b) => (a.nivel === 'rojo' ? -1 : 1) - (b.nivel === 'rojo' ? -1 : 1));
 
   // Frescos comprados hace más del margen permitido
-  const alertasFrescura = insumos.filter((i) => i.fresco === false);
+  const alertasFrescura = activos.filter((i) => i.fresco === false);
 
   // ── Filtros ────────────────────────────────────────────────────────────────
   const coincideNivel = (i: Insumo) => {
@@ -177,11 +262,13 @@ export default function InsumosPage() {
   const termino = busqueda.trim().toLowerCase();
   const insumosFiltrados = insumos.filter(
     (i) =>
+      (verOcultos || !i.oculto) &&
       (termino === '' || i.nombre.toLowerCase().includes(termino)) &&
       (filtroGrupo === 'Todos' || (i.categoria || SIN_CATEGORIA) === filtroGrupo) &&
       coincideNivel(i)
   );
   const hayFiltro = termino !== '' || filtroGrupo !== 'Todos' || filtroNivel !== 'todos';
+  const cuantosOcultos = insumos.filter((i) => i.oculto).length;
 
   // Agrupar por categoría en el orden fijo, con "Sin categoría" al final
   const grupos = [...CATEGORIAS_INSUMOS, SIN_CATEGORIA]
@@ -325,6 +412,22 @@ export default function InsumosPage() {
               >
                 {listaCopiada ? '✓ Copiada' : '🛒 Lista de compra'}
               </button>
+              <button
+                onClick={() => setMostrarNuevo(true)}
+                className="text-sm font-semibold px-3 py-2 rounded-xl bg-marron text-white active:scale-95 transition-transform"
+              >
+                + Nuevo insumo
+              </button>
+              {cuantosOcultos > 0 && (
+                <button
+                  onClick={() => setVerOcultos((v) => !v)}
+                  className={`text-xs font-semibold px-3 py-2 rounded-xl transition-colors ${
+                    verOcultos ? 'bg-neutral-700 text-white' : 'bg-neutral-100 text-neutral-600'
+                  }`}
+                >
+                  👁 Ocultos ({cuantosOcultos})
+                </button>
+              )}
               {hayFiltro && (
                 <button
                   onClick={() => { setBusqueda(''); setFiltroGrupo('Todos'); setFiltroNivel('todos'); }}
@@ -363,12 +466,16 @@ export default function InsumosPage() {
                         </td>
                       </tr>
                       {grupo.items.map((i) => (
-                    <tr key={i.id} className="hover:bg-neutral-50">
+                    <tr key={i.id} className={`hover:bg-neutral-50 ${i.oculto ? 'opacity-45' : ''}`}>
                       <td className="p-3">
-                        <p className="font-semibold text-neutral-900">{i.nombre}</p>
+                        <p className="font-semibold text-neutral-900">
+                          {i.oculto && <span title="Insumo oculto">🚫 </span>}
+                          {i.nombre}
+                        </p>
                         <p className="text-xs text-neutral-400">
                           {i.id}
                           {!i.enRecetas && ' · sin receta asociada'}
+                          {i.oculto && ' · oculto'}
                         </p>
                         <select
                           value={i.categoria}
@@ -483,6 +590,22 @@ export default function InsumosPage() {
                               Ajustar
                             </button>
                           )}
+                          <button
+                            onClick={() => alternarOculto(i)}
+                            disabled={ocupado}
+                            title={i.oculto ? 'Volver a mostrar' : 'Ocultar (sale de la vista y las alertas)'}
+                            className="text-xs font-semibold text-neutral-600 bg-neutral-100 px-2 py-1.5 rounded-lg active:scale-95 transition-transform disabled:opacity-50"
+                          >
+                            {i.oculto ? '👁 Mostrar' : '🚫'}
+                          </button>
+                          <button
+                            onClick={() => eliminarInsumo(i)}
+                            disabled={ocupado}
+                            title="Eliminar insumo"
+                            className="text-xs font-semibold text-red-600 bg-red-50 px-2 py-1.5 rounded-lg active:scale-95 transition-transform disabled:opacity-50"
+                          >
+                            🗑
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -508,6 +631,88 @@ export default function InsumosPage() {
             </p>
           </div>
         </>
+      )}
+
+      {/* Modal: nuevo insumo */}
+      {mostrarNuevo && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => setMostrarNuevo(false)}
+        >
+          <div
+            className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 space-y-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-bold text-black">Nuevo insumo</h2>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-semibold text-neutral-700">Nombre</label>
+              <input
+                value={nuevoNombre}
+                onChange={(e) => setNuevoNombre(e.target.value)}
+                placeholder="Ej. Fresa"
+                className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black"
+              />
+              <p className="text-xs text-neutral-400">
+                Si va en recetas, escríbelo igual que en la columna Ingrediente de Catalogo.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-semibold text-neutral-700">Unidad de medida</label>
+              <input
+                value={nuevaUnidad}
+                onChange={(e) => setNuevaUnidad(e.target.value)}
+                placeholder="Ej. kg, L, pz"
+                className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-semibold text-neutral-700">Grupo</label>
+              <select
+                value={nuevaCategoria}
+                onChange={(e) => setNuevaCategoria(e.target.value)}
+                className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-700 focus:outline-none focus:border-black"
+              >
+                <option value="">Sin categoría</option>
+                {CATEGORIAS_INSUMOS.map((c) => (
+                  <option key={c} value={c}>
+                    {ICONO_GRUPO[c] ?? ''} {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-semibold text-neutral-700">
+                Proveedor <span className="font-normal text-neutral-400">(opcional)</span>
+              </label>
+              <input
+                value={nuevoProveedor}
+                onChange={(e) => setNuevoProveedor(e.target.value)}
+                placeholder="Ej. Frutería Don Beto"
+                className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => setMostrarNuevo(false)}
+                className="flex-1 border border-neutral-200 text-neutral-600 font-semibold py-3 rounded-2xl active:scale-95 transition-transform"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={crearInsumo}
+                disabled={ocupado}
+                className="flex-1 bg-marron text-white font-semibold py-3 rounded-2xl active:scale-95 transition-transform disabled:opacity-50"
+              >
+                {ocupado ? 'Guardando...' : 'Crear insumo'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

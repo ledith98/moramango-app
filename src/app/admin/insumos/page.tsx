@@ -1,42 +1,71 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useState } from 'react';
-import { CATEGORIAS_INSUMOS, DIAS_FRESCURA } from '@/lib/insumos';
+/**
+ * Panel de insumos, dividido en dos pestañas:
+ *
+ *  · Biblioteca      → el catálogo: qué es cada insumo, cómo se compra,
+ *                      en qué unidad lo usan las recetas y su costo.
+ *  · Insumos activos → la operación: cuánto hay, cuánto se gasta al día,
+ *                      para cuántos días alcanza y el conteo físico.
+ *
+ * El stock siempre se guarda en unidad de receta; la compra se captura en
+ * unidad de compra y el backend la convierte con la equivalencia.
+ */
 
-interface Insumo {
+import { useCallback, useEffect, useState } from 'react';
+import { CATEGORIAS_INSUMOS } from '@/lib/insumos';
+
+interface ItemBiblioteca {
   id: string;
   nombre: string;
-  unidad: string;
-  proveedor: string;
+  unidadCompra: string;
+  unidadReceta: string;
+  equivalencia: number;
+  ultimoPrecioCompra: number;
+  costoPorUnidadReceta: number | null;
   categoria: string;
-  stock: number;
-  consumoDiario: number;
-  diasRestantes: number | null;
+  proveedor: string;
+  contacto: string;
+  recetas: string[];
+}
+
+interface ItemActivo {
+  id: string;
+  idBiblioteca: string;
+  nombre: string;
+  unidadCompra: string;
+  unidadReceta: string;
+  equivalencia: number;
+  costoPorUnidadReceta: number | null;
+  categoria: string;
+  proveedor: string;
+  stockActual: number;
+  consumoPorDia: number;
+  alcanzaParaDias: number | null;
   nivel: 'rojo' | 'amarillo' | 'verde' | 'gris';
   sugerenciaCompra: number;
+  ultimaCompra: string;
+  diasDesdeCompra: number | null;
+  status: string;
   conteoFisico: number | null;
   fechaConteo: string;
   diferencia: number | null;
-  fechaCompra: string;
-  fechaCompraISO: string;
-  diasDesdeCompra: number | null;
-  fresco: boolean | null;
-  enRecetas: boolean;
-  recetas: string[];
-  costoUnitario: number | null;
-  contacto: string;
-  oculto: boolean;
 }
 
 interface CompraHistorial {
   fecha: string;
-  fechaISO: string;
   cantidad: number;
+  unidadCompra: string;
   precioTotal: number;
-  precioUnitario: number;
+  precioUnidadCompra: number;
+  costoUnidadReceta: number;
 }
 
+const UNIDADES_COMPRA = ['Caja', 'Litro', 'Kilo', 'Pieza', 'Paquete', 'Bolsa'];
+const UNIDADES_RECETA = ['ml', 'g', 'pieza'];
+const STATUS = ['Fresco', 'Por caducar', 'Caducado'];
 const NUEVA_CATEGORIA = '__nueva__';
+const SIN_CATEGORIA = 'Sin categoría';
 
 const PUNTO_NIVEL: Record<string, string> = {
   rojo: 'bg-red-500',
@@ -45,7 +74,11 @@ const PUNTO_NIVEL: Record<string, string> = {
   gris: 'bg-neutral-300',
 };
 
-const SIN_CATEGORIA = 'Sin categoría';
+const COLOR_STATUS: Record<string, string> = {
+  Fresco: 'bg-green-100 text-green-700',
+  'Por caducar': 'bg-amber-100 text-amber-700',
+  Caducado: 'bg-red-100 text-red-700',
+};
 
 const ICONO_GRUPO: Record<string, string> = {
   'Verduras y frutas': '🥬',
@@ -58,948 +91,771 @@ const ICONO_GRUPO: Record<string, string> = {
   [SIN_CATEGORIA]: '❔',
 };
 
-const NIVELES_FILTRO = [
-  { valor: 'todos', etiqueta: 'Todos' },
-  { valor: 'porAcabarse', etiqueta: '🔴 Por acabarse' },
-  { valor: 'bajo', etiqueta: '🟡 Bajo' },
-  { valor: 'bien', etiqueta: '🟢 Bien' },
-  { valor: 'revisarFrescura', etiqueta: '🥬 Revisar frescura' },
-];
+const FORM_VACIO = {
+  nombre: '',
+  unidadCompra: 'Litro',
+  unidadReceta: 'ml',
+  equivalencia: '1000',
+  categoria: '',
+  proveedor: '',
+  contacto: '',
+};
+
+const inputCls =
+  'w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-marron';
 
 export default function InsumosPage() {
-  const [insumos, setInsumos] = useState<Insumo[]>([]);
+  const [pestana, setPestana] = useState<'biblioteca' | 'activos'>('activos');
+  const [biblioteca, setBiblioteca] = useState<ItemBiblioteca[]>([]);
+  const [activos, setActivos] = useState<ItemActivo[]>([]);
   const [categoriasEnUso, setCategoriasEnUso] = useState<string[]>([]);
   const [diasAnalisis, setDiasAnalisis] = useState(7);
   const [cargando, setCargando] = useState(true);
   const [ocupado, setOcupado] = useState(false);
-  // Filtros
+  const [error, setError] = useState('');
+
   const [busqueda, setBusqueda] = useState('');
   const [filtroGrupo, setFiltroGrupo] = useState('Todos');
-  const [filtroNivel, setFiltroNivel] = useState('todos');
   const [listaCopiada, setListaCopiada] = useState(false);
-  const [verOcultos, setVerOcultos] = useState(false);
-  // Formulario de insumo nuevo
-  const [mostrarNuevo, setMostrarNuevo] = useState(false);
-  const [nuevoNombre, setNuevoNombre] = useState('');
-  const [nuevaUnidad, setNuevaUnidad] = useState('');
-  const [nuevaCategoria, setNuevaCategoria] = useState('');
-  const [nuevoProveedor, setNuevoProveedor] = useState('');
-  // Editar insumo
-  const [editando, setEditando] = useState<Insumo | null>(null);
-  const [edNombre, setEdNombre] = useState('');
-  const [edUnidad, setEdUnidad] = useState('');
-  const [edProveedor, setEdProveedor] = useState('');
-  const [edContacto, setEdContacto] = useState('');
-  // Historial de precios
-  const [historialDe, setHistorialDe] = useState<Insumo | null>(null);
-  const [historial, setHistorial] = useState<CompraHistorial[]>([]);
-  const [cargandoHist, setCargandoHist] = useState(false);
 
-  /**
-   * Recarga el inventario. Con `silencioso` los datos se refrescan sin
-   * desmontar la tabla (no se muestra "Cargando..."): así el scroll se
-   * queda exactamente donde estaba después de editar un insumo.
-   */
-  const cargar = useCallback((silencioso = false) => {
-    if (!silencioso) setCargando(true);
-    fetch('/api/admin/insumos')
-      .then((res) => res.json())
-      .then((data) => {
-        setInsumos(data.insumos || []);
-        setCategoriasEnUso(data.categoriasEnUso || []);
-        if (data.diasAnalisis) setDiasAnalisis(data.diasAnalisis);
-      })
-      .finally(() => {
-        if (!silencioso) setCargando(false);
-      });
+  // Modales
+  const [form, setForm] = useState({ ...FORM_VACIO });
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [modalInsumo, setModalInsumo] = useState(false);
+  const [compraDe, setCompraDe] = useState<ItemActivo | null>(null);
+  const [compraCantidad, setCompraCantidad] = useState('');
+  const [compraPrecio, setCompraPrecio] = useState('');
+  const [historial, setHistorial] = useState<CompraHistorial[] | null>(null);
+  const [historialDe, setHistorialDe] = useState('');
+
+  const cargar = useCallback(async () => {
+    try {
+      const [rB, rA] = await Promise.all([
+        fetch('/api/admin/biblioteca'),
+        fetch('/api/admin/insumos'),
+      ]);
+      const dB = await rB.json();
+      const dA = await rA.json();
+      setBiblioteca(dB.items ?? []);
+      setCategoriasEnUso(dB.categoriasEnUso ?? []);
+      setActivos(dA.items ?? []);
+      if (dA.diasAnalisis) setDiasAnalisis(dA.diasAnalisis);
+    } catch {
+      setError('No se pudo cargar el inventario');
+    } finally {
+      setCargando(false);
+    }
   }, []);
 
   useEffect(() => {
     cargar();
   }, [cargar]);
 
-  const accion = async (
-    idInsumo: string,
-    tipo: string,
-    cantidad?: number,
-    extra?: Record<string, unknown>
-  ) => {
-    setOcupado(true);
-    try {
-      const res = await fetch('/api/admin/insumos', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idInsumo, accion: tipo, cantidad, ...extra }),
-      });
-      const data = await res.json();
-      if (data.error) alert(data.error);
-      cargar(true);
-    } finally {
-      setOcupado(false);
-    }
-  };
+  const todasCategorias = [...new Set([...CATEGORIAS_INSUMOS, ...categoriasEnUso])].filter(Boolean);
 
-  const registrarCompra = (ins: Insumo) => {
-    const valor = prompt(`¿Cuánto compraste de "${ins.nombre}"? (en ${ins.unidad || 'unidades'})`);
-    if (valor === null) return;
-    const num = parseFloat(valor.replace(',', '.'));
-    if (isNaN(num) || num <= 0) {
-      alert('Cantidad inválida');
-      return;
-    }
-    // Precio total pagado (opcional) — para guardar el costo y el historial
-    const precioStr = prompt(
-      `¿Cuánto pagaste EN TOTAL por esos ${num} ${ins.unidad || 'unidades'}? (opcional, deja vacío para omitir)`
-    );
-    const extra: Record<string, unknown> = {};
-    if (precioStr !== null && precioStr.trim() !== '') {
-      const precio = parseFloat(precioStr.replace(',', '.'));
-      if (isNaN(precio) || precio < 0) {
-        alert('Precio inválido');
-        return;
-      }
-      extra.precioTotal = precio;
-    }
-    accion(ins.id, 'restock', num, extra);
-  };
+  // ── Biblioteca: crear / editar / eliminar ──────────────────────────────────
+  function abrirNuevo() {
+    setForm({ ...FORM_VACIO });
+    setEditandoId(null);
+    setError('');
+    setModalInsumo(true);
+  }
 
-  const abrirEditar = (ins: Insumo) => {
-    setEditando(ins);
-    setEdNombre(ins.nombre);
-    setEdUnidad(ins.unidad);
-    setEdProveedor(ins.proveedor);
-    setEdContacto(ins.contacto);
-  };
+  function abrirEditar(b: ItemBiblioteca) {
+    setForm({
+      nombre: b.nombre,
+      unidadCompra: b.unidadCompra,
+      unidadReceta: b.unidadReceta,
+      equivalencia: String(b.equivalencia),
+      categoria: b.categoria,
+      proveedor: b.proveedor,
+      contacto: b.contacto,
+    });
+    setEditandoId(b.id);
+    setError('');
+    setModalInsumo(true);
+  }
 
-  const guardarEdicion = async () => {
-    if (!editando) return;
-    if (!edNombre.trim()) {
-      alert('El nombre es obligatorio');
-      return;
-    }
-    const renombra = edNombre.trim().toLowerCase() !== editando.nombre.toLowerCase();
-    if (
-      renombra &&
-      editando.recetas.length > 0 &&
-      !confirm(
-        `Vas a renombrar "${editando.nombre}" a "${edNombre.trim()}". Se actualizará también en sus ${editando.recetas.length} receta(s) para no romper la conexión. ¿Continuar?`
-      )
-    )
-      return;
+  async function guardarInsumo() {
+    if (!form.nombre.trim()) return setError('El nombre es obligatorio');
+    const equiv = parseFloat(form.equivalencia);
+    if (isNaN(equiv) || equiv <= 0) return setError('La equivalencia debe ser mayor a 0');
 
     setOcupado(true);
-    try {
-      const res = await fetch('/api/admin/insumos', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          idInsumo: editando.id,
-          accion: 'editar',
-          datos: {
-            nombre: edNombre.trim(),
-            unidad: edUnidad.trim(),
-            proveedor: edProveedor.trim(),
-            contacto: edContacto.trim(),
-          },
-        }),
-      });
-      const data = await res.json();
-      if (data.error) {
-        alert(data.error);
-        return;
-      }
-      setEditando(null);
-      cargar(true);
-    } finally {
-      setOcupado(false);
+    setError('');
+    const res = editandoId
+      ? await fetch('/api/admin/biblioteca', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: editandoId, accion: 'editar', datos: form }),
+        })
+      : await fetch('/api/admin/biblioteca', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(form),
+        });
+    const data = await res.json();
+    setOcupado(false);
+    if (!res.ok) return setError(data.error || 'No se pudo guardar');
+    setModalInsumo(false);
+    await cargar();
+  }
+
+  async function eliminarInsumo(b: ItemBiblioteca) {
+    if (!confirm(`¿Quitar "${b.nombre}" de la biblioteca? Su historial se conserva.`)) return;
+    setOcupado(true);
+    await fetch('/api/admin/biblioteca', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: b.id, accion: 'eliminar' }),
+    });
+    setOcupado(false);
+    await cargar();
+  }
+
+  // ── Activos: compra / conteo / ajuste / status ─────────────────────────────
+  async function accionActivo(id: string, cuerpo: Record<string, unknown>) {
+    setOcupado(true);
+    const res = await fetch('/api/admin/insumos', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, ...cuerpo }),
+    });
+    const data = await res.json();
+    setOcupado(false);
+    if (!res.ok) {
+      alert(data.error || 'No se pudo guardar');
+      return false;
     }
-  };
+    await cargar();
+    return true;
+  }
 
-  const verHistorial = (ins: Insumo) => {
-    setHistorialDe(ins);
-    setHistorial([]);
-    setCargandoHist(true);
-    fetch(`/api/admin/insumos?historial=${encodeURIComponent(ins.id)}`)
-      .then((res) => res.json())
-      .then((data) => setHistorial(data.historial || []))
-      .finally(() => setCargandoHist(false));
-  };
+  function abrirCompra(a: ItemActivo) {
+    setCompraDe(a);
+    setCompraCantidad(a.sugerenciaCompra > 0 ? String(a.sugerenciaCompra) : '');
+    setCompraPrecio('');
+    setError('');
+  }
 
-  const capturarConteo = (ins: Insumo) => {
+  async function registrarCompra() {
+    if (!compraDe) return;
+    const cant = parseFloat(compraCantidad);
+    if (isNaN(cant) || cant <= 0) return setError('Escribe cuánto compraste');
+    const ok = await accionActivo(compraDe.id, {
+      accion: 'compra',
+      cantidadCompra: cant,
+      precioTotal: compraPrecio,
+    });
+    if (ok) setCompraDe(null);
+  }
+
+  async function capturarConteo(a: ItemActivo) {
     const valor = prompt(
-      `Conteo físico de "${ins.nombre}": ¿cuánto hay realmente en el local? (en ${ins.unidad || 'unidades'})`
+      `Conteo físico de ${a.nombre} (en ${a.unidadReceta}):`,
+      String(a.stockActual)
     );
     if (valor === null) return;
-    const num = parseFloat(valor.replace(',', '.'));
-    if (isNaN(num) || num < 0) {
-      alert('Cantidad inválida');
-      return;
-    }
-    accion(ins.id, 'conteo', num);
+    const num = parseFloat(valor);
+    if (isNaN(num) || num < 0) return alert('Cantidad inválida');
+    await accionActivo(a.id, { accion: 'conteo', cantidad: num });
+  }
+
+  async function ajustar(a: ItemActivo) {
+    if (a.conteoFisico === null) return;
+    if (!confirm(`¿Igualar el stock de ${a.nombre} a ${a.conteoFisico} ${a.unidadReceta}?`)) return;
+    await accionActivo(a.id, { accion: 'ajustar' });
+  }
+
+  async function verHistorial(idBiblioteca: string, nombre: string) {
+    setHistorialDe(nombre);
+    setHistorial([]);
+    const res = await fetch(`/api/admin/insumos?historial=${encodeURIComponent(idBiblioteca)}`);
+    const data = await res.json();
+    setHistorial(data.historial ?? []);
+  }
+
+  // ── Derivados ─────────────────────────────────────────────────────────────
+  const coincide = (nombre: string, categoria: string) => {
+    const q = busqueda.trim().toLowerCase();
+    if (q && !nombre.toLowerCase().includes(q)) return false;
+    if (filtroGrupo !== 'Todos' && (categoria || SIN_CATEGORIA) !== filtroGrupo) return false;
+    return true;
   };
 
-  const ajustar = (ins: Insumo) => {
-    if (
-      !confirm(
-        `¿Ajustar el stock de "${ins.nombre}" al conteo físico (${ins.conteoFisico} ${ins.unidad})? El stock teórico actual (${ins.stock}) se reemplaza.`
-      )
-    )
-      return;
-    accion(ins.id, 'ajustar');
-  };
-
-  const cambiarCategoria = async (ins: Insumo, seleccion: string) => {
-    let valor = seleccion;
-    if (seleccion === NUEVA_CATEGORIA) {
-      const nueva = prompt('Nombre de la nueva categoría:');
-      if (nueva === null || !nueva.trim()) return;
-      valor = nueva.trim();
-      setCategoriasEnUso((prev) => (prev.includes(valor) ? prev : [...prev, valor]));
-    }
-    setInsumos((prev) => prev.map((x) => (x.id === ins.id ? { ...x, categoria: valor } : x)));
-    setOcupado(true);
-    try {
-      await fetch('/api/admin/insumos', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idInsumo: ins.id, accion: 'categoria', valor }),
-      });
-      cargar(true);
-    } finally {
-      setOcupado(false);
-    }
-  };
-
-  const cambiarFechaCompra = async (ins: Insumo, valor: string) => {
-    setOcupado(true);
-    try {
-      await fetch('/api/admin/insumos', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idInsumo: ins.id, accion: 'fecha_compra', valor }),
-      });
-      cargar(true);
-    } finally {
-      setOcupado(false);
-    }
-  };
-
-  const alternarOculto = async (ins: Insumo) => {
-    setOcupado(true);
-    try {
-      await fetch('/api/admin/insumos', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idInsumo: ins.id, accion: 'ocultar', valor: ins.oculto ? 'no' : 'si' }),
-      });
-      cargar(true);
-    } finally {
-      setOcupado(false);
-    }
-  };
-
-  const eliminarInsumo = async (ins: Insumo) => {
-    if (
-      !confirm(
-        `¿Eliminar "${ins.nombre}"? Desaparece del panel (su historial se conserva en el Sheet). Si solo dejaste de usarlo por temporada, mejor usa Ocultar.`
-      )
-    )
-      return;
-    setOcupado(true);
-    try {
-      await fetch('/api/admin/insumos', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idInsumo: ins.id, accion: 'eliminar' }),
-      });
-      cargar(true);
-    } finally {
-      setOcupado(false);
-    }
-  };
-
-  const crearInsumo = async () => {
-    if (!nuevoNombre.trim()) {
-      alert('Escribe el nombre del insumo');
-      return;
-    }
-    setOcupado(true);
-    try {
-      const res = await fetch('/api/admin/insumos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nombre: nuevoNombre.trim(),
-          unidad: nuevaUnidad.trim(),
-          categoria: nuevaCategoria,
-          proveedor: nuevoProveedor.trim(),
-        }),
-      });
-      const data = await res.json();
-      if (data.error) {
-        alert(data.error);
-        return;
-      }
-      setMostrarNuevo(false);
-      setNuevoNombre('');
-      setNuevaUnidad('');
-      setNuevaCategoria('');
-      setNuevoProveedor('');
-      cargar(true);
-    } finally {
-      setOcupado(false);
-    }
-  };
-
-  // Los ocultos no generan alertas ni entran a la lista de compra
-  const activos = insumos.filter((i) => !i.oculto);
+  const activosFiltrados = activos.filter((a) => coincide(a.nombre, a.categoria));
+  const bibliotecaFiltrada = biblioteca.filter((b) => coincide(b.nombre, b.categoria));
 
   const alertas = activos
-    .filter((i) => i.nivel === 'rojo' || i.nivel === 'amarillo')
-    .sort((a, b) => (a.nivel === 'rojo' ? -1 : 1) - (b.nivel === 'rojo' ? -1 : 1));
+    .filter((a) => a.nivel === 'rojo' || a.nivel === 'amarillo')
+    .sort((a, b) => (a.alcanzaParaDias ?? 99) - (b.alcanzaParaDias ?? 99));
 
-  // Frescos comprados hace más del margen permitido
-  const alertasFrescura = activos.filter((i) => i.fresco === false);
+  function copiarLista() {
+    const texto = alertas
+      .map((a) => `• ${a.nombre}: ${a.sugerenciaCompra} ${a.unidadCompra || 'u'}`)
+      .join('\n');
+    navigator.clipboard.writeText(`🛒 Lista de compras Moramango\n\n${texto}`);
+    setListaCopiada(true);
+    setTimeout(() => setListaCopiada(false), 2000);
+  }
 
-  // ── Filtros ────────────────────────────────────────────────────────────────
-  const coincideNivel = (i: Insumo) => {
-    switch (filtroNivel) {
-      case 'porAcabarse': return i.nivel === 'rojo';
-      case 'bajo': return i.nivel === 'amarillo';
-      case 'bien': return i.nivel === 'verde';
-      case 'revisarFrescura': return i.fresco === false;
-      default: return true;
-    }
-  };
-  const termino = busqueda.trim().toLowerCase();
-  const insumosFiltrados = insumos.filter(
-    (i) =>
-      (verOcultos || !i.oculto) &&
-      (termino === '' || i.nombre.toLowerCase().includes(termino)) &&
-      (filtroGrupo === 'Todos' || (i.categoria || SIN_CATEGORIA) === filtroGrupo) &&
-      coincideNivel(i)
-  );
-  const hayFiltro = termino !== '' || filtroGrupo !== 'Todos' || filtroNivel !== 'todos';
-  const cuantosOcultos = insumos.filter((i) => i.oculto).length;
-
-  // Todas las categorías para los desplegables: las fijas + las que ya
-  // se usan en la hoja (las nuevas que haya creado la usuaria).
-  const todasCategorias = [...new Set([...CATEGORIAS_INSUMOS, ...categoriasEnUso])];
-
-  // Agrupar por categoría (fijas primero, luego las nuevas), con "Sin
-  // categoría" al final. Incluye las categorías custom para que ningún
-  // insumo con categoría nueva desaparezca de la tabla.
-  const grupos = [...todasCategorias, SIN_CATEGORIA]
-    .map((cat) => ({
-      categoria: cat,
-      items: insumosFiltrados.filter((i) => (i.categoria || SIN_CATEGORIA) === cat),
-    }))
-    .filter((g) => g.items.length > 0);
-
-  // Lista de compra: lo que hay que reabastecer, agrupado por proveedor,
-  // en texto listo para pegar en WhatsApp al proveedor.
-  const copiarListaCompra = async () => {
-    const porProveedor = new Map<string, string[]>();
-    for (const i of alertas) {
-      if (i.sugerenciaCompra <= 0 && i.stock > 0) continue;
-      const prov = i.proveedor || 'Sin proveedor';
-      const cantidad = i.sugerenciaCompra > 0 ? `${i.sugerenciaCompra} ${i.unidad}` : 'reabastecer';
-      if (!porProveedor.has(prov)) porProveedor.set(prov, []);
-      porProveedor.get(prov)!.push(`• ${i.nombre}: ${cantidad}`);
-    }
-    if (porProveedor.size === 0) {
-      alert('No hay insumos por reabastecer 🎉');
-      return;
-    }
-    const texto = ['🛒 Lista de compra — Moramango', '']
-      .concat(
-        [...porProveedor.entries()].flatMap(([prov, lineas]) => [`${prov}:`, ...lineas, ''])
-      )
-      .join('\n')
-      .trim();
-    try {
-      await navigator.clipboard.writeText(texto);
-      setListaCopiada(true);
-      setTimeout(() => setListaCopiada(false), 2000);
-    } catch {
-      alert(texto);
-    }
-  };
+  if (cargando) {
+    return <p className="p-6 text-neutral-500">Cargando inventario…</p>;
+  }
 
   return (
-    <div className="space-y-6">
-      {cargando ? (
-        <p className="text-neutral-500 animate-pulse">Cargando inventario...</p>
-      ) : (
+    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <h1 className="text-2xl font-bold text-neutral-900">📦 Insumos</h1>
+        <button
+          onClick={abrirNuevo}
+          className="bg-marron text-white text-sm font-semibold px-4 py-2 rounded-xl active:scale-95"
+        >
+          + Nuevo insumo
+        </button>
+      </div>
+
+      {/* Pestañas */}
+      <div className="flex gap-1 bg-neutral-100 p-1 rounded-2xl mb-4 w-fit">
+        {(
+          [
+            ['activos', '🧊 Insumos activos'],
+            ['biblioteca', '📚 Biblioteca'],
+          ] as const
+        ).map(([valor, etiqueta]) => (
+          <button
+            key={valor}
+            onClick={() => setPestana(valor)}
+            className={`px-4 py-2 rounded-xl text-sm font-semibold transition ${
+              pestana === valor ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'
+            }`}
+          >
+            {etiqueta}
+          </button>
+        ))}
+      </div>
+
+      {biblioteca.length === 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4 text-sm text-amber-800">
+          Tu biblioteca está vacía. Registra ahí cada insumo (cómo lo compras y en qué unidad lo
+          usan las recetas) para que la app pueda descontar el stock con cada venta.
+        </div>
+      )}
+
+      {/* Filtros */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <input
+          value={busqueda}
+          onChange={(e) => setBusqueda(e.target.value)}
+          placeholder="Buscar insumo…"
+          className="flex-1 min-w-[180px] bg-white border border-neutral-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-marron"
+        />
+        <select
+          value={filtroGrupo}
+          onChange={(e) => setFiltroGrupo(e.target.value)}
+          className="bg-white border border-neutral-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-marron"
+        >
+          <option value="Todos">Todas las categorías</option>
+          {[...todasCategorias, SIN_CATEGORIA].map((c) => (
+            <option key={c} value={c}>
+              {ICONO_GRUPO[c] ?? '·'} {c}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {pestana === 'activos' ? (
         <>
           {alertas.length > 0 && (
-            <div className="space-y-2">
-              <h2 className="font-bold text-neutral-900">⚠️ Por reabastecer</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {alertas.map((i) => (
-                  <div
-                    key={i.id}
-                    className={`rounded-2xl p-4 border ${
-                      i.nivel === 'rojo' ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'
-                    }`}
-                  >
-                    <p className="font-bold text-neutral-900">
-                      {i.nivel === 'rojo' ? '🔴' : '🟡'} {i.nombre}
-                    </p>
-                    <p className="text-sm text-neutral-600 mt-1">
-                      {i.stock <= 0
-                        ? 'Sin stock registrado'
-                        : `Queda para ~${i.diasRestantes} día${i.diasRestantes === 1 ? '' : 's'} (${i.stock} ${i.unidad})`}
-                    </p>
-                    {i.sugerenciaCompra > 0 && (
-                      <p className="text-sm font-semibold text-neutral-800 mt-1">
-                        Compra sugerida: {i.sugerenciaCompra} {i.unidad}
-                      </p>
-                    )}
-                    {i.proveedor && (
-                      <p className="text-xs text-neutral-500 mt-1">Proveedor: {i.proveedor}</p>
-                    )}
-                  </div>
-                ))}
+            <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-4 mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="font-bold text-neutral-900">🛒 Hay que comprar</h2>
+                <button
+                  onClick={copiarLista}
+                  className="text-xs font-semibold bg-neutral-100 px-3 py-1.5 rounded-lg active:scale-95"
+                >
+                  {listaCopiada ? '✅ Copiada' : 'Copiar lista'}
+                </button>
               </div>
+              <ul className="space-y-1 text-sm">
+                {alertas.map((a) => (
+                  <li key={a.id} className="text-neutral-700">
+                    {a.nivel === 'rojo' ? '🔴' : '🟡'} <strong>{a.nombre}</strong> — queda para ~
+                    {a.alcanzaParaDias ?? 0} día{a.alcanzaParaDias === 1 ? '' : 's'}
+                    {a.sugerenciaCompra > 0 && (
+                      <span className="text-neutral-500">
+                        {' '}
+                        · comprar {a.sugerenciaCompra} {a.unidadCompra || ''}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
-          {alertasFrescura.length > 0 && (
-            <div className="space-y-2">
-              <h2 className="font-bold text-neutral-900">🥬 Revisar frescura</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {alertasFrescura.map((i) => (
-                  <div key={i.id} className="rounded-2xl p-4 border bg-orange-50 border-orange-200">
-                    <p className="font-bold text-neutral-900">🥬 {i.nombre}</p>
-                    <p className="text-sm text-neutral-600 mt-1">
-                      Comprado hace {i.diasDesdeCompra} día{i.diasDesdeCompra === 1 ? '' : 's'} — el
-                      margen para frescos es de {DIAS_FRESCURA} días. Revisa si sigue en buen estado.
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          <p className="text-xs text-neutral-400 mb-2">
+            El consumo por día se calcula con las ventas de los últimos {diasAnalisis} días.
+          </p>
 
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="font-bold text-neutral-900">Inventario</h2>
-              <span className="text-xs text-neutral-500">
-                Consumo calculado con las ventas de los últimos {diasAnalisis} días
-              </span>
-            </div>
-
-            {/* Filtros */}
-            <div className="bg-white rounded-2xl p-3 shadow-sm border border-neutral-100 mb-3 flex flex-wrap items-center gap-2">
-              <input
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                placeholder="🔎 Buscar insumo..."
-                className="flex-1 min-w-[160px] bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-black"
-              />
-              <select
-                value={filtroGrupo}
-                onChange={(e) => setFiltroGrupo(e.target.value)}
-                className="bg-neutral-50 border border-neutral-200 rounded-xl px-2 py-2 text-sm text-neutral-700 focus:outline-none focus:border-black"
-              >
-                <option value="Todos">Todos los grupos</option>
-                {[...todasCategorias, SIN_CATEGORIA].map((c) => (
-                  <option key={c} value={c}>
-                    {ICONO_GRUPO[c] ?? ''} {c}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={filtroNivel}
-                onChange={(e) => setFiltroNivel(e.target.value)}
-                className="bg-neutral-50 border border-neutral-200 rounded-xl px-2 py-2 text-sm text-neutral-700 focus:outline-none focus:border-black"
-              >
-                {NIVELES_FILTRO.map((n) => (
-                  <option key={n.valor} value={n.valor}>
-                    {n.etiqueta}
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={copiarListaCompra}
-                className={`text-sm font-semibold px-3 py-2 rounded-xl active:scale-95 transition-transform ${
-                  listaCopiada ? 'bg-green-600 text-white' : 'bg-black text-white'
-                }`}
-                title="Copia la lista de lo que hay que reabastecer, agrupada por proveedor"
-              >
-                {listaCopiada ? '✓ Copiada' : '🛒 Lista de compra'}
-              </button>
-              <button
-                onClick={() => setMostrarNuevo(true)}
-                className="text-sm font-semibold px-3 py-2 rounded-xl bg-marron text-white active:scale-95 transition-transform"
-              >
-                + Nuevo insumo
-              </button>
-              {cuantosOcultos > 0 && (
-                <button
-                  onClick={() => setVerOcultos((v) => !v)}
-                  className={`text-xs font-semibold px-3 py-2 rounded-xl transition-colors ${
-                    verOcultos ? 'bg-neutral-700 text-white' : 'bg-neutral-100 text-neutral-600'
-                  }`}
-                >
-                  👁 Ocultos ({cuantosOcultos})
-                </button>
-              )}
-              {hayFiltro && (
-                <button
-                  onClick={() => { setBusqueda(''); setFiltroGrupo('Todos'); setFiltroNivel('todos'); }}
-                  className="text-sm font-semibold text-neutral-600 bg-neutral-100 px-3 py-2 rounded-xl active:scale-95 transition-transform"
-                >
-                  ✕ Limpiar
-                </button>
-              )}
-              <span className="text-xs text-neutral-500 ml-auto">
-                {insumosFiltrados.length} de {insumos.length}
-              </span>
-            </div>
-
-            <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-neutral-500 border-b border-neutral-100">
-                    <th className="p-3 font-semibold">Insumo</th>
-                    <th className="p-3 font-semibold">Stock (app)</th>
-                    <th className="p-3 font-semibold">Consumo/día</th>
-                    <th className="p-3 font-semibold">Alcanza para</th>
-                    <th className="p-3 font-semibold">Última compra</th>
-                    <th className="p-3 font-semibold">Conteo físico</th>
-                    <th className="p-3 font-semibold"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-neutral-100">
-                  {grupos.map((grupo) => (
-                    <Fragment key={grupo.categoria}>
-                      <tr className="bg-neutral-50">
-                        <td colSpan={7} className="px-3 py-2 font-bold text-neutral-700 text-xs uppercase tracking-wide">
-                          {ICONO_GRUPO[grupo.categoria] ?? '❔'} {grupo.categoria}
-                          <span className="font-normal text-neutral-400 ml-1.5 normal-case tracking-normal">
-                            ({grupo.items.length})
+          <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-neutral-500 border-b border-neutral-100">
+                  <th className="p-3 font-semibold">Insumo</th>
+                  <th className="p-3 font-semibold">Stock</th>
+                  <th className="p-3 font-semibold">Consumo/día</th>
+                  <th className="p-3 font-semibold">Alcanza para</th>
+                  <th className="p-3 font-semibold">Última compra</th>
+                  <th className="p-3 font-semibold">Status</th>
+                  <th className="p-3 font-semibold">Conteo físico</th>
+                  <th className="p-3 font-semibold"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-100">
+                {activosFiltrados.map((a) => (
+                  <tr key={a.id} className="hover:bg-neutral-50">
+                    <td className="p-3">
+                      <p className="font-semibold text-neutral-900">{a.nombre}</p>
+                      <p className="text-xs text-neutral-400">{a.categoria || SIN_CATEGORIA}</p>
+                    </td>
+                    <td className="p-3 font-semibold text-neutral-900 whitespace-nowrap">
+                      {a.stockActual} {a.unidadReceta}
+                    </td>
+                    <td className="p-3 text-neutral-600 whitespace-nowrap">
+                      {a.consumoPorDia > 0 ? `${a.consumoPorDia} ${a.unidadReceta}` : '—'}
+                    </td>
+                    <td className="p-3 whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className={`w-2.5 h-2.5 rounded-full ${PUNTO_NIVEL[a.nivel]}`} />
+                        {a.alcanzaParaDias !== null ? (
+                          <span className="text-neutral-700">
+                            ~{a.alcanzaParaDias} día{a.alcanzaParaDias === 1 ? '' : 's'}
                           </span>
-                        </td>
-                      </tr>
-                      {grupo.items.map((i) => (
-                    <tr key={i.id} className={`hover:bg-neutral-50 ${i.oculto ? 'opacity-45' : ''}`}>
-                      <td className="p-3">
-                        <p className="font-semibold text-neutral-900">
-                          {i.oculto && <span title="Insumo oculto">🚫 </span>}
-                          {i.nombre}
-                        </p>
-                        <p className="text-xs text-neutral-400">
-                          {i.id}
-                          {i.oculto && ' · oculto'}
-                        </p>
-                        {i.recetas.length > 0 ? (
-                          <p className="text-[11px] text-green-700 mt-0.5" title={i.recetas.join(', ')}>
-                            🍹 En: {i.recetas.slice(0, 3).join(', ')}
-                            {i.recetas.length > 3 ? ` +${i.recetas.length - 3}` : ''}
-                          </p>
                         ) : (
-                          <p className="text-[11px] text-amber-600 mt-0.5">⚠️ Sin receta asociada</p>
+                          <span className="text-neutral-400">sin datos</span>
                         )}
-                        <div className="flex gap-1 mt-1">
-                          <select
-                            value={i.categoria}
-                            onChange={(e) => cambiarCategoria(i, e.target.value)}
-                            className="bg-neutral-50 border border-neutral-200 rounded-lg px-1.5 py-1 text-[11px] text-neutral-600 focus:outline-none focus:border-black"
-                          >
-                            <option value="">Sin categoría</option>
-                            {todasCategorias.map((c) => (
-                              <option key={c} value={c}>
-                                {c}
-                              </option>
-                            ))}
-                            <option value={NUEVA_CATEGORIA}>➕ Nueva categoría…</option>
-                          </select>
+                      </span>
+                    </td>
+                    <td className="p-3 whitespace-nowrap text-neutral-600">
+                      {a.diasDesdeCompra !== null ? (
+                        <>
+                          <span className="text-xs">
+                            {a.diasDesdeCompra === 0 ? 'Hoy' : `Hace ${a.diasDesdeCompra} d`}
+                          </span>
                           <button
-                            onClick={() => abrirEditar(i)}
-                            className="text-[11px] font-semibold text-neutral-600 bg-neutral-100 px-2 py-1 rounded-lg active:scale-95"
-                            title="Editar nombre y datos"
+                            onClick={() => verHistorial(a.idBiblioteca, a.nombre)}
+                            className="block text-[11px] text-marron font-semibold mt-0.5"
                           >
-                            ✏️
+                            Ver precios
                           </button>
-                        </div>
-                      </td>
-                      <td className="p-3 font-semibold text-neutral-900 whitespace-nowrap">
-                        {i.stock} {i.unidad}
-                      </td>
-                      <td className="p-3 text-neutral-600 whitespace-nowrap">
-                        {i.consumoDiario > 0 ? `${i.consumoDiario} ${i.unidad}` : '—'}
-                      </td>
-                      <td className="p-3 whitespace-nowrap">
-                        <span className="inline-flex items-center gap-1.5">
-                          <span className={`w-2.5 h-2.5 rounded-full ${PUNTO_NIVEL[i.nivel]}`} />
-                          {i.diasRestantes !== null ? (
-                            <span className="text-neutral-700">
-                              ~{i.diasRestantes} día{i.diasRestantes === 1 ? '' : 's'}
-                            </span>
-                          ) : (
-                            <span className="text-neutral-400">sin datos</span>
-                          )}
-                        </span>
-                      </td>
-                      <td className="p-3 whitespace-nowrap">
-                        <input
-                          type="date"
-                          value={i.fechaCompraISO}
-                          disabled={ocupado}
-                          onChange={(e) => cambiarFechaCompra(i, e.target.value)}
-                          className="bg-neutral-50 border border-neutral-200 rounded-lg px-2 py-1 text-xs text-neutral-700 focus:outline-none focus:border-black disabled:opacity-50"
-                        />
-                        <div className="mt-1">
-                          {i.diasDesdeCompra !== null ? (
-                            <span className="inline-flex items-center gap-1.5">
-                              <span className="text-[11px] text-neutral-500">
-                                {i.diasDesdeCompra === 0
-                                  ? 'Hoy'
-                                  : `Hace ${i.diasDesdeCompra} día${i.diasDesdeCompra === 1 ? '' : 's'}`}
+                        </>
+                      ) : (
+                        <span className="text-neutral-400 text-xs">Sin registrar</span>
+                      )}
+                    </td>
+                    <td className="p-3">
+                      <select
+                        value={a.status}
+                        disabled={ocupado}
+                        onChange={(e) =>
+                          accionActivo(a.id, { accion: 'status', valor: e.target.value })
+                        }
+                        className={`rounded-full px-2 py-1 text-[11px] font-semibold border-0 focus:outline-none ${
+                          COLOR_STATUS[a.status] ?? 'bg-neutral-100 text-neutral-600'
+                        }`}
+                      >
+                        <option value="">—</option>
+                        {STATUS.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="p-3 whitespace-nowrap">
+                      {a.conteoFisico !== null ? (
+                        <div>
+                          <p className="text-neutral-700">
+                            {a.conteoFisico} {a.unidadReceta}
+                            {a.diferencia !== null && a.diferencia !== 0 && (
+                              <span
+                                className={`ml-1.5 text-xs font-semibold ${
+                                  a.diferencia < 0 ? 'text-red-600' : 'text-green-600'
+                                }`}
+                              >
+                                ({a.diferencia > 0 ? '+' : ''}
+                                {a.diferencia})
                               </span>
-                              {i.fresco !== null && (
-                                <span
-                                  className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
-                                    i.fresco
-                                      ? 'bg-green-100 text-green-700'
-                                      : 'bg-orange-100 text-orange-700'
-                                  }`}
-                                >
-                                  {i.fresco ? '🟢 Fresco' : `⚠️ +${DIAS_FRESCURA} días`}
-                                </span>
-                              )}
-                            </span>
-                          ) : (
-                            <span className="text-[11px] text-neutral-400">Sin registrar</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-3 whitespace-nowrap">
-                        {i.conteoFisico !== null ? (
-                          <div>
-                            <p className="text-neutral-700">
-                              {i.conteoFisico} {i.unidad}
-                              {i.diferencia !== null && i.diferencia !== 0 && (
-                                <span
-                                  className={`ml-1.5 text-xs font-semibold ${
-                                    i.diferencia < 0 ? 'text-red-600' : 'text-green-600'
-                                  }`}
-                                >
-                                  ({i.diferencia > 0 ? '+' : ''}
-                                  {i.diferencia})
-                                </span>
-                              )}
-                            </p>
-                            {i.fechaConteo && (
-                              <p className="text-[10px] text-neutral-400">{i.fechaConteo}</p>
                             )}
-                          </div>
-                        ) : (
-                          <span className="text-neutral-400">—</span>
-                        )}
-                      </td>
-                      <td className="p-3">
-                        <div className="flex gap-1.5 justify-end">
-                          <button
-                            onClick={() => registrarCompra(i)}
-                            disabled={ocupado}
-                            className="text-xs font-semibold text-neutral-700 bg-neutral-100 px-2.5 py-1.5 rounded-lg active:scale-95 transition-transform disabled:opacity-50"
-                          >
-                            + Compra
-                          </button>
-                          <button
-                            onClick={() => capturarConteo(i)}
-                            disabled={ocupado}
-                            className="text-xs font-semibold text-neutral-700 bg-neutral-100 px-2.5 py-1.5 rounded-lg active:scale-95 transition-transform disabled:opacity-50"
-                          >
-                            Conteo
-                          </button>
-                          <button
-                            onClick={() => verHistorial(i)}
-                            disabled={ocupado}
-                            title="Historial de precios de compra"
-                            className="text-xs font-semibold text-neutral-700 bg-neutral-100 px-2.5 py-1.5 rounded-lg active:scale-95 transition-transform disabled:opacity-50"
-                          >
-                            💲{i.costoUnitario ? ` ${i.costoUnitario}` : ''}
-                          </button>
-                          {i.diferencia !== null && i.diferencia !== 0 && (
-                            <button
-                              onClick={() => ajustar(i)}
-                              disabled={ocupado}
-                              className="text-xs font-semibold text-white bg-black px-2.5 py-1.5 rounded-lg active:scale-95 transition-transform disabled:opacity-50"
-                            >
-                              Ajustar
-                            </button>
+                          </p>
+                          {a.fechaConteo && (
+                            <p className="text-[10px] text-neutral-400">{a.fechaConteo}</p>
                           )}
-                          <button
-                            onClick={() => alternarOculto(i)}
-                            disabled={ocupado}
-                            title={i.oculto ? 'Volver a mostrar' : 'Ocultar (sale de la vista y las alertas)'}
-                            className="text-xs font-semibold text-neutral-600 bg-neutral-100 px-2 py-1.5 rounded-lg active:scale-95 transition-transform disabled:opacity-50"
-                          >
-                            {i.oculto ? '👁 Mostrar' : '🚫'}
-                          </button>
-                          <button
-                            onClick={() => eliminarInsumo(i)}
-                            disabled={ocupado}
-                            title="Eliminar insumo"
-                            className="text-xs font-semibold text-red-600 bg-red-50 px-2 py-1.5 rounded-lg active:scale-95 transition-transform disabled:opacity-50"
-                          >
-                            🗑
-                          </button>
                         </div>
-                      </td>
-                    </tr>
-                      ))}
-                    </Fragment>
-                  ))}
-                </tbody>
-              </table>
-              {insumos.length === 0 && (
-                <p className="p-6 text-neutral-500 text-center">
-                  No hay insumos registrados en la hoja "Insumos".
-                </p>
-              )}
-              {insumos.length > 0 && insumosFiltrados.length === 0 && (
-                <p className="p-6 text-neutral-500 text-center">
-                  Ningún insumo coincide con el filtro.
-                </p>
-              )}
-            </div>
-            <p className="text-xs text-neutral-400 mt-2">
-              💡 "Stock (app)" es el teórico que la app descuenta con cada venta. Usa "Conteo" para
-              capturar lo que hay físicamente y "Ajustar" para cuadrarlos si no coinciden.
-            </p>
+                      ) : (
+                        <span className="text-neutral-400">—</span>
+                      )}
+                    </td>
+                    <td className="p-3">
+                      <div className="flex flex-col gap-1 items-end">
+                        <button
+                          onClick={() => abrirCompra(a)}
+                          disabled={ocupado}
+                          className="text-xs font-semibold bg-marron text-white px-3 py-1.5 rounded-lg active:scale-95 disabled:opacity-50 whitespace-nowrap"
+                        >
+                          + Compra
+                        </button>
+                        <button
+                          onClick={() => capturarConteo(a)}
+                          disabled={ocupado}
+                          className="text-xs font-semibold bg-neutral-100 px-3 py-1.5 rounded-lg active:scale-95 disabled:opacity-50"
+                        >
+                          Conteo
+                        </button>
+                        {a.conteoFisico !== null && a.diferencia !== 0 && (
+                          <button
+                            onClick={() => ajustar(a)}
+                            disabled={ocupado}
+                            className="text-xs font-semibold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-lg active:scale-95 disabled:opacity-50"
+                          >
+                            Ajustar
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {activosFiltrados.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="p-6 text-center text-neutral-400">
+                      No hay insumos activos que mostrar.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </>
+      ) : (
+        <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-neutral-500 border-b border-neutral-100">
+                <th className="p-3 font-semibold">Insumo</th>
+                <th className="p-3 font-semibold">Se compra por</th>
+                <th className="p-3 font-semibold">Equivale a</th>
+                <th className="p-3 font-semibold">Último precio</th>
+                <th className="p-3 font-semibold">Costo por unidad de receta</th>
+                <th className="p-3 font-semibold">Proveedor</th>
+                <th className="p-3 font-semibold"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-100">
+              {bibliotecaFiltrada.map((b) => (
+                <tr key={b.id} className="hover:bg-neutral-50">
+                  <td className="p-3">
+                    <p className="font-semibold text-neutral-900">{b.nombre}</p>
+                    <p className="text-xs text-neutral-400">
+                      {b.id} · {b.categoria || SIN_CATEGORIA}
+                    </p>
+                    {b.recetas.length > 0 ? (
+                      <p className="text-[11px] text-green-700 mt-0.5" title={b.recetas.join(', ')}>
+                        🍹 En: {b.recetas.slice(0, 3).join(', ')}
+                        {b.recetas.length > 3 ? ` +${b.recetas.length - 3}` : ''}
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-amber-600 mt-0.5">⚠️ Sin receta asociada</p>
+                    )}
+                  </td>
+                  <td className="p-3 text-neutral-700 whitespace-nowrap">{b.unidadCompra || '—'}</td>
+                  <td className="p-3 text-neutral-600 whitespace-nowrap">
+                    {b.equivalencia} {b.unidadReceta}
+                  </td>
+                  <td className="p-3 text-neutral-900 whitespace-nowrap">
+                    {b.ultimoPrecioCompra > 0 ? (
+                      <>
+                        ${b.ultimoPrecioCompra}
+                        <span className="text-neutral-400 text-xs"> / {b.unidadCompra}</span>
+                      </>
+                    ) : (
+                      <span className="text-neutral-400">—</span>
+                    )}
+                  </td>
+                  <td className="p-3 whitespace-nowrap">
+                    {b.costoPorUnidadReceta !== null ? (
+                      <span className="font-semibold text-neutral-900">
+                        ${b.costoPorUnidadReceta}
+                        <span className="text-neutral-400 font-normal text-xs">
+                          {' '}
+                          / {b.unidadReceta}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-neutral-400">registra una compra</span>
+                    )}
+                  </td>
+                  <td className="p-3 text-neutral-600">
+                    {b.proveedor || <span className="text-neutral-400">—</span>}
+                    {b.contacto && <p className="text-[11px] text-neutral-400">{b.contacto}</p>}
+                  </td>
+                  <td className="p-3">
+                    <div className="flex gap-1 justify-end">
+                      <button
+                        onClick={() => verHistorial(b.id, b.nombre)}
+                        className="text-xs font-semibold bg-neutral-100 px-2.5 py-1.5 rounded-lg active:scale-95"
+                        title="Historial de precios"
+                      >
+                        📈
+                      </button>
+                      <button
+                        onClick={() => abrirEditar(b)}
+                        className="text-xs font-semibold bg-neutral-100 px-2.5 py-1.5 rounded-lg active:scale-95"
+                        title="Editar"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        onClick={() => eliminarInsumo(b)}
+                        disabled={ocupado}
+                        className="text-xs font-semibold bg-red-50 text-red-600 px-2.5 py-1.5 rounded-lg active:scale-95 disabled:opacity-50"
+                        title="Quitar de la biblioteca"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {bibliotecaFiltrada.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="p-6 text-center text-neutral-400">
+                    Aún no hay insumos en la biblioteca.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
 
-      {/* Modal: nuevo insumo */}
-      {mostrarNuevo && (
-        <div
-          className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-          onClick={() => setMostrarNuevo(false)}
+      {/* ── Modal: nuevo / editar insumo de la biblioteca ── */}
+      {modalInsumo && (
+        <Modal
+          titulo={editandoId ? 'Editar insumo' : 'Nuevo insumo'}
+          onCerrar={() => setModalInsumo(false)}
         >
-          <div
-            className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 space-y-4 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-lg font-bold text-black">Nuevo insumo</h2>
+          <label className="block text-xs font-semibold text-neutral-500 mb-1">Nombre</label>
+          <input
+            value={form.nombre}
+            onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+            placeholder="Leche entera"
+            className={inputCls}
+          />
 
-            <div className="space-y-1.5">
-              <label className="text-sm font-semibold text-neutral-700">Nombre</label>
-              <input
-                value={nuevoNombre}
-                onChange={(e) => setNuevoNombre(e.target.value)}
-                placeholder="Ej. Fresa"
-                className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black"
-              />
-              <p className="text-xs text-neutral-400">
-                Si va en recetas, escríbelo igual que en la columna Ingrediente de Catalogo.
-              </p>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-semibold text-neutral-700">Unidad de medida</label>
-              <input
-                value={nuevaUnidad}
-                onChange={(e) => setNuevaUnidad(e.target.value)}
-                placeholder="Ej. kg, L, pz"
-                className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-semibold text-neutral-700">Grupo</label>
-              <select
-                value={nuevaCategoria}
-                onChange={(e) => {
-                  if (e.target.value === NUEVA_CATEGORIA) {
-                    const nueva = prompt('Nombre de la nueva categoría:');
-                    if (nueva && nueva.trim()) {
-                      setCategoriasEnUso((prev) => (prev.includes(nueva.trim()) ? prev : [...prev, nueva.trim()]));
-                      setNuevaCategoria(nueva.trim());
-                    }
-                  } else {
-                    setNuevaCategoria(e.target.value);
-                  }
-                }}
-                className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-700 focus:outline-none focus:border-black"
-              >
-                <option value="">Sin categoría</option>
-                {todasCategorias.map((c) => (
-                  <option key={c} value={c}>
-                    {ICONO_GRUPO[c] ?? ''} {c}
-                  </option>
-                ))}
-                <option value={NUEVA_CATEGORIA}>➕ Nueva categoría…</option>
-              </select>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-semibold text-neutral-700">
-                Proveedor <span className="font-normal text-neutral-400">(opcional)</span>
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            <div>
+              <label className="block text-xs font-semibold text-neutral-500 mb-1">
+                Se compra por
               </label>
               <input
-                value={nuevoProveedor}
-                onChange={(e) => setNuevoProveedor(e.target.value)}
-                placeholder="Ej. Frutería Don Beto"
-                className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black"
+                list="unidades-compra"
+                value={form.unidadCompra}
+                onChange={(e) => setForm({ ...form, unidadCompra: e.target.value })}
+                className={inputCls}
               />
+              <datalist id="unidades-compra">
+                {UNIDADES_COMPRA.map((u) => (
+                  <option key={u} value={u} />
+                ))}
+              </datalist>
             </div>
-
-            <div className="flex gap-2 pt-2">
-              <button
-                onClick={() => setMostrarNuevo(false)}
-                className="flex-1 border border-neutral-200 text-neutral-600 font-semibold py-3 rounded-2xl active:scale-95 transition-transform"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={crearInsumo}
-                disabled={ocupado}
-                className="flex-1 bg-marron text-white font-semibold py-3 rounded-2xl active:scale-95 transition-transform disabled:opacity-50"
-              >
-                {ocupado ? 'Guardando...' : 'Crear insumo'}
-              </button>
+            <div>
+              <label className="block text-xs font-semibold text-neutral-500 mb-1">
+                Unidad en recetas
+              </label>
+              <input
+                list="unidades-receta"
+                value={form.unidadReceta}
+                onChange={(e) => setForm({ ...form, unidadReceta: e.target.value })}
+                className={inputCls}
+              />
+              <datalist id="unidades-receta">
+                {UNIDADES_RECETA.map((u) => (
+                  <option key={u} value={u} />
+                ))}
+              </datalist>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Modal: editar insumo */}
-      {editando && (
-        <div
-          className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-          onClick={() => setEditando(null)}
-        >
-          <div
-            className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 space-y-4 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
+          <label className="block text-xs font-semibold text-neutral-500 mb-1 mt-3">
+            Equivalencia
+          </label>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-neutral-500 whitespace-nowrap">
+              1 {form.unidadCompra || 'unidad'} =
+            </span>
+            <input
+              type="number"
+              value={form.equivalencia}
+              onChange={(e) => setForm({ ...form, equivalencia: e.target.value })}
+              className={inputCls}
+            />
+            <span className="text-sm text-neutral-500">{form.unidadReceta || 'u'}</span>
+          </div>
+
+          <label className="block text-xs font-semibold text-neutral-500 mb-1 mt-3">Categoría</label>
+          <select
+            value={form.categoria}
+            onChange={(e) => {
+              if (e.target.value === NUEVA_CATEGORIA) {
+                const nueva = prompt('Nombre de la nueva categoría:');
+                if (nueva?.trim()) setForm({ ...form, categoria: nueva.trim() });
+              } else {
+                setForm({ ...form, categoria: e.target.value });
+              }
+            }}
+            className={inputCls}
           >
-            <h2 className="text-lg font-bold text-black">Editar insumo</h2>
+            <option value="">Sin categoría</option>
+            {todasCategorias.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+            {form.categoria && !todasCategorias.includes(form.categoria) && (
+              <option value={form.categoria}>{form.categoria}</option>
+            )}
+            <option value={NUEVA_CATEGORIA}>➕ Nueva categoría…</option>
+          </select>
 
-            <div className="space-y-1.5">
-              <label className="text-sm font-semibold text-neutral-700">Nombre</label>
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            <div>
+              <label className="block text-xs font-semibold text-neutral-500 mb-1">Proveedor</label>
               <input
-                value={edNombre}
-                onChange={(e) => setEdNombre(e.target.value)}
-                className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black"
-              />
-              {editando.recetas.length > 0 && (
-                <p className="text-xs text-amber-600">
-                  ⚠️ Está en {editando.recetas.length} receta(s). Al renombrarlo se actualizará también ahí.
-                </p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-semibold text-neutral-700">Unidad de medida</label>
-              <input
-                value={edUnidad}
-                onChange={(e) => setEdUnidad(e.target.value)}
-                placeholder="kg, L, pz"
-                className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black"
+                value={form.proveedor}
+                onChange={(e) => setForm({ ...form, proveedor: e.target.value })}
+                className={inputCls}
               />
             </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-semibold text-neutral-700">Proveedor</label>
+            <div>
+              <label className="block text-xs font-semibold text-neutral-500 mb-1">Contacto</label>
               <input
-                value={edProveedor}
-                onChange={(e) => setEdProveedor(e.target.value)}
-                className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black"
+                value={form.contacto}
+                onChange={(e) => setForm({ ...form, contacto: e.target.value })}
+                className={inputCls}
               />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-semibold text-neutral-700">Contacto del proveedor</label>
-              <input
-                value={edContacto}
-                onChange={(e) => setEdContacto(e.target.value)}
-                placeholder="Tel / WhatsApp"
-                className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black"
-              />
-            </div>
-
-            <div className="flex gap-2 pt-2">
-              <button
-                onClick={() => setEditando(null)}
-                className="flex-1 border border-neutral-200 text-neutral-600 font-semibold py-3 rounded-2xl active:scale-95 transition-transform"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={guardarEdicion}
-                disabled={ocupado}
-                className="flex-1 bg-marron text-white font-semibold py-3 rounded-2xl active:scale-95 transition-transform disabled:opacity-50"
-              >
-                {ocupado ? 'Guardando...' : 'Guardar'}
-              </button>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Modal: historial de precios */}
-      {historialDe && (
-        <div
-          className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-          onClick={() => setHistorialDe(null)}
-        >
-          <div
-            className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl max-h-[80vh] flex flex-col shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
+          {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
+
+          <button
+            onClick={guardarInsumo}
+            disabled={ocupado}
+            className="w-full bg-marron text-white font-semibold py-3 rounded-xl mt-4 active:scale-95 disabled:opacity-50"
           >
-            <div className="p-5 border-b border-neutral-100 shrink-0">
-              <h2 className="text-lg font-bold text-black">💲 Historial de precios</h2>
-              <p className="text-sm text-neutral-500">{historialDe.nombre}</p>
-            </div>
-            <div className="flex-1 overflow-y-auto p-5">
-              {cargandoHist ? (
-                <p className="text-neutral-500 animate-pulse">Cargando...</p>
-              ) : historial.length === 0 ? (
-                <p className="text-neutral-500 text-sm">
-                  Aún no hay compras con precio registrado. Cuando registres una compra con "+ Compra",
-                  te preguntará el precio y aquí verás cómo va cambiando.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {historial.map((h, idx) => {
-                    const anterior = historial[idx + 1];
-                    const subio = anterior && h.precioUnitario > anterior.precioUnitario;
-                    const bajo = anterior && h.precioUnitario < anterior.precioUnitario;
-                    return (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between bg-neutral-50 rounded-xl p-3"
-                      >
-                        <div>
-                          <p className="text-sm font-semibold text-neutral-900">
-                            ${h.precioUnitario.toFixed(2)} / {historialDe.unidad || 'u'}
-                            {subio && <span className="text-red-600 text-xs ml-1.5">▲</span>}
-                            {bajo && <span className="text-green-600 text-xs ml-1.5">▼</span>}
-                          </p>
-                          <p className="text-[11px] text-neutral-400">
-                            {h.fechaISO || h.fecha} · {h.cantidad} {historialDe.unidad} por ${h.precioTotal.toFixed(2)}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-            <div className="p-4 border-t border-neutral-100 shrink-0">
-              <button
-                onClick={() => setHistorialDe(null)}
-                className="w-full bg-neutral-100 text-neutral-700 font-semibold py-2.5 rounded-xl active:scale-95 transition-transform"
-              >
-                Cerrar
-              </button>
-            </div>
-          </div>
-        </div>
+            {ocupado ? 'Guardando…' : 'Guardar'}
+          </button>
+        </Modal>
       )}
+
+      {/* ── Modal: registrar compra ── */}
+      {compraDe && (
+        <Modal titulo={`Compra de ${compraDe.nombre}`} onCerrar={() => setCompraDe(null)}>
+          <label className="block text-xs font-semibold text-neutral-500 mb-1">
+            ¿Cuánto compraste? (en {compraDe.unidadCompra || 'unidades'})
+          </label>
+          <input
+            type="number"
+            inputMode="decimal"
+            value={compraCantidad}
+            onChange={(e) => setCompraCantidad(e.target.value)}
+            className={inputCls}
+            autoFocus
+          />
+
+          <label className="block text-xs font-semibold text-neutral-500 mb-1 mt-3">
+            ¿Cuánto pagaste en total? ($)
+          </label>
+          <input
+            type="number"
+            inputMode="decimal"
+            value={compraPrecio}
+            onChange={(e) => setCompraPrecio(e.target.value)}
+            placeholder="Opcional — actualiza el costo"
+            className={inputCls}
+          />
+
+          <p className="text-xs text-neutral-500 mt-3 bg-neutral-50 rounded-xl p-3">
+            Se sumarán{' '}
+            <strong>
+              {(parseFloat(compraCantidad) || 0) * compraDe.equivalencia} {compraDe.unidadReceta}
+            </strong>{' '}
+            al stock (1 {compraDe.unidadCompra} = {compraDe.equivalencia} {compraDe.unidadReceta}).
+          </p>
+
+          {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
+
+          <button
+            onClick={registrarCompra}
+            disabled={ocupado}
+            className="w-full bg-marron text-white font-semibold py-3 rounded-xl mt-4 active:scale-95 disabled:opacity-50"
+          >
+            {ocupado ? 'Guardando…' : 'Registrar compra'}
+          </button>
+        </Modal>
+      )}
+
+      {/* ── Modal: historial de precios ── */}
+      {historial !== null && (
+        <Modal titulo={`Precios de ${historialDe}`} onCerrar={() => setHistorial(null)}>
+          {historial.length === 0 ? (
+            <p className="text-sm text-neutral-500">Todavía no hay compras registradas.</p>
+          ) : (
+            <ul className="divide-y divide-neutral-100 text-sm">
+              {historial.map((h, k) => (
+                <li key={k} className="py-2 flex justify-between gap-3">
+                  <div>
+                    <p className="text-neutral-900 font-semibold">
+                      {h.cantidad} {h.unidadCompra} · ${h.precioTotal}
+                    </p>
+                    <p className="text-xs text-neutral-400">{h.fecha}</p>
+                  </div>
+                  <p className="text-neutral-600 text-right whitespace-nowrap">
+                    ${h.precioUnidadCompra}
+                    <span className="text-neutral-400 text-xs"> / {h.unidadCompra}</span>
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function Modal({
+  titulo,
+  onCerrar,
+  children,
+}: {
+  titulo: string;
+  onCerrar: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md p-5 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-bold text-lg text-neutral-900">{titulo}</h2>
+          <button onClick={onCerrar} className="text-neutral-400 text-xl leading-none px-2">
+            ✕
+          </button>
+        </div>
+        {children}
+      </div>
     </div>
   );
 }

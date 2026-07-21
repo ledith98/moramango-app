@@ -1,83 +1,79 @@
 /**
  * app/api/admin/insumos/route.ts
  *
- * GET   → Inventario de insumos con análisis de consumo:
- *         stock teórico, consumo diario (ventas reales de los últimos
- *         7 días × recetas de Catalogo, con merma), días restantes,
- *         nivel de alarma y compra sugerida; más el conteo físico y su
- *         diferencia contra el teórico. Excluye eliminados.
- * POST  → Crea un insumo nuevo (nombre, unidad, categoría, proveedor).
- * PATCH → { idInsumo, accion, cantidad?, valor? }
- *         restock: suma cantidad al Stock_Actual
- *         conteo:  guarda Conteo_Fisico + Fecha_Conteo
- *         ajustar: Stock_Actual = Conteo_Fisico (cuadre de inventario)
- *         ocultar: valor 'si'/'no' — lo saca de la vista y alertas
- *         eliminar: baja lógica (columna Eliminado)
+ * Operación diaria del inventario (InsumoActivo). El catálogo base vive
+ * en /api/admin/biblioteca.
  *
- * Columnas nuevas (Stock_Actual, Conteo_Fisico, Oculto, Eliminado, etc.)
- * se crean solas en la hoja Insumos la primera vez (ensureColumn).
+ * GET              → lista de activos con los datos de su biblioteca ya
+ *                    unidos y los campos calculados (consumo/día,
+ *                    alcanza para X días, alertas).
+ * GET ?historial=  → historial de precios de compra de un insumo.
+ * PATCH            → { id, accion, ... }
+ *                    compra:  { cantidadCompra, precioTotal? }
+ *                    conteo:  { cantidad }
+ *                    ajustar: iguala el stock al conteo físico
+ *                    status:  { valor }
+ *
+ * El stock SIEMPRE se guarda en unidad de receta. La compra llega en
+ * unidad de compra y se convierte con la equivalencia de la biblioteca.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { appendRow, ensureColumn, ensureSheet, getSheetData, updateCell } from '@/lib/googleSheets';
+import { appendRow, getSheetData, updateCell } from '@/lib/googleSheets';
+import { consumoPorInsumo, normalizarNombre } from '@/lib/insumos';
 import {
-  CATEGORIA_FRESCOS,
-  consumoPorInsumo,
-  DIAS_FRESCURA,
-  fechaCompraDesdeISO,
-  normalizarNombre,
-} from '@/lib/insumos';
+  aUnidadesReceta,
+  COL_ACT,
+  COL_BIB,
+  costoPorUnidadReceta,
+  HOJA_ACTIVOS,
+  HOJA_BIBLIOTECA,
+  HOJA_COMPRAS,
+  prepararInventario,
+  redondear,
+  STATUS_INSUMO,
+} from '@/lib/inventario';
 import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 import { getAdminSession } from '@/lib/roles';
 
 const DIAS_ANALISIS = 7;
-const HOJA_COMPRAS = 'Compras_Insumos';
-const COLS_COMPRAS = ['Fecha', 'ID_Insumo', 'Nombre', 'Cantidad', 'Precio_Total', 'Precio_Unitario'];
-
-const redondear = (n: number, decimales = 2) => {
-  const f = Math.pow(10, decimales);
-  return Math.round(n * f) / f;
-};
 
 export async function GET(req: NextRequest) {
   if (!(await getAdminSession())) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
+  await prepararInventario();
 
-  // Historial de precios de un insumo (para la gráfica de cómo ha cambiado)
+  // ── Historial de precios de un insumo ──
   const historialId = new URL(req.url).searchParams.get('historial');
   if (historialId) {
-    let compras: Record<string, string>[] = [];
-    try {
-      compras = await getSheetData(HOJA_COMPRAS);
-    } catch {
-      /* la hoja aún no existe */
-    }
+    const compras = await getSheetData(HOJA_COMPRAS);
     const historial = compras
-      .filter((c) => c.ID_Insumo === historialId)
+      .filter((c) => c.ID_Biblioteca === historialId)
       .map((c) => ({
         fecha: c.Fecha || '',
         fechaISO: parsearFechaHora(c.Fecha)?.fechaISO || '',
-        cantidad: parseFloat(c.Cantidad) || 0,
+        cantidad: parseFloat(c.Cantidad_Compra) || 0,
+        unidadCompra: c.Unidad_Compra || '',
         precioTotal: parseFloat(c.Precio_Total) || 0,
-        precioUnitario: parseFloat(c.Precio_Unitario) || 0,
+        precioUnidadCompra: parseFloat(c.Precio_Unidad_Compra) || 0,
+        costoUnidadReceta: parseFloat(c.Costo_Unidad_Receta) || 0,
         orden: parsearFechaHora(c.Fecha)?.timestamp ?? 0,
       }))
       .sort((a, b) => b.orden - a.orden);
     return NextResponse.json({ historial });
   }
 
-  const [insumos, catalogo, pedidos, detalles] = await Promise.all([
-    getSheetData('Insumos'),
+  const [activos, biblioteca, catalogo, pedidos, detalles] = await Promise.all([
+    getSheetData(HOJA_ACTIVOS),
+    getSheetData(HOJA_BIBLIOTECA),
     getSheetData('Catalogo'),
     getSheetData('PEDIDOS'),
     getSheetData('DT PEDIDOS'),
   ]);
 
-  // Corte: hoy (zona Monterrey) menos DIAS_ANALISIS-1 días, a las 00:00.
-  // Mismo formato numérico empaquetado que parsearFechaHora (AAAAMMDDHHMMSS),
-  // que ordena cronológicamente.
-  const inicio = new Date(Date.now() - (DIAS_ANALISIS - 1) * 24 * 60 * 60 * 1000);
+  // Consumo real de los últimos DIAS_ANALISIS días (ventas × recetas)
+  const inicio = new Date(Date.now() - (DIAS_ANALISIS - 1) * 86400000);
   const partes = new Intl.DateTimeFormat('es-MX', {
     timeZone: 'America/Monterrey',
     year: 'numeric',
@@ -93,247 +89,159 @@ export async function GET(req: NextRequest) {
       .filter((p) => (parsearFechaHora(p.Fecha_Hora)?.timestamp ?? 0) >= corte)
       .map((p) => p.ID_Pedido)
   );
+  const consumo = consumoPorInsumo(
+    detalles
+      .filter((d) => idsValidos.has(d.ID_Pedido))
+      .map((d) => ({ idProducto: d.ID_Producto, cantidad: parseInt(d.Cantidad) || 0 })),
+    catalogo
+  );
 
-  const itemsVendidos = detalles
-    .filter((d) => idsValidos.has(d.ID_Pedido))
-    .map((d) => ({ idProducto: d.ID_Producto, cantidad: parseInt(d.Cantidad) || 0 }));
+  // Índice de la biblioteca por ID (relación 1:1)
+  const bibPorId = new Map(biblioteca.map((b) => [b.ID_Biblioteca, b]));
 
-  const consumo = consumoPorInsumo(itemsVendidos, catalogo);
+  const hoy = fechaHoyMTY();
+  const [hy, hm, hd] = hoy.split('-').map(Number);
+  const hoyMs = Date.UTC(hy, hm - 1, hd);
 
-  // Por cada insumo (por nombre normalizado), los productos cuyas recetas
-  // lo usan. En Catalogo el nombre del producto es "ombre_Producto"
-  // (falta la N en el encabezado real de la hoja).
-  const recetasPorInsumo = new Map<string, Set<string>>();
-  for (const c of catalogo) {
-    const clave = normalizarNombre(c.Ingrediente);
-    if (!clave) continue;
-    const producto = (c['ombre_Producto'] || c['Nombre_Producto'] || '').toString().trim();
-    if (!producto) continue;
-    if (!recetasPorInsumo.has(clave)) recetasPorInsumo.set(clave, new Set());
-    recetasPorInsumo.get(clave)!.add(producto);
-  }
-  const nombresEnRecetas = new Set(recetasPorInsumo.keys());
+  const items = activos
+    .map((a) => {
+      const bib = bibPorId.get(a.ID_Biblioteca);
+      if (!bib) return null; // activo huérfano
+      if ((bib.Eliminado || '').toLowerCase() === 'si') return null;
 
-  // Los eliminados (baja lógica, como en Productos) no se muestran nunca;
-  // los ocultos sí viajan al panel con su bandera para poder reactivarlos.
-  const visibles = insumos.filter((ins) => (ins.Eliminado || '').toLowerCase() !== 'si');
+      const equivalencia = parseFloat(bib.Equivalencia) || 1;
+      const ultimoPrecio = parseFloat(bib.Ultimo_Precio_Compra) || 0;
+      const stock = parseFloat(a.Stock_Actual) || 0;
 
-  const resultado = visibles.map((ins) => {
-    const clave = normalizarNombre(ins['Nombre insumo']);
-    const stock = parseFloat(ins.Stock_Actual) || 0;
-    const consumido = consumo.get(clave) || 0;
-    const consumoDiario = consumido / DIAS_ANALISIS;
-    const diasRestantes = consumoDiario > 0 ? stock / consumoDiario : null;
+      // Las recetas consumen en unidad de receta, igual que el stock
+      const consumido = consumo.get(normalizarNombre(bib.Nombre)) || 0;
+      const consumoPorDia = consumido / DIAS_ANALISIS;
+      const alcanzaParaDias = consumoPorDia > 0 ? stock / consumoPorDia : null;
 
-    let nivel: 'rojo' | 'amarillo' | 'verde' | 'gris' = 'gris';
-    if (consumoDiario > 0) {
-      if (stock <= 0 || diasRestantes! <= 2) nivel = 'rojo';
-      else if (diasRestantes! <= 5) nivel = 'amarillo';
-      else nivel = 'verde';
-    }
+      let nivel: 'rojo' | 'amarillo' | 'verde' | 'gris' = 'gris';
+      if (consumoPorDia > 0) {
+        if (stock <= 0 || alcanzaParaDias! <= 2) nivel = 'rojo';
+        else if (alcanzaParaDias! <= 5) nivel = 'amarillo';
+        else nivel = 'verde';
+      }
 
-    const sugerenciaCompra =
-      consumoDiario > 0 ? Math.max(0, consumoDiario * DIAS_ANALISIS - stock) : 0;
-
-    const conteoStr = ins.Conteo_Fisico ?? '';
-    const conteoFisico = conteoStr !== '' ? parseFloat(conteoStr) || 0 : null;
-
-    // Fecha de la última compra y días transcurridos (para frescura)
-    const fechaCompra = ins.Fecha_Compra || '';
-    const infoCompra = parsearFechaHora(fechaCompra);
-    const diasDesdeCompra = infoCompra
-      ? Math.max(
-          0,
-          Math.round(
-            (new Date(fechaHoyMTY()).getTime() - new Date(infoCompra.fechaISO).getTime()) /
-              86400000
+      const infoCompra = parsearFechaHora(a.Ultima_Compra);
+      const diasDesdeCompra = infoCompra
+        ? Math.max(
+            0,
+            Math.round((hoyMs - new Date(infoCompra.fechaISO).getTime()) / 86400000)
           )
-        )
-      : null;
-
-    const categoria = ins.Categoria || '';
-    // fresco: solo aplica a la categoría de frescos y si hay fecha de compra
-    const fresco =
-      categoria === CATEGORIA_FRESCOS && diasDesdeCompra !== null
-        ? diasDesdeCompra <= DIAS_FRESCURA
         : null;
 
-    return {
-      categoria,
-      fechaCompra,
-      diasDesdeCompra,
-      fresco,
-      id: ins['ID Insumo'] || '',
-      nombre: ins['Nombre insumo'] || '',
-      unidad: ins['Unidad Medida'] || '',
-      proveedor: ins.Proveedor || '',
-      stock: redondear(stock, 3),
-      consumoDiario: redondear(consumoDiario),
-      diasRestantes: diasRestantes !== null ? redondear(diasRestantes, 1) : null,
-      nivel,
-      sugerenciaCompra: redondear(sugerenciaCompra, 1),
-      conteoFisico,
-      fechaConteo: ins.Fecha_Conteo || '',
-      diferencia: conteoFisico !== null ? redondear(conteoFisico - stock, 3) : null,
-      // ISO (YYYY-MM-DD) para prellenar el <input type="date"> del panel
-      fechaCompraISO: infoCompra?.fechaISO ?? '',
-      enRecetas: nombresEnRecetas.has(clave),
-      recetas: [...(recetasPorInsumo.get(clave) ?? [])],
-      costoUnitario: parseFloat(ins['Costo por unidad']) || null,
-      contacto: ins['Contacto Proveedor'] || '',
-      oculto: (ins.Oculto || '').toLowerCase() === 'si',
-    };
-  });
+      const conteoStr = a.Conteo_Fisico ?? '';
+      const conteoFisico = conteoStr !== '' ? parseFloat(conteoStr) || 0 : null;
 
-  // Categorías fijas + las que ya se usan en la hoja (para el desplegable
-  // y poder agregar nuevas sin tocar código).
-  const categoriasEnUso = [
-    ...new Set(visibles.map((i) => (i.Categoria || '').trim()).filter(Boolean)),
-  ];
+      // Cuánto comprar (en unidad de COMPRA) para cubrir el periodo
+      const faltanteReceta = consumoPorDia > 0 ? Math.max(0, consumoPorDia * DIAS_ANALISIS - stock) : 0;
 
-  return NextResponse.json({ insumos: resultado, diasAnalisis: DIAS_ANALISIS, categoriasEnUso });
+      return {
+        id: a.ID_Activo || '',
+        idBiblioteca: a.ID_Biblioteca || '',
+        nombre: bib.Nombre || '',
+        unidadCompra: bib.Unidad_Compra || '',
+        unidadReceta: bib.Unidad_Receta || '',
+        equivalencia,
+        costoPorUnidadReceta: costoPorUnidadReceta(ultimoPrecio, equivalencia),
+        categoria: bib.Categoria || '',
+        proveedor: bib.Proveedor || '',
+        stockActual: redondear(stock, 3),
+        consumoPorDia: redondear(consumoPorDia, 3),
+        alcanzaParaDias: alcanzaParaDias !== null ? redondear(alcanzaParaDias, 1) : null,
+        nivel,
+        sugerenciaCompra: redondear(faltanteReceta / (equivalencia || 1), 2),
+        ultimaCompra: a.Ultima_Compra || '',
+        ultimaCompraISO: infoCompra?.fechaISO ?? '',
+        diasDesdeCompra,
+        status: a.Status || '',
+        conteoFisico,
+        fechaConteo: a.Fecha_Conteo || '',
+        diferencia: conteoFisico !== null ? redondear(conteoFisico - stock, 3) : null,
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
+
+  return NextResponse.json({ items, diasAnalisis: DIAS_ANALISIS });
 }
 
 export async function PATCH(req: NextRequest) {
   if (!(await getAdminSession())) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
+  await prepararInventario();
 
-  const { idInsumo, accion, cantidad, valor, precioTotal, datos } = await req.json();
-
-  const ACCIONES = ['restock', 'conteo', 'ajustar', 'categoria', 'fecha_compra', 'ocultar', 'eliminar', 'editar'];
-  if (!idInsumo || !ACCIONES.includes(accion)) {
+  const { id, accion, cantidadCompra, precioTotal, cantidad, valor } = await req.json();
+  if (!id || !['compra', 'conteo', 'ajustar', 'status'].includes(accion)) {
     return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 });
   }
 
-  const insumos = await getSheetData('Insumos');
-  const idx = insumos.findIndex((i) => i['ID Insumo'] === idInsumo);
+  const [activos, biblioteca] = await Promise.all([
+    getSheetData(HOJA_ACTIVOS),
+    getSheetData(HOJA_BIBLIOTECA),
+  ]);
+  const idx = activos.findIndex((a) => a.ID_Activo === id);
   if (idx === -1) {
-    return NextResponse.json({ error: 'Insumo no encontrado' }, { status: 404 });
+    return NextResponse.json({ error: 'Insumo activo no encontrado' }, { status: 404 });
   }
-  const filaInsumo = idx + 2;
-  const insumo = insumos[idx];
+  const activo = activos[idx];
+  const filaAct = idx + 2;
 
+  const idxBib = biblioteca.findIndex((b) => b.ID_Biblioteca === activo.ID_Biblioteca);
+  if (idxBib === -1) {
+    return NextResponse.json({ error: 'Este insumo no existe en la biblioteca' }, { status: 400 });
+  }
+  const bib = biblioteca[idxBib];
+  const filaBib = idxBib + 2;
+  const equivalencia = parseFloat(bib.Equivalencia) || 1;
+  const stockActual = parseFloat(activo.Stock_Actual) || 0;
   const fecha = new Date().toLocaleString('es-MX', { timeZone: 'America/Monterrey' });
-  const colStock = await ensureColumn('Insumos', 'Stock_Actual');
-  const colUltima = await ensureColumn('Insumos', 'Ultima actualizacion');
 
-  if (accion === 'categoria') {
-    // Categorías libres: se aceptan las fijas o cualquiera nueva que la
-    // usuaria escriba (se limita el largo para no meter basura).
-    const cat = (valor || '').toString().trim().slice(0, 40);
-    const colCategoria = await ensureColumn('Insumos', 'Categoria');
-    await updateCell('Insumos', filaInsumo, colCategoria, cat);
-    return NextResponse.json({ success: true });
-  }
-
-  // Editar nombre y datos. Renombrar cascadea a Catalogo (Ingrediente)
-  // para no romper la conexión receta↔insumo.
-  if (accion === 'editar') {
-    const nombreNuevo = (datos?.nombre || '').toString().trim();
-    if (!nombreNuevo) {
-      return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 });
-    }
-    const nombreViejo = (insumo['Nombre insumo'] || '').toString().trim();
-    const claveNueva = normalizarNombre(nombreNuevo);
-
-    // No permitir chocar con OTRO insumo (mismo nombre parte el consumo)
-    const choca = insumos.some(
-      (i, k) => k !== idx && normalizarNombre(i['Nombre insumo']) === claveNueva
-    );
-    if (choca) {
-      return NextResponse.json({ error: 'Ya existe otro insumo con ese nombre' }, { status: 400 });
-    }
-
-    // B=Nombre insumo, C=Unidad Medida, E=Proveedor, F=Contacto Proveedor
-    await updateCell('Insumos', filaInsumo, 2, nombreNuevo);
-    await updateCell('Insumos', filaInsumo, 3, (datos?.unidad || '').toString().trim());
-    await updateCell('Insumos', filaInsumo, 5, (datos?.proveedor || '').toString().trim());
-    await updateCell('Insumos', filaInsumo, 6, (datos?.contacto || '').toString().trim());
-
-    // Cascada del nombre a las recetas: Ingrediente es la columna C (3)
-    // en Catalogo. Sin esto, renombrar rompería el vínculo receta↔insumo.
-    if (normalizarNombre(nombreViejo) !== claveNueva) {
-      const catalogo = await getSheetData('Catalogo');
-      const claveVieja = normalizarNombre(nombreViejo);
-      for (let k = 0; k < catalogo.length; k++) {
-        if (normalizarNombre(catalogo[k].Ingrediente) === claveVieja) {
-          await updateCell('Catalogo', k + 2, 3, nombreNuevo);
-        }
-      }
-    }
-    return NextResponse.json({ success: true });
-  }
-
-  // Ocultar/mostrar: lo saca de la vista y de las alertas sin perder su
-  // historial (para insumos de temporada o que dejaste de usar por ahora)
-  if (accion === 'ocultar') {
-    if (valor !== 'si' && valor !== 'no') {
-      return NextResponse.json({ error: 'Valor inválido' }, { status: 400 });
-    }
-    const colOculto = await ensureColumn('Insumos', 'Oculto');
-    await updateCell('Insumos', filaInsumo, colOculto, valor);
-    return NextResponse.json({ success: true });
-  }
-
-  // Eliminar: baja lógica (mismo patrón que Productos). No se borra la
-  // fila del Sheet: las recetas de Catalogo lo referencian por nombre y
-  // el historial de consumo debe seguir cuadrando.
-  if (accion === 'eliminar') {
-    const colEliminado = await ensureColumn('Insumos', 'Eliminado');
-    await updateCell('Insumos', filaInsumo, colEliminado, 'si');
-    return NextResponse.json({ success: true });
-  }
-
-  // Ajustar manualmente la fecha de compra (valor = YYYY-MM-DD, o '' para limpiar)
-  if (accion === 'fecha_compra') {
-    const colFechaCompra = await ensureColumn('Insumos', 'Fecha_Compra');
-    if (valor === '') {
-      await updateCell('Insumos', filaInsumo, colFechaCompra, '');
-      return NextResponse.json({ success: true });
-    }
-    const fechaCanonica = fechaCompraDesdeISO(valor);
-    if (!fechaCanonica) {
-      return NextResponse.json({ error: 'Fecha inválida' }, { status: 400 });
-    }
-    await updateCell('Insumos', filaInsumo, colFechaCompra, fechaCanonica);
-    return NextResponse.json({ success: true });
-  }
-
-  if (accion === 'restock') {
-    const num = parseFloat(cantidad);
-    if (isNaN(num) || num <= 0) {
+  // ── Registrar una compra ──
+  if (accion === 'compra') {
+    const cant = parseFloat(cantidadCompra);
+    if (isNaN(cant) || cant <= 0) {
       return NextResponse.json({ error: 'Cantidad inválida' }, { status: 400 });
     }
-    // Fecha de compra: la indicada (YYYY-MM-DD) o, si no se dio, hoy
-    const fechaCompra = valor ? fechaCompraDesdeISO(valor) : fecha;
-    if (valor && !fechaCompra) {
-      return NextResponse.json({ error: 'Fecha inválida' }, { status: 400 });
-    }
-    const nuevoStock = (parseFloat(insumo.Stock_Actual) || 0) + num;
-    const colFechaCompra = await ensureColumn('Insumos', 'Fecha_Compra');
-    await updateCell('Insumos', filaInsumo, colStock, redondear(nuevoStock, 3));
-    await updateCell('Insumos', filaInsumo, colFechaCompra, fechaCompra!);
-    await updateCell('Insumos', filaInsumo, colUltima, fecha);
 
-    // Precio de esta compra (opcional): guarda el costo unitario actual y
-    // deja registro en el historial para ver cómo ha cambiado el precio.
+    // a) Sumar al stock, convirtiendo compra → receta
+    const enReceta = aUnidadesReceta(cant, equivalencia);
+    const nuevoStock = redondear(stockActual + enReceta, 3);
+    await updateCell(HOJA_ACTIVOS, filaAct, COL_ACT.stock, nuevoStock);
+    await updateCell(HOJA_ACTIVOS, filaAct, COL_ACT.ultimaCompra, fecha);
+    // Una compra fresca reinicia el status
+    await updateCell(HOJA_ACTIVOS, filaAct, COL_ACT.status, 'Fresco');
+
+    // b) Actualizar el último precio en la biblioteca (el padre)
     const precio = parseFloat(precioTotal);
+    let costoReceta: number | null = null;
     if (!isNaN(precio) && precio > 0) {
-      const unitario = redondear(precio / num, 2);
-      // Columna D = "Costo por unidad" en la hoja Insumos
-      await updateCell('Insumos', filaInsumo, 4, unitario);
-      await ensureSheet(HOJA_COMPRAS, COLS_COMPRAS);
+      const precioPorUnidadCompra = redondear(precio / cant, 2);
+      await updateCell(HOJA_BIBLIOTECA, filaBib, COL_BIB.ultimoPrecio, precioPorUnidadCompra);
+      costoReceta = costoPorUnidadReceta(precioPorUnidadCompra, equivalencia);
+
       await appendRow(HOJA_COMPRAS, [
-        fechaCompra!,
-        idInsumo,
-        insumo['Nombre insumo'] || '',
-        redondear(num, 3),
+        fecha,
+        bib.ID_Biblioteca,
+        bib.Nombre || '',
+        cant,
+        bib.Unidad_Compra || '',
         redondear(precio, 2),
-        unitario,
+        precioPorUnidadCompra,
+        equivalencia,
+        costoReceta ?? '',
       ]);
     }
-    return NextResponse.json({ success: true, stock: redondear(nuevoStock, 3) });
+
+    return NextResponse.json({
+      success: true,
+      stockActual: nuevoStock,
+      agregadoEnReceta: enReceta,
+      costoPorUnidadReceta: costoReceta,
+    });
   }
 
   if (accion === 'conteo') {
@@ -341,68 +249,24 @@ export async function PATCH(req: NextRequest) {
     if (isNaN(num) || num < 0) {
       return NextResponse.json({ error: 'Cantidad inválida' }, { status: 400 });
     }
-    const colConteo = await ensureColumn('Insumos', 'Conteo_Fisico');
-    const colFechaConteo = await ensureColumn('Insumos', 'Fecha_Conteo');
-    await updateCell('Insumos', filaInsumo, colConteo, redondear(num, 3));
-    await updateCell('Insumos', filaInsumo, colFechaConteo, fecha);
+    await updateCell(HOJA_ACTIVOS, filaAct, COL_ACT.conteoFisico, redondear(num, 3));
+    await updateCell(HOJA_ACTIVOS, filaAct, COL_ACT.fechaConteo, fecha);
     return NextResponse.json({ success: true });
   }
 
-  // ajustar: iguala el stock teórico al último conteo físico
-  const conteo = parseFloat(insumo.Conteo_Fisico);
-  if (isNaN(conteo)) {
-    return NextResponse.json(
-      { error: 'No hay conteo físico registrado para este insumo' },
-      { status: 400 }
-    );
-  }
-  await updateCell('Insumos', filaInsumo, colStock, redondear(conteo, 3));
-  await updateCell('Insumos', filaInsumo, colUltima, fecha);
-  return NextResponse.json({ success: true, stock: redondear(conteo, 3) });
-}
-
-export async function POST(req: NextRequest) {
-  if (!(await getAdminSession())) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  if (accion === 'ajustar') {
+    const conteo = parseFloat(activo.Conteo_Fisico);
+    if (isNaN(conteo)) {
+      return NextResponse.json({ error: 'No hay conteo físico registrado' }, { status: 400 });
+    }
+    await updateCell(HOJA_ACTIVOS, filaAct, COL_ACT.stock, redondear(conteo, 3));
+    return NextResponse.json({ success: true, stockActual: redondear(conteo, 3) });
   }
 
-  const { nombre, unidad, categoria, proveedor } = await req.json();
-
-  if (!nombre || typeof nombre !== 'string' || !nombre.trim()) {
-    return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 });
+  // ── status ──
+  if (valor && !STATUS_INSUMO.includes(valor)) {
+    return NextResponse.json({ error: 'Status inválido' }, { status: 400 });
   }
-  const categoriaLimpia = (categoria || '').toString().trim().slice(0, 40);
-
-  const insumos = await getSheetData('Insumos');
-
-  // Las recetas de Catalogo se unen por NOMBRE: un duplicado partiría el
-  // consumo entre dos filas y los números dejarían de cuadrar.
-  const clave = normalizarNombre(nombre);
-  if (insumos.some((i) => normalizarNombre(i['Nombre insumo']) === clave)) {
-    return NextResponse.json(
-      { error: 'Ya existe un insumo con ese nombre (aunque esté oculto o eliminado)' },
-      { status: 400 }
-    );
-  }
-
-  const nuevoId = `INS-${String(insumos.length + 1).padStart(3, '0')}`;
-  const fecha = new Date().toLocaleString('es-MX', { timeZone: 'America/Monterrey' });
-
-  // Columnas A–G de la hoja Insumos
-  const fila = await appendRow('Insumos', [
-    nuevoId,                    // A ID Insumo
-    nombre.trim(),              // B Nombre insumo
-    (unidad || '').trim(),      // C Unidad Medida
-    '',                         // D Costo por unidad
-    (proveedor || '').trim(),   // E Proveedor
-    '',                         // F Contacto Proveedor
-    fecha,                      // G Ultima actualizacion
-  ]);
-
-  if (categoriaLimpia) {
-    const colCategoria = await ensureColumn('Insumos', 'Categoria');
-    await updateCell('Insumos', fila, colCategoria, categoriaLimpia);
-  }
-
-  return NextResponse.json({ success: true, id: nuevoId });
+  await updateCell(HOJA_ACTIVOS, filaAct, COL_ACT.status, valor || '');
+  return NextResponse.json({ success: true });
 }

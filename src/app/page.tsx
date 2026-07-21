@@ -4,7 +4,13 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSession, signIn, signOut } from 'next-auth/react';
 import { esBeneficioReactivacion as esReactivacion, montoReactivacion } from '@/lib/beneficioCliente';
-import { TRANSFERENCIA, TRANSFERENCIA_HABILITADA } from '@/lib/negocio';
+import {
+  TRANSFERENCIA,
+  TRANSFERENCIA_HABILITADA,
+  TELEFONO_NEGOCIO,
+  linkWhatsApp,
+  mensajeComprobante,
+} from '@/lib/negocio';
 
 // Separa un teléfono guardado tipo "+528186003207" en lada y número
 const parsearTelefono = (telefonoCompleto: string): { lada: string; numero: string } => {
@@ -107,6 +113,9 @@ export default function Home() {
   const [formaPago, setFormaPago] = useState<'recoger' | 'transferencia' | 'linea'>('recoger');
   const [pedidoPorTransferencia, setPedidoPorTransferencia] = useState(false);
   const [clabeCopiada, setClabeCopiada] = useState(false);
+  const [conceptoCopiado, setConceptoCopiado] = useState(false);
+  // Total del pedido ya confirmado (se congela porque el carrito se vacía)
+  const [totalPagarConfirmado, setTotalPagarConfirmado] = useState(0);
   const [codigoCopiado, setCodigoCopiado] = useState(false);
   const [avisoPago, setAvisoPago] = useState('');
   const [notas, setNotas] = useState('');
@@ -543,6 +552,15 @@ export default function Home() {
     }
   };
 
+  const copiarConcepto = async () => {
+    if (!pedidoConfirmado) return;
+    try {
+      await navigator.clipboard.writeText(pedidoConfirmado);
+      setConceptoCopiado(true);
+      setTimeout(() => setConceptoCopiado(false), 2000);
+    } catch {}
+  };
+
   const confirmarOrden = async () => {
     if (carrito.length === 0) return;
 
@@ -576,6 +594,7 @@ export default function Home() {
 
       if (data.success) {
         const fueTransferencia = formaPago === 'transferencia';
+        setTotalPagarConfirmado(totalPagar); // congelar antes de vaciar el carrito
         setCarrito([]);
         localStorage.removeItem(CARRITO_KEY);
         setVerCarrito(false);
@@ -618,11 +637,14 @@ export default function Home() {
           {pedidoPorTransferencia && TRANSFERENCIA_HABILITADA && (
             <div className="w-full bg-neutral-50 border border-neutral-200 rounded-2xl p-4 mb-6 text-left">
               <p className="text-sm font-semibold text-black mb-2">📲 Falta tu transferencia</p>
-              <p className="text-xs text-neutral-600 mb-2">
-                Transfiere el total a la CLABE y muestra tu comprobante al recoger:
+              <p className="text-xs text-neutral-600 mb-3">
+                Transfiere el total a esta CLABE y pon tu <b>número de pedido</b> en el concepto:
               </p>
               <div className="flex items-center justify-between gap-2 bg-white rounded-xl border border-neutral-200 p-2.5">
-                <span className="font-mono font-bold text-black text-sm break-all">{TRANSFERENCIA.clabe}</span>
+                <div className="min-w-0">
+                  <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-semibold">CLABE</p>
+                  <span className="font-mono font-bold text-black text-sm break-all">{TRANSFERENCIA.clabe}</span>
+                </div>
                 <button
                   onClick={copiarClabe}
                   className={`shrink-0 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${
@@ -632,6 +654,31 @@ export default function Home() {
                   {clabeCopiada ? '✓' : 'Copiar'}
                 </button>
               </div>
+              <div className="flex items-center justify-between gap-2 bg-white rounded-xl border border-neutral-200 p-2.5 mt-2">
+                <div className="min-w-0">
+                  <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-semibold">Concepto</p>
+                  <span className="font-mono font-bold text-black text-sm break-all">{pedidoConfirmado}</span>
+                </div>
+                <button
+                  onClick={copiarConcepto}
+                  className={`shrink-0 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${
+                    conceptoCopiado ? 'bg-green-600 text-white' : 'bg-marron text-white'
+                  }`}
+                >
+                  {conceptoCopiado ? '✓' : 'Copiar'}
+                </button>
+              </div>
+              <a
+                href={linkWhatsApp(
+                  TELEFONO_NEGOCIO,
+                  mensajeComprobante(pedidoConfirmado!, totalPagarConfirmado)
+                )}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 w-full flex items-center justify-center gap-2 bg-green-500 text-white text-sm font-bold py-3 rounded-xl active:scale-95 transition-transform"
+              >
+                📲 Enviar mi comprobante por WhatsApp
+              </a>
             </div>
           )}
           <p className="text-sm text-neutral-500 leading-relaxed mb-8">

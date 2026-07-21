@@ -25,9 +25,25 @@ export const TRANSFERENCIA = {
 export const TRANSFERENCIA_HABILITADA = TRANSFERENCIA.clabe.length > 0;
 
 // ── WhatsApp ─────────────────────────────────────────────────────────────────
+/** Teléfono del negocio (a donde el cliente manda su comprobante). */
+export const TELEFONO_NEGOCIO = process.env.NEXT_PUBLIC_NEGOCIO_TELEFONO || '8186003207';
+
 /** Link wa.me con mensaje pre-escrito; abre el chat directo con ese número. */
 export const linkWhatsApp = (telefono: string, mensaje: string): string =>
   `https://wa.me/${(telefono || '').replace(/\D/g, '')}?text=${encodeURIComponent(mensaje)}`;
+
+/**
+ * Mensaje que el CLIENTE manda al negocio con su comprobante de
+ * transferencia. Lleva el número de pedido para que el admin sepa cuál
+ * confirmar (mismo id que va en el concepto de la transferencia).
+ */
+export function mensajeComprobante(idPedido: string, total?: number): string {
+  const monto = total && total > 0 ? ` de $${total.toFixed(2)}` : '';
+  return (
+    `¡Hola! 🥭 Ya hice mi transferencia${monto} del pedido ${idPedido}. ` +
+    `Aquí les mando mi comprobante 👇`
+  );
+}
 
 const primerNombre = (nombre: string) => (nombre || '').trim().split(' ')[0] || 'Hola';
 

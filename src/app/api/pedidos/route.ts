@@ -202,8 +202,21 @@ export async function POST(req: NextRequest) {
       : pagoEnLinea
       ? '💳 Pago en línea — ⏳ PENDIENTE (aún no paga)'
       : '🏪 Pagar al recoger';
+    // Los combos se avisan con su descripción (qué trae el combo), para
+    // que quien prepara no tenga que consultar el menú. Los productos
+    // normales se dejan en una línea para no inflar el mensaje.
+    const productosSheet = await getSheetData('Productos').catch(() => []);
+    const productoPorId = new Map(productosSheet.map((p) => [p.ID_Producto, p]));
     const listaItems = items
-      .map((it: any) => `• ${parseInt(it.cantidad) || 1}× ${it.nombre}`)
+      .map((it: any) => {
+        const linea = `• ${parseInt(it.cantidad) || 1}× ${it.nombre}`;
+        const prod = productoPorId.get(it.id);
+        const esCombo = ((prod?.Categoria ?? prod?.['Categoría']) || '')
+          .toLowerCase()
+          .includes('combo');
+        const desc = (prod?.Descripcion || '').trim();
+        return esCombo && desc ? `${linea}\n   <i>${desc}</i>` : linea;
+      })
       .join('\n');
 
     await enviarTelegram(

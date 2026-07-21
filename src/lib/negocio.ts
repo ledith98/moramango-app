@@ -17,10 +17,14 @@ export const normalizarMetodoPago = (m: string | undefined | null): string =>
   m === 'Mercado Pago' ? METODO_PAGO_EN_LINEA : (m || '');
 
 // ── Transferencia (SPEI) ─────────────────────────────────────────────────────
+// La CLABE va como default en el código (igual que teléfono/dirección):
+// es un dato para RECIBIR pagos que la app le muestra a cualquier
+// cliente, no un secreto. Las env vars NEXT_PUBLIC_TRANSFER_* la
+// sobreescriben si algún día cambia la cuenta.
 export const TRANSFERENCIA = {
-  clabe: process.env.NEXT_PUBLIC_TRANSFER_CLABE || '',
-  titular: process.env.NEXT_PUBLIC_TRANSFER_TITULAR || '',
-  banco: process.env.NEXT_PUBLIC_TRANSFER_BANCO || '',
+  clabe: process.env.NEXT_PUBLIC_TRANSFER_CLABE || '722969010431364258',
+  titular: process.env.NEXT_PUBLIC_TRANSFER_TITULAR || 'Moramango',
+  banco: process.env.NEXT_PUBLIC_TRANSFER_BANCO || 'Mercado Pago (STP)',
 };
 export const TRANSFERENCIA_HABILITADA = TRANSFERENCIA.clabe.length > 0;
 

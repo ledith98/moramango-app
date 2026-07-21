@@ -27,6 +27,8 @@ interface ItemBiblioteca {
   proveedor: string;
   contacto: string;
   recetas: string[];
+  /** false = guardado para después, no aparece en Insumos activos */
+  enUso: boolean;
 }
 
 interface ItemActivo {
@@ -267,6 +269,18 @@ export default function InsumosPage() {
     await accionActivo(a.id, { accion: 'ajustar' });
   }
 
+  /** Mueve un insumo entre "Insumos activos" y "solo biblioteca". */
+  async function cambiarUso(id: string, nombre: string, enUso: boolean) {
+    if (
+      !enUso &&
+      !confirm(
+        `¿Quitar "${nombre}" de los insumos activos? Se queda guardado en la biblioteca con todos sus datos y puedes reactivarlo cuando quieras.`
+      )
+    )
+      return;
+    await accionActivo(id, { accion: 'uso', valor: enUso });
+  }
+
   async function verHistorial(idBiblioteca: string, nombre: string) {
     setHistorialDe(nombre);
     setHistorial([]);
@@ -319,8 +333,8 @@ export default function InsumosPage() {
       <div className="flex gap-1 bg-neutral-100 p-1 rounded-2xl mb-4 w-fit">
         {(
           [
-            ['activos', '🧊 Insumos activos'],
-            ['biblioteca', '📚 Biblioteca'],
+            ['activos', `🧊 Insumos activos (${activos.length})`],
+            ['biblioteca', `📚 Biblioteca (${biblioteca.length})`],
           ] as const
         ).map(([valor, etiqueta]) => (
           <button
@@ -334,6 +348,12 @@ export default function InsumosPage() {
           </button>
         ))}
       </div>
+
+      <p className="text-xs text-neutral-500 mb-4">
+        {pestana === 'activos'
+          ? 'Lo que usas hoy: stock, consumo y compras. Con "📚 A biblioteca" lo guardas sin borrarlo.'
+          : 'Tu catálogo completo, incluidos los insumos guardados para después. Con "🧊 Usar ahora" vuelven a la operación diaria.'}
+      </p>
 
       {biblioteca.length === 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4 text-sm text-amber-800">
@@ -522,6 +542,14 @@ export default function InsumosPage() {
                             Ajustar
                           </button>
                         )}
+                        <button
+                          onClick={() => cambiarUso(a.id, a.nombre, false)}
+                          disabled={ocupado}
+                          className="text-[11px] font-semibold text-neutral-500 px-3 py-1 rounded-lg active:scale-95 disabled:opacity-50 whitespace-nowrap"
+                          title="Guardarlo en la biblioteca sin usarlo por ahora"
+                        >
+                          📚 A biblioteca
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -559,6 +587,13 @@ export default function InsumosPage() {
                     <p className="text-xs text-neutral-400">
                       {b.id} · {b.categoria || SIN_CATEGORIA}
                     </p>
+                    <span
+                      className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full mt-1 ${
+                        b.enUso ? 'bg-green-100 text-green-700' : 'bg-neutral-100 text-neutral-500'
+                      }`}
+                    >
+                      {b.enUso ? '🧊 En uso' : '💤 Guardado para después'}
+                    </span>
                     {b.recetas.length > 0 ? (
                       <p className="text-[11px] text-green-700 mt-0.5" title={b.recetas.join(', ')}>
                         🍹 En: {b.recetas.slice(0, 3).join(', ')}
@@ -600,7 +635,21 @@ export default function InsumosPage() {
                     {b.contacto && <p className="text-[11px] text-neutral-400">{b.contacto}</p>}
                   </td>
                   <td className="p-3">
-                    <div className="flex gap-1 justify-end">
+                    <div className="flex gap-1 justify-end flex-wrap">
+                      <button
+                        onClick={() => cambiarUso(b.id, b.nombre, !b.enUso)}
+                        disabled={ocupado}
+                        className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg active:scale-95 disabled:opacity-50 whitespace-nowrap ${
+                          b.enUso ? 'bg-neutral-100 text-neutral-600' : 'bg-green-50 text-green-700'
+                        }`}
+                        title={
+                          b.enUso
+                            ? 'Quitarlo de los insumos activos'
+                            : 'Empezar a usarlo: aparecerá en Insumos activos'
+                        }
+                      >
+                        {b.enUso ? '💤 Guardar' : '🧊 Usar ahora'}
+                      </button>
                       <button
                         onClick={() => verHistorial(b.id, b.nombre)}
                         className="text-xs font-semibold bg-neutral-100 px-2.5 py-1.5 rounded-lg active:scale-95"

@@ -17,6 +17,7 @@ import { normalizarNombre } from '@/lib/insumos';
 import {
   COL_BIB,
   costoPorUnidadReceta,
+  estaEnUso,
   HOJA_ACTIVOS,
   HOJA_BIBLIOTECA,
   prepararInventario,
@@ -32,10 +33,14 @@ export async function GET() {
   }
   await prepararInventario();
 
-  const [biblioteca, catalogo] = await Promise.all([
+  const [biblioteca, catalogo, activos] = await Promise.all([
     getSheetData(HOJA_BIBLIOTECA),
     getSheetData('Catalogo'),
+    getSheetData(HOJA_ACTIVOS),
   ]);
+
+  // Relación 1:1 — para saber si el insumo se está usando hoy
+  const activoPorBib = new Map(activos.map((a) => [a.ID_Biblioteca, a]));
 
   // Productos cuyas recetas usan cada insumo (en Catalogo el nombre del
   // producto viene en "ombre_Producto": el encabezado real de la hoja).
@@ -64,6 +69,7 @@ export async function GET() {
       proveedor: b.Proveedor || '',
       contacto: b.Contacto_Proveedor || '',
       recetas: [...(recetasPor.get(normalizarNombre(b.Nombre)) ?? [])],
+      enUso: estaEnUso(activoPorBib.get(b.ID_Biblioteca)?.En_Uso),
     };
   });
 
@@ -118,7 +124,7 @@ export async function POST(req: NextRequest) {
 
   // Relación 1:1 — cada insumo de biblioteca nace con su registro activo
   const idAct = `ACT-${String(activos.length + 1).padStart(3, '0')}`;
-  await appendRow(HOJA_ACTIVOS, [idAct, idBib, 0, '', 'Fresco', '', '']);
+  await appendRow(HOJA_ACTIVOS, [idAct, idBib, 0, '', 'Fresco', '', '', 'si']);
 
   return NextResponse.json({ success: true, id: idBib });
 }

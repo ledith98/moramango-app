@@ -16,7 +16,7 @@ import { getSheetData, findRow, updateCell, ensureColumn } from '@/lib/googleShe
 import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 import { METODO_PAGO_EN_LINEA } from '@/lib/negocio';
 import { consumoPorInsumo, normalizarNombre } from '@/lib/insumos';
-import { COL_ACT, HOJA_ACTIVOS, HOJA_BIBLIOTECA } from '@/lib/inventario';
+import { COL_ACT, estaEnUso, HOJA_ACTIVOS, HOJA_BIBLIOTECA } from '@/lib/inventario';
 import { getAdminSession } from '@/lib/roles';
 
 export const ESTADOS_VALIDOS = [
@@ -150,6 +150,7 @@ async function descontarInsumos(idPedido: string) {
 
       const idx = activos.findIndex((a) => a.ID_Biblioteca === bib.ID_Biblioteca);
       if (idx === -1) continue;
+      if (!estaEnUso(activos[idx].En_Uso)) continue; // guardado solo en biblioteca
 
       const stockActual = parseFloat(activos[idx].Stock_Actual) || 0;
       const nuevoStock = Math.max(0, stockActual - cantidadConsumida);

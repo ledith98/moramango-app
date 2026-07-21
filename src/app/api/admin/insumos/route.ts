@@ -25,7 +25,9 @@ import {
   aUnidadesReceta,
   COL_ACT,
   COL_BIB,
+  columnaEnUso,
   costoPorUnidadReceta,
+  estaEnUso,
   HOJA_ACTIVOS,
   HOJA_BIBLIOTECA,
   HOJA_COMPRAS,
@@ -108,6 +110,8 @@ export async function GET(req: NextRequest) {
       const bib = bibPorId.get(a.ID_Biblioteca);
       if (!bib) return null; // activo huérfano
       if ((bib.Eliminado || '').toLowerCase() === 'si') return null;
+      // Los que no están en uso viven solo en la biblioteca
+      if (!estaEnUso(a.En_Uso)) return null;
 
       const equivalencia = parseFloat(bib.Equivalencia) || 1;
       const ultimoPrecio = parseFloat(bib.Ultimo_Precio_Compra) || 0;
@@ -175,7 +179,7 @@ export async function PATCH(req: NextRequest) {
   await prepararInventario();
 
   const { id, accion, cantidadCompra, precioTotal, cantidad, valor } = await req.json();
-  if (!id || !['compra', 'conteo', 'ajustar', 'status'].includes(accion)) {
+  if (!id || !['compra', 'conteo', 'ajustar', 'status', 'uso'].includes(accion)) {
     return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 });
   }
 
@@ -183,7 +187,9 @@ export async function PATCH(req: NextRequest) {
     getSheetData(HOJA_ACTIVOS),
     getSheetData(HOJA_BIBLIOTECA),
   ]);
-  const idx = activos.findIndex((a) => a.ID_Activo === id);
+  // Se acepta el ID del activo o el de su biblioteca (relación 1:1), para
+  // poder accionar desde cualquiera de las dos pestañas.
+  const idx = activos.findIndex((a) => a.ID_Activo === id || a.ID_Biblioteca === id);
   if (idx === -1) {
     return NextResponse.json({ error: 'Insumo activo no encontrado' }, { status: 404 });
   }
@@ -261,6 +267,12 @@ export async function PATCH(req: NextRequest) {
     }
     await updateCell(HOJA_ACTIVOS, filaAct, COL_ACT.stock, redondear(conteo, 3));
     return NextResponse.json({ success: true, stockActual: redondear(conteo, 3) });
+  }
+
+  // ── uso: mover entre "activos" y "solo biblioteca" ──
+  if (accion === 'uso') {
+    await updateCell(HOJA_ACTIVOS, filaAct, await columnaEnUso(), valor ? 'si' : 'no');
+    return NextResponse.json({ success: true, enUso: !!valor });
   }
 
   // ── status ──

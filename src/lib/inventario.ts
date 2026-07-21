@@ -21,7 +21,7 @@
  * pestaña y las columnas se crean solas con ensureSheet.
  */
 
-import { ensureSheet } from './googleSheets';
+import { ensureColumn, ensureSheet } from './googleSheets';
 
 export const HOJA_BIBLIOTECA = 'Biblioteca_Insumos';
 export const HOJA_ACTIVOS = 'Insumos_Activos';
@@ -53,6 +53,9 @@ export const COLS_ACTIVOS = [
   'Status',
   'Conteo_Fisico',
   'Fecha_Conteo',
+  // 'no' = el insumo se conserva en la biblioteca pero no se usa hoy, así
+  // que no aparece en la operación diaria. Vacío se lee como activo.
+  'En_Uso',
 ];
 
 export const COLS_COMPRAS = [
@@ -95,7 +98,20 @@ export async function prepararInventario(): Promise<void> {
   await ensureSheet(HOJA_BIBLIOTECA, COLS_BIBLIOTECA);
   await ensureSheet(HOJA_ACTIVOS, COLS_ACTIVOS);
   await ensureSheet(HOJA_COMPRAS, COLS_COMPRAS);
+  // ensureSheet solo escribe encabezados al crear la hoja; para una hoja
+  // que ya existía, esto agrega la columna que falte.
+  await ensureColumn(HOJA_ACTIVOS, 'En_Uso');
 }
+
+/**
+ * Columna En_Uso resuelta por nombre (no por posición fija): la hoja pudo
+ * haberse creado antes de que existiera esta columna.
+ */
+export const columnaEnUso = () => ensureColumn(HOJA_ACTIVOS, 'En_Uso');
+
+/** Vacío = activo, para que los insumos creados antes sigan apareciendo. */
+export const estaEnUso = (valor: string | undefined) =>
+  (valor ?? '').toString().trim().toLowerCase() !== 'no';
 
 export const redondear = (n: number, decimales = 2) => {
   const f = Math.pow(10, decimales);

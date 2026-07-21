@@ -32,21 +32,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Monto inválido' }, { status: 400 });
   }
 
-  const deviceId = await obtenerDeviceIdPoint();
-  if (!deviceId) {
-    return NextResponse.json(
-      { error: 'No hay una terminal Point disponible. Revisa que esté encendida, con internet y en modo integrado.' },
-      { status: 400 }
-    );
+  const resDevice = await obtenerDeviceIdPoint();
+  if ('error' in resDevice) {
+    return NextResponse.json({ error: resDevice.error }, { status: 400 });
   }
 
   const externalReference = `POS-${Date.now()}`;
-  const intento = await crearIntentoPagoPoint(deviceId, monto, externalReference);
+  const intento = await crearIntentoPagoPoint(resDevice.id, monto, externalReference);
   if (intento.error || !intento.id) {
     return NextResponse.json({ error: intento.error || 'No se pudo iniciar el cobro' }, { status: 400 });
   }
 
-  return NextResponse.json({ intentId: intento.id, deviceId });
+  return NextResponse.json({ intentId: intento.id, deviceId: resDevice.id });
 }
 
 export async function GET(req: NextRequest) {

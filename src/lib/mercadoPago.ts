@@ -107,20 +107,44 @@ export async function obtenerPago(idPago: string): Promise<{
  * Devuelve el device_id de la terminal Point a usar. Se puede fijar con
  * MP_POINT_DEVICE_ID; si no, toma la primera terminal en modo integrado
  * (PDV) que tenga la cuenta.
+ *
+ * En vez de devolver solo `null` cuando algo falla, distingue la causa
+ * (token faltante, token inválido, ninguna terminal, ninguna en modo
+ * integrado) para que el admin sepa exactamente qué revisar.
  */
-export async function obtenerDeviceIdPoint(): Promise<string | null> {
-  if (process.env.MP_POINT_DEVICE_ID) return process.env.MP_POINT_DEVICE_ID;
+export async function obtenerDeviceIdPoint(): Promise<{ id: string } | { error: string }> {
+  if (process.env.MP_POINT_DEVICE_ID) return { id: process.env.MP_POINT_DEVICE_ID };
   const token = process.env.MP_ACCESS_TOKEN;
-  if (!token) return null;
+  if (!token) return { error: 'MP_ACCESS_TOKEN no está configurado en el servidor.' };
 
   const res = await fetch(`${MP_API}/point/integration-api/devices`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) return null;
+
+  if (res.status === 401 || res.status === 403) {
+    return {
+      error:
+        'El token de Mercado Pago no es válido (revisa MP_ACCESS_TOKEN en Vercel: debe ser el Access Token, no el Public Key).',
+    };
+  }
+  if (!res.ok) {
+    return { error: `Mercado Pago respondió ${res.status} al consultar la terminal.` };
+  }
+
   const data = await res.json();
   const devices = data.devices || [];
-  const dev = devices.find((d: any) => d.operating_mode === 'PDV') || devices[0];
-  return dev?.id ?? null;
+  if (devices.length === 0) {
+    return { error: 'Tu cuenta de Mercado Pago no tiene ninguna terminal Point vinculada.' };
+  }
+
+  const dev = devices.find((d: { operating_mode: string }) => d.operating_mode === 'PDV');
+  if (!dev) {
+    const modos = devices.map((d: { operating_mode: string }) => d.operating_mode).join(', ');
+    return {
+      error: `La terminal no está en modo integrado (PDV). Modo actual: ${modos || 'desconocido'}. Actívala desde la app de Mercado Pago en la Point.`,
+    };
+  }
+  return { id: dev.id };
 }
 
 /**

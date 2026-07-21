@@ -19,10 +19,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { appendRow, ensureColumn, getSheetData, updateCell } from '@/lib/googleSheets';
+import { appendRow, ensureColumn, ensureSheet, getSheetData, updateCell } from '@/lib/googleSheets';
 import {
   CATEGORIA_FRESCOS,
-  CATEGORIAS_INSUMOS,
   consumoPorInsumo,
   DIAS_FRESCURA,
   fechaCompraDesdeISO,
@@ -32,15 +31,40 @@ import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 import { getAdminSession } from '@/lib/roles';
 
 const DIAS_ANALISIS = 7;
+const HOJA_COMPRAS = 'Compras_Insumos';
+const COLS_COMPRAS = ['Fecha', 'ID_Insumo', 'Nombre', 'Cantidad', 'Precio_Total', 'Precio_Unitario'];
 
 const redondear = (n: number, decimales = 2) => {
   const f = Math.pow(10, decimales);
   return Math.round(n * f) / f;
 };
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   if (!(await getAdminSession())) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  }
+
+  // Historial de precios de un insumo (para la gráfica de cómo ha cambiado)
+  const historialId = new URL(req.url).searchParams.get('historial');
+  if (historialId) {
+    let compras: Record<string, string>[] = [];
+    try {
+      compras = await getSheetData(HOJA_COMPRAS);
+    } catch {
+      /* la hoja aún no existe */
+    }
+    const historial = compras
+      .filter((c) => c.ID_Insumo === historialId)
+      .map((c) => ({
+        fecha: c.Fecha || '',
+        fechaISO: parsearFechaHora(c.Fecha)?.fechaISO || '',
+        cantidad: parseFloat(c.Cantidad) || 0,
+        precioTotal: parseFloat(c.Precio_Total) || 0,
+        precioUnitario: parseFloat(c.Precio_Unitario) || 0,
+        orden: parsearFechaHora(c.Fecha)?.timestamp ?? 0,
+      }))
+      .sort((a, b) => b.orden - a.orden);
+    return NextResponse.json({ historial });
   }
 
   const [insumos, catalogo, pedidos, detalles] = await Promise.all([
@@ -75,9 +99,20 @@ export async function GET() {
     .map((d) => ({ idProducto: d.ID_Producto, cantidad: parseInt(d.Cantidad) || 0 }));
 
   const consumo = consumoPorInsumo(itemsVendidos, catalogo);
-  const nombresEnRecetas = new Set(
-    catalogo.map((c) => normalizarNombre(c.Ingrediente)).filter(Boolean)
-  );
+
+  // Por cada insumo (por nombre normalizado), los productos cuyas recetas
+  // lo usan. En Catalogo el nombre del producto es "ombre_Producto"
+  // (falta la N en el encabezado real de la hoja).
+  const recetasPorInsumo = new Map<string, Set<string>>();
+  for (const c of catalogo) {
+    const clave = normalizarNombre(c.Ingrediente);
+    if (!clave) continue;
+    const producto = (c['ombre_Producto'] || c['Nombre_Producto'] || '').toString().trim();
+    if (!producto) continue;
+    if (!recetasPorInsumo.has(clave)) recetasPorInsumo.set(clave, new Set());
+    recetasPorInsumo.get(clave)!.add(producto);
+  }
+  const nombresEnRecetas = new Set(recetasPorInsumo.keys());
 
   // Los eliminados (baja lógica, como en Productos) no se muestran nunca;
   // los ocultos sí viajan al panel con su bandera para poder reactivarlos.
@@ -143,11 +178,20 @@ export async function GET() {
       // ISO (YYYY-MM-DD) para prellenar el <input type="date"> del panel
       fechaCompraISO: infoCompra?.fechaISO ?? '',
       enRecetas: nombresEnRecetas.has(clave),
+      recetas: [...(recetasPorInsumo.get(clave) ?? [])],
+      costoUnitario: parseFloat(ins['Costo por unidad']) || null,
+      contacto: ins['Contacto Proveedor'] || '',
       oculto: (ins.Oculto || '').toLowerCase() === 'si',
     };
   });
 
-  return NextResponse.json({ insumos: resultado, diasAnalisis: DIAS_ANALISIS });
+  // Categorías fijas + las que ya se usan en la hoja (para el desplegable
+  // y poder agregar nuevas sin tocar código).
+  const categoriasEnUso = [
+    ...new Set(visibles.map((i) => (i.Categoria || '').trim()).filter(Boolean)),
+  ];
+
+  return NextResponse.json({ insumos: resultado, diasAnalisis: DIAS_ANALISIS, categoriasEnUso });
 }
 
 export async function PATCH(req: NextRequest) {
@@ -155,9 +199,9 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
-  const { idInsumo, accion, cantidad, valor } = await req.json();
+  const { idInsumo, accion, cantidad, valor, precioTotal, datos } = await req.json();
 
-  const ACCIONES = ['restock', 'conteo', 'ajustar', 'categoria', 'fecha_compra', 'ocultar', 'eliminar'];
+  const ACCIONES = ['restock', 'conteo', 'ajustar', 'categoria', 'fecha_compra', 'ocultar', 'eliminar', 'editar'];
   if (!idInsumo || !ACCIONES.includes(accion)) {
     return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 });
   }
@@ -175,11 +219,49 @@ export async function PATCH(req: NextRequest) {
   const colUltima = await ensureColumn('Insumos', 'Ultima actualizacion');
 
   if (accion === 'categoria') {
-    if (valor !== '' && !CATEGORIAS_INSUMOS.includes(valor)) {
-      return NextResponse.json({ error: 'Categoría inválida' }, { status: 400 });
-    }
+    // Categorías libres: se aceptan las fijas o cualquiera nueva que la
+    // usuaria escriba (se limita el largo para no meter basura).
+    const cat = (valor || '').toString().trim().slice(0, 40);
     const colCategoria = await ensureColumn('Insumos', 'Categoria');
-    await updateCell('Insumos', filaInsumo, colCategoria, valor);
+    await updateCell('Insumos', filaInsumo, colCategoria, cat);
+    return NextResponse.json({ success: true });
+  }
+
+  // Editar nombre y datos. Renombrar cascadea a Catalogo (Ingrediente)
+  // para no romper la conexión receta↔insumo.
+  if (accion === 'editar') {
+    const nombreNuevo = (datos?.nombre || '').toString().trim();
+    if (!nombreNuevo) {
+      return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 });
+    }
+    const nombreViejo = (insumo['Nombre insumo'] || '').toString().trim();
+    const claveNueva = normalizarNombre(nombreNuevo);
+
+    // No permitir chocar con OTRO insumo (mismo nombre parte el consumo)
+    const choca = insumos.some(
+      (i, k) => k !== idx && normalizarNombre(i['Nombre insumo']) === claveNueva
+    );
+    if (choca) {
+      return NextResponse.json({ error: 'Ya existe otro insumo con ese nombre' }, { status: 400 });
+    }
+
+    // B=Nombre insumo, C=Unidad Medida, E=Proveedor, F=Contacto Proveedor
+    await updateCell('Insumos', filaInsumo, 2, nombreNuevo);
+    await updateCell('Insumos', filaInsumo, 3, (datos?.unidad || '').toString().trim());
+    await updateCell('Insumos', filaInsumo, 5, (datos?.proveedor || '').toString().trim());
+    await updateCell('Insumos', filaInsumo, 6, (datos?.contacto || '').toString().trim());
+
+    // Cascada del nombre a las recetas: Ingrediente es la columna C (3)
+    // en Catalogo. Sin esto, renombrar rompería el vínculo receta↔insumo.
+    if (normalizarNombre(nombreViejo) !== claveNueva) {
+      const catalogo = await getSheetData('Catalogo');
+      const claveVieja = normalizarNombre(nombreViejo);
+      for (let k = 0; k < catalogo.length; k++) {
+        if (normalizarNombre(catalogo[k].Ingrediente) === claveVieja) {
+          await updateCell('Catalogo', k + 2, 3, nombreNuevo);
+        }
+      }
+    }
     return NextResponse.json({ success: true });
   }
 
@@ -233,6 +315,24 @@ export async function PATCH(req: NextRequest) {
     await updateCell('Insumos', filaInsumo, colStock, redondear(nuevoStock, 3));
     await updateCell('Insumos', filaInsumo, colFechaCompra, fechaCompra!);
     await updateCell('Insumos', filaInsumo, colUltima, fecha);
+
+    // Precio de esta compra (opcional): guarda el costo unitario actual y
+    // deja registro en el historial para ver cómo ha cambiado el precio.
+    const precio = parseFloat(precioTotal);
+    if (!isNaN(precio) && precio > 0) {
+      const unitario = redondear(precio / num, 2);
+      // Columna D = "Costo por unidad" en la hoja Insumos
+      await updateCell('Insumos', filaInsumo, 4, unitario);
+      await ensureSheet(HOJA_COMPRAS, COLS_COMPRAS);
+      await appendRow(HOJA_COMPRAS, [
+        fechaCompra!,
+        idInsumo,
+        insumo['Nombre insumo'] || '',
+        redondear(num, 3),
+        redondear(precio, 2),
+        unitario,
+      ]);
+    }
     return NextResponse.json({ success: true, stock: redondear(nuevoStock, 3) });
   }
 
@@ -271,9 +371,7 @@ export async function POST(req: NextRequest) {
   if (!nombre || typeof nombre !== 'string' || !nombre.trim()) {
     return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 });
   }
-  if (categoria && !CATEGORIAS_INSUMOS.includes(categoria)) {
-    return NextResponse.json({ error: 'Categoría inválida' }, { status: 400 });
-  }
+  const categoriaLimpia = (categoria || '').toString().trim().slice(0, 40);
 
   const insumos = await getSheetData('Insumos');
 
@@ -301,9 +399,9 @@ export async function POST(req: NextRequest) {
     fecha,                      // G Ultima actualizacion
   ]);
 
-  if (categoria) {
+  if (categoriaLimpia) {
     const colCategoria = await ensureColumn('Insumos', 'Categoria');
-    await updateCell('Insumos', fila, colCategoria, categoria);
+    await updateCell('Insumos', fila, colCategoria, categoriaLimpia);
   }
 
   return NextResponse.json({ success: true, id: nuevoId });

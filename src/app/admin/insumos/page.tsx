@@ -22,8 +22,21 @@ interface Insumo {
   diasDesdeCompra: number | null;
   fresco: boolean | null;
   enRecetas: boolean;
+  recetas: string[];
+  costoUnitario: number | null;
+  contacto: string;
   oculto: boolean;
 }
+
+interface CompraHistorial {
+  fecha: string;
+  fechaISO: string;
+  cantidad: number;
+  precioTotal: number;
+  precioUnitario: number;
+}
+
+const NUEVA_CATEGORIA = '__nueva__';
 
 const PUNTO_NIVEL: Record<string, string> = {
   rojo: 'bg-red-500',
@@ -55,6 +68,7 @@ const NIVELES_FILTRO = [
 
 export default function InsumosPage() {
   const [insumos, setInsumos] = useState<Insumo[]>([]);
+  const [categoriasEnUso, setCategoriasEnUso] = useState<string[]>([]);
   const [diasAnalisis, setDiasAnalisis] = useState(7);
   const [cargando, setCargando] = useState(true);
   const [ocupado, setOcupado] = useState(false);
@@ -70,6 +84,16 @@ export default function InsumosPage() {
   const [nuevaUnidad, setNuevaUnidad] = useState('');
   const [nuevaCategoria, setNuevaCategoria] = useState('');
   const [nuevoProveedor, setNuevoProveedor] = useState('');
+  // Editar insumo
+  const [editando, setEditando] = useState<Insumo | null>(null);
+  const [edNombre, setEdNombre] = useState('');
+  const [edUnidad, setEdUnidad] = useState('');
+  const [edProveedor, setEdProveedor] = useState('');
+  const [edContacto, setEdContacto] = useState('');
+  // Historial de precios
+  const [historialDe, setHistorialDe] = useState<Insumo | null>(null);
+  const [historial, setHistorial] = useState<CompraHistorial[]>([]);
+  const [cargandoHist, setCargandoHist] = useState(false);
 
   /**
    * Recarga el inventario. Con `silencioso` los datos se refrescan sin
@@ -82,6 +106,7 @@ export default function InsumosPage() {
       .then((res) => res.json())
       .then((data) => {
         setInsumos(data.insumos || []);
+        setCategoriasEnUso(data.categoriasEnUso || []);
         if (data.diasAnalisis) setDiasAnalisis(data.diasAnalisis);
       })
       .finally(() => {
@@ -93,13 +118,18 @@ export default function InsumosPage() {
     cargar();
   }, [cargar]);
 
-  const accion = async (idInsumo: string, tipo: string, cantidad?: number) => {
+  const accion = async (
+    idInsumo: string,
+    tipo: string,
+    cantidad?: number,
+    extra?: Record<string, unknown>
+  ) => {
     setOcupado(true);
     try {
       const res = await fetch('/api/admin/insumos', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idInsumo, accion: tipo, cantidad }),
+        body: JSON.stringify({ idInsumo, accion: tipo, cantidad, ...extra }),
       });
       const data = await res.json();
       if (data.error) alert(data.error);
@@ -117,7 +147,82 @@ export default function InsumosPage() {
       alert('Cantidad inválida');
       return;
     }
-    accion(ins.id, 'restock', num);
+    // Precio total pagado (opcional) — para guardar el costo y el historial
+    const precioStr = prompt(
+      `¿Cuánto pagaste EN TOTAL por esos ${num} ${ins.unidad || 'unidades'}? (opcional, deja vacío para omitir)`
+    );
+    const extra: Record<string, unknown> = {};
+    if (precioStr !== null && precioStr.trim() !== '') {
+      const precio = parseFloat(precioStr.replace(',', '.'));
+      if (isNaN(precio) || precio < 0) {
+        alert('Precio inválido');
+        return;
+      }
+      extra.precioTotal = precio;
+    }
+    accion(ins.id, 'restock', num, extra);
+  };
+
+  const abrirEditar = (ins: Insumo) => {
+    setEditando(ins);
+    setEdNombre(ins.nombre);
+    setEdUnidad(ins.unidad);
+    setEdProveedor(ins.proveedor);
+    setEdContacto(ins.contacto);
+  };
+
+  const guardarEdicion = async () => {
+    if (!editando) return;
+    if (!edNombre.trim()) {
+      alert('El nombre es obligatorio');
+      return;
+    }
+    const renombra = edNombre.trim().toLowerCase() !== editando.nombre.toLowerCase();
+    if (
+      renombra &&
+      editando.recetas.length > 0 &&
+      !confirm(
+        `Vas a renombrar "${editando.nombre}" a "${edNombre.trim()}". Se actualizará también en sus ${editando.recetas.length} receta(s) para no romper la conexión. ¿Continuar?`
+      )
+    )
+      return;
+
+    setOcupado(true);
+    try {
+      const res = await fetch('/api/admin/insumos', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          idInsumo: editando.id,
+          accion: 'editar',
+          datos: {
+            nombre: edNombre.trim(),
+            unidad: edUnidad.trim(),
+            proveedor: edProveedor.trim(),
+            contacto: edContacto.trim(),
+          },
+        }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        alert(data.error);
+        return;
+      }
+      setEditando(null);
+      cargar(true);
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  const verHistorial = (ins: Insumo) => {
+    setHistorialDe(ins);
+    setHistorial([]);
+    setCargandoHist(true);
+    fetch(`/api/admin/insumos?historial=${encodeURIComponent(ins.id)}`)
+      .then((res) => res.json())
+      .then((data) => setHistorial(data.historial || []))
+      .finally(() => setCargandoHist(false));
   };
 
   const capturarConteo = (ins: Insumo) => {
@@ -143,7 +248,14 @@ export default function InsumosPage() {
     accion(ins.id, 'ajustar');
   };
 
-  const cambiarCategoria = async (ins: Insumo, valor: string) => {
+  const cambiarCategoria = async (ins: Insumo, seleccion: string) => {
+    let valor = seleccion;
+    if (seleccion === NUEVA_CATEGORIA) {
+      const nueva = prompt('Nombre de la nueva categoría:');
+      if (nueva === null || !nueva.trim()) return;
+      valor = nueva.trim();
+      setCategoriasEnUso((prev) => (prev.includes(valor) ? prev : [...prev, valor]));
+    }
     setInsumos((prev) => prev.map((x) => (x.id === ins.id ? { ...x, categoria: valor } : x)));
     setOcupado(true);
     try {
@@ -270,8 +382,14 @@ export default function InsumosPage() {
   const hayFiltro = termino !== '' || filtroGrupo !== 'Todos' || filtroNivel !== 'todos';
   const cuantosOcultos = insumos.filter((i) => i.oculto).length;
 
-  // Agrupar por categoría en el orden fijo, con "Sin categoría" al final
-  const grupos = [...CATEGORIAS_INSUMOS, SIN_CATEGORIA]
+  // Todas las categorías para los desplegables: las fijas + las que ya
+  // se usan en la hoja (las nuevas que haya creado la usuaria).
+  const todasCategorias = [...new Set([...CATEGORIAS_INSUMOS, ...categoriasEnUso])];
+
+  // Agrupar por categoría (fijas primero, luego las nuevas), con "Sin
+  // categoría" al final. Incluye las categorías custom para que ningún
+  // insumo con categoría nueva desaparezca de la tabla.
+  const grupos = [...todasCategorias, SIN_CATEGORIA]
     .map((cat) => ({
       categoria: cat,
       items: insumosFiltrados.filter((i) => (i.categoria || SIN_CATEGORIA) === cat),
@@ -386,7 +504,7 @@ export default function InsumosPage() {
                 className="bg-neutral-50 border border-neutral-200 rounded-xl px-2 py-2 text-sm text-neutral-700 focus:outline-none focus:border-black"
               >
                 <option value="Todos">Todos los grupos</option>
-                {[...CATEGORIAS_INSUMOS, SIN_CATEGORIA].map((c) => (
+                {[...todasCategorias, SIN_CATEGORIA].map((c) => (
                   <option key={c} value={c}>
                     {ICONO_GRUPO[c] ?? ''} {c}
                   </option>
@@ -474,21 +592,38 @@ export default function InsumosPage() {
                         </p>
                         <p className="text-xs text-neutral-400">
                           {i.id}
-                          {!i.enRecetas && ' · sin receta asociada'}
                           {i.oculto && ' · oculto'}
                         </p>
-                        <select
-                          value={i.categoria}
-                          onChange={(e) => cambiarCategoria(i, e.target.value)}
-                          className="mt-1 bg-neutral-50 border border-neutral-200 rounded-lg px-1.5 py-1 text-[11px] text-neutral-600 focus:outline-none focus:border-black"
-                        >
-                          <option value="">Sin categoría</option>
-                          {CATEGORIAS_INSUMOS.map((c) => (
-                            <option key={c} value={c}>
-                              {c}
-                            </option>
-                          ))}
-                        </select>
+                        {i.recetas.length > 0 ? (
+                          <p className="text-[11px] text-green-700 mt-0.5" title={i.recetas.join(', ')}>
+                            🍹 En: {i.recetas.slice(0, 3).join(', ')}
+                            {i.recetas.length > 3 ? ` +${i.recetas.length - 3}` : ''}
+                          </p>
+                        ) : (
+                          <p className="text-[11px] text-amber-600 mt-0.5">⚠️ Sin receta asociada</p>
+                        )}
+                        <div className="flex gap-1 mt-1">
+                          <select
+                            value={i.categoria}
+                            onChange={(e) => cambiarCategoria(i, e.target.value)}
+                            className="bg-neutral-50 border border-neutral-200 rounded-lg px-1.5 py-1 text-[11px] text-neutral-600 focus:outline-none focus:border-black"
+                          >
+                            <option value="">Sin categoría</option>
+                            {todasCategorias.map((c) => (
+                              <option key={c} value={c}>
+                                {c}
+                              </option>
+                            ))}
+                            <option value={NUEVA_CATEGORIA}>➕ Nueva categoría…</option>
+                          </select>
+                          <button
+                            onClick={() => abrirEditar(i)}
+                            className="text-[11px] font-semibold text-neutral-600 bg-neutral-100 px-2 py-1 rounded-lg active:scale-95"
+                            title="Editar nombre y datos"
+                          >
+                            ✏️
+                          </button>
+                        </div>
                       </td>
                       <td className="p-3 font-semibold text-neutral-900 whitespace-nowrap">
                         {i.stock} {i.unidad}
@@ -581,6 +716,14 @@ export default function InsumosPage() {
                           >
                             Conteo
                           </button>
+                          <button
+                            onClick={() => verHistorial(i)}
+                            disabled={ocupado}
+                            title="Historial de precios de compra"
+                            className="text-xs font-semibold text-neutral-700 bg-neutral-100 px-2.5 py-1.5 rounded-lg active:scale-95 transition-transform disabled:opacity-50"
+                          >
+                            💲{i.costoUnitario ? ` ${i.costoUnitario}` : ''}
+                          </button>
                           {i.diferencia !== null && i.diferencia !== 0 && (
                             <button
                               onClick={() => ajustar(i)}
@@ -672,15 +815,26 @@ export default function InsumosPage() {
               <label className="text-sm font-semibold text-neutral-700">Grupo</label>
               <select
                 value={nuevaCategoria}
-                onChange={(e) => setNuevaCategoria(e.target.value)}
+                onChange={(e) => {
+                  if (e.target.value === NUEVA_CATEGORIA) {
+                    const nueva = prompt('Nombre de la nueva categoría:');
+                    if (nueva && nueva.trim()) {
+                      setCategoriasEnUso((prev) => (prev.includes(nueva.trim()) ? prev : [...prev, nueva.trim()]));
+                      setNuevaCategoria(nueva.trim());
+                    }
+                  } else {
+                    setNuevaCategoria(e.target.value);
+                  }
+                }}
                 className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-700 focus:outline-none focus:border-black"
               >
                 <option value="">Sin categoría</option>
-                {CATEGORIAS_INSUMOS.map((c) => (
+                {todasCategorias.map((c) => (
                   <option key={c} value={c}>
                     {ICONO_GRUPO[c] ?? ''} {c}
                   </option>
                 ))}
+                <option value={NUEVA_CATEGORIA}>➕ Nueva categoría…</option>
               </select>
             </div>
 
@@ -709,6 +863,138 @@ export default function InsumosPage() {
                 className="flex-1 bg-marron text-white font-semibold py-3 rounded-2xl active:scale-95 transition-transform disabled:opacity-50"
               >
                 {ocupado ? 'Guardando...' : 'Crear insumo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: editar insumo */}
+      {editando && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => setEditando(null)}
+        >
+          <div
+            className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 space-y-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-bold text-black">Editar insumo</h2>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-semibold text-neutral-700">Nombre</label>
+              <input
+                value={edNombre}
+                onChange={(e) => setEdNombre(e.target.value)}
+                className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black"
+              />
+              {editando.recetas.length > 0 && (
+                <p className="text-xs text-amber-600">
+                  ⚠️ Está en {editando.recetas.length} receta(s). Al renombrarlo se actualizará también ahí.
+                </p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-semibold text-neutral-700">Unidad de medida</label>
+              <input
+                value={edUnidad}
+                onChange={(e) => setEdUnidad(e.target.value)}
+                placeholder="kg, L, pz"
+                className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-semibold text-neutral-700">Proveedor</label>
+              <input
+                value={edProveedor}
+                onChange={(e) => setEdProveedor(e.target.value)}
+                className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-semibold text-neutral-700">Contacto del proveedor</label>
+              <input
+                value={edContacto}
+                onChange={(e) => setEdContacto(e.target.value)}
+                placeholder="Tel / WhatsApp"
+                className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => setEditando(null)}
+                className="flex-1 border border-neutral-200 text-neutral-600 font-semibold py-3 rounded-2xl active:scale-95 transition-transform"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={guardarEdicion}
+                disabled={ocupado}
+                className="flex-1 bg-marron text-white font-semibold py-3 rounded-2xl active:scale-95 transition-transform disabled:opacity-50"
+              >
+                {ocupado ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: historial de precios */}
+      {historialDe && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => setHistorialDe(null)}
+        >
+          <div
+            className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl max-h-[80vh] flex flex-col shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 border-b border-neutral-100 shrink-0">
+              <h2 className="text-lg font-bold text-black">💲 Historial de precios</h2>
+              <p className="text-sm text-neutral-500">{historialDe.nombre}</p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5">
+              {cargandoHist ? (
+                <p className="text-neutral-500 animate-pulse">Cargando...</p>
+              ) : historial.length === 0 ? (
+                <p className="text-neutral-500 text-sm">
+                  Aún no hay compras con precio registrado. Cuando registres una compra con "+ Compra",
+                  te preguntará el precio y aquí verás cómo va cambiando.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {historial.map((h, idx) => {
+                    const anterior = historial[idx + 1];
+                    const subio = anterior && h.precioUnitario > anterior.precioUnitario;
+                    const bajo = anterior && h.precioUnitario < anterior.precioUnitario;
+                    return (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between bg-neutral-50 rounded-xl p-3"
+                      >
+                        <div>
+                          <p className="text-sm font-semibold text-neutral-900">
+                            ${h.precioUnitario.toFixed(2)} / {historialDe.unidad || 'u'}
+                            {subio && <span className="text-red-600 text-xs ml-1.5">▲</span>}
+                            {bajo && <span className="text-green-600 text-xs ml-1.5">▼</span>}
+                          </p>
+                          <p className="text-[11px] text-neutral-400">
+                            {h.fechaISO || h.fecha} · {h.cantidad} {historialDe.unidad} por ${h.precioTotal.toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t border-neutral-100 shrink-0">
+              <button
+                onClick={() => setHistorialDe(null)}
+                className="w-full bg-neutral-100 text-neutral-700 font-semibold py-2.5 rounded-xl active:scale-95 transition-transform"
+              >
+                Cerrar
               </button>
             </div>
           </div>

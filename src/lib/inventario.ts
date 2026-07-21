@@ -22,6 +22,7 @@
  */
 
 import { ensureColumn, ensureSheet } from './googleSheets';
+import { normalizarNombre } from './insumos';
 
 export const HOJA_BIBLIOTECA = 'Biblioteca_Insumos';
 export const HOJA_ACTIVOS = 'Insumos_Activos';
@@ -43,6 +44,11 @@ export const COLS_BIBLIOTECA = [
   'Proveedor',
   'Contacto_Proveedor',
   'Eliminado',
+  // Nombres de Catalogo.Ingrediente que consume este insumo, separados por
+  // "|". Las recetas usan nombres genéricos ("Lechuga") y la biblioteca
+  // nombres de compra ("Lechuga Italiana EVA"), así que el vínculo se
+  // declara a mano. Vacío = se intenta unir por nombre idéntico.
+  'Ingredientes',
 ];
 
 export const COLS_ACTIVOS = [
@@ -81,6 +87,7 @@ export const COL_BIB = {
   proveedor: 8,
   contacto: 9,
   eliminado: 10,
+  ingredientes: 11,
 } as const;
 
 export const COL_ACT = {
@@ -101,6 +108,30 @@ export async function prepararInventario(): Promise<void> {
   // ensureSheet solo escribe encabezados al crear la hoja; para una hoja
   // que ya existía, esto agrega la columna que falte.
   await ensureColumn(HOJA_ACTIVOS, 'En_Uso');
+  await ensureColumn(HOJA_BIBLIOTECA, 'Ingredientes');
+}
+
+export const columnaIngredientes = () => ensureColumn(HOJA_BIBLIOTECA, 'Ingredientes');
+
+const SEPARADOR = '|';
+
+export const leerIngredientes = (valor: string | undefined): string[] =>
+  (valor ?? '')
+    .split(SEPARADOR)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+export const escribirIngredientes = (lista: string[]): string =>
+  [...new Set(lista.map((s) => s.trim()).filter(Boolean))].join(SEPARADOR);
+
+/**
+ * Nombres de ingrediente (normalizados) que consumen de este insumo.
+ * Si no hay vínculo manual, se cae al nombre del insumo, que es lo que
+ * funciona cuando la receta y la compra se llaman igual.
+ */
+export function clavesDeInsumo(bib: Record<string, string>): string[] {
+  const manuales = leerIngredientes(bib.Ingredientes).map(normalizarNombre);
+  return manuales.length > 0 ? manuales : [normalizarNombre(bib.Nombre)];
 }
 
 /**

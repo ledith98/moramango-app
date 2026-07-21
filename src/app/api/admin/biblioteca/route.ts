@@ -15,11 +15,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { appendRow, getSheetData, updateCell } from '@/lib/googleSheets';
 import { normalizarNombre } from '@/lib/insumos';
 import {
+  clavesDeInsumo,
   COL_BIB,
+  columnaIngredientes,
   costoPorUnidadReceta,
+  escribirIngredientes,
   estaEnUso,
   HOJA_ACTIVOS,
   HOJA_BIBLIOTECA,
+  leerIngredientes,
   prepararInventario,
 } from '@/lib/inventario';
 import { getAdminSession } from '@/lib/roles';
@@ -27,35 +31,69 @@ import { getAdminSession } from '@/lib/roles';
 const vivos = (filas: Record<string, string>[]) =>
   filas.filter((b) => (b.Eliminado || '').toLowerCase() !== 'si');
 
-export async function GET() {
+/** Ingredientes distintos de Catalogo, con los productos que los usan. */
+function ingredientesDelCatalogo(catalogo: Record<string, string>[]) {
+  const mapa = new Map<string, { nombre: string; productos: Set<string> }>();
+  for (const c of catalogo) {
+    const nombre = (c.Ingrediente || '').toString().trim();
+    if (!nombre) continue;
+    // En Catalogo el encabezado del producto perdió la N inicial en algún
+    // momento; se aceptan las dos formas.
+    const producto = (c['Nombre_Producto'] || c['ombre_Producto'] || '').toString().trim();
+    const clave = normalizarNombre(nombre);
+    if (!mapa.has(clave)) mapa.set(clave, { nombre, productos: new Set() });
+    if (producto) mapa.get(clave)!.productos.add(producto);
+  }
+  return mapa;
+}
+
+export async function GET(req: NextRequest) {
   if (!(await getAdminSession())) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
   await prepararInventario();
 
   const [biblioteca, catalogo, activos] = await Promise.all([
-    getSheetData(HOJA_BIBLIOTECA),
+    getSheetData(HOJA_BIBLIOTECA, { crudo: true }),
     getSheetData('Catalogo'),
-    getSheetData(HOJA_ACTIVOS),
+    getSheetData(HOJA_ACTIVOS, { crudo: true }),
   ]);
+
+  const porIngrediente = ingredientesDelCatalogo(catalogo);
+
+  // ── Catálogo de ingredientes para el modal de vinculación ──
+  if (new URL(req.url).searchParams.get('ingredientes')) {
+    // Qué insumo reclama ya cada ingrediente, para no duplicar descuentos
+    const dueño = new Map<string, string>();
+    for (const b of vivos(biblioteca)) {
+      for (const clave of clavesDeInsumo(b)) {
+        if (leerIngredientes(b.Ingredientes).length > 0) dueño.set(clave, b.Nombre || '');
+      }
+    }
+    const ingredientes = [...porIngrediente.entries()]
+      .map(([clave, v]) => ({
+        nombre: v.nombre,
+        productos: [...v.productos].sort(),
+        vinculadoA: dueño.get(clave) ?? '',
+      }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+    return NextResponse.json({ ingredientes });
+  }
 
   // Relación 1:1 — para saber si el insumo se está usando hoy
   const activoPorBib = new Map(activos.map((a) => [a.ID_Biblioteca, a]));
 
-  // Productos cuyas recetas usan cada insumo (en Catalogo el nombre del
-  // producto viene en "ombre_Producto": el encabezado real de la hoja).
-  const recetasPor = new Map<string, Set<string>>();
-  for (const c of catalogo) {
-    const clave = normalizarNombre(c.Ingrediente);
-    const producto = (c['ombre_Producto'] || c['Nombre_Producto'] || '').toString().trim();
-    if (!clave || !producto) continue;
-    if (!recetasPor.has(clave)) recetasPor.set(clave, new Set());
-    recetasPor.get(clave)!.add(producto);
-  }
-
   const items = vivos(biblioteca).map((b) => {
     const equivalencia = parseFloat(b.Equivalencia) || 1;
     const ultimoPrecio = parseFloat(b.Ultimo_Precio_Compra) || 0;
+    const ingredientes = leerIngredientes(b.Ingredientes);
+
+    // Productos alcanzados por este insumo, vía vínculo manual o por nombre
+    const recetas = new Set<string>();
+    for (const clave of clavesDeInsumo(b)) {
+      for (const p of porIngrediente.get(clave)?.productos ?? []) recetas.add(p);
+    }
+
     return {
       id: b.ID_Biblioteca || '',
       nombre: b.Nombre || '',
@@ -68,7 +106,10 @@ export async function GET() {
       categoria: b.Categoria || '',
       proveedor: b.Proveedor || '',
       contacto: b.Contacto_Proveedor || '',
-      recetas: [...(recetasPor.get(normalizarNombre(b.Nombre)) ?? [])],
+      ingredientes,
+      /** true = el vínculo es automático por nombre, no declarado a mano */
+      vinculoAutomatico: ingredientes.length === 0,
+      recetas: [...recetas].sort(),
       enUso: estaEnUso(activoPorBib.get(b.ID_Biblioteca)?.En_Uso),
     };
   });
@@ -135,18 +176,32 @@ export async function PATCH(req: NextRequest) {
   }
   await prepararInventario();
 
-  const { id, accion, datos } = await req.json();
-  if (!id || !['editar', 'eliminar'].includes(accion)) {
+  const { id, accion, datos, ingredientes } = await req.json();
+  if (!id || !['editar', 'eliminar', 'ingredientes'].includes(accion)) {
     return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 });
   }
 
-  const biblioteca = await getSheetData(HOJA_BIBLIOTECA);
+  const biblioteca = await getSheetData(HOJA_BIBLIOTECA, { crudo: true });
   const idx = biblioteca.findIndex((b) => b.ID_Biblioteca === id);
   if (idx === -1) {
     return NextResponse.json({ error: 'Insumo no encontrado' }, { status: 404 });
   }
   const fila = idx + 2; // +1 encabezado, +1 base 1
   const actual = biblioteca[idx];
+
+  // ── Vínculo manual con los ingredientes de las recetas ──
+  if (accion === 'ingredientes') {
+    if (!Array.isArray(ingredientes)) {
+      return NextResponse.json({ error: 'Lista inválida' }, { status: 400 });
+    }
+    await updateCell(
+      HOJA_BIBLIOTECA,
+      fila,
+      await columnaIngredientes(),
+      escribirIngredientes(ingredientes.map(String))
+    );
+    return NextResponse.json({ success: true });
+  }
 
   if (accion === 'eliminar') {
     // Baja lógica: la fila se conserva para no romper recetas ni historial
@@ -176,6 +231,15 @@ export async function PATCH(req: NextRequest) {
   await updateCell(HOJA_BIBLIOTECA, fila, COL_BIB.categoria, (datos?.categoria || '').toString().trim().slice(0, 40));
   await updateCell(HOJA_BIBLIOTECA, fila, COL_BIB.proveedor, (datos?.proveedor || '').toString().trim());
   await updateCell(HOJA_BIBLIOTECA, fila, COL_BIB.contacto, (datos?.contacto || '').toString().trim());
+
+  // Corregir un precio mal capturado sin tener que inventar una compra
+  if (datos?.ultimoPrecioCompra !== undefined && datos.ultimoPrecioCompra !== '') {
+    const precio = parseFloat(datos.ultimoPrecioCompra);
+    if (isNaN(precio) || precio < 0) {
+      return NextResponse.json({ error: 'Precio inválido' }, { status: 400 });
+    }
+    await updateCell(HOJA_BIBLIOTECA, fila, COL_BIB.ultimoPrecio, precio);
+  }
 
   // Cascada del nombre a las recetas (Ingrediente = columna C en Catalogo)
   const nombreViejo = (actual.Nombre || '').toString().trim();

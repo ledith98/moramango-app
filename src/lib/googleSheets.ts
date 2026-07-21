@@ -13,13 +13,23 @@ function getAuthClient() {
   });
 }
 
-export async function getSheetData(tabName: string) {
+/**
+ * Lee una pestaña como lista de objetos {encabezado: valor}.
+ *
+ * Por defecto devuelve los valores YA FORMATEADOS por Google. Ojo: este
+ * Sheet tiene locale es_ES, donde el separador decimal es la coma, así que
+ * 22.33 se lee como "22,33" y `parseFloat` lo trunca a 22. Para cualquier
+ * hoja con números decimales usa `{ crudo: true }`: devuelve el valor real
+ * (number) sin pasar por el formato regional.
+ */
+export async function getSheetData(tabName: string, opciones?: { crudo?: boolean }) {
   const auth = getAuthClient();
   const sheets = google.sheets({ version: 'v4', auth });
 
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId: process.env.GOOGLE_SHEETS_ID,
     range: tabName,
+    valueRenderOption: opciones?.crudo ? 'UNFORMATTED_VALUE' : 'FORMATTED_VALUE',
   });
 
   const rows = response.data.values;
@@ -28,7 +38,10 @@ export async function getSheetData(tabName: string) {
   const headers = rows[0] as string[];
   return rows.slice(1).map((row) =>
     headers.reduce((obj, header, index) => {
-      obj[header] = row[index] ?? '';
+      // En modo crudo llegan numbers/booleans; String() los normaliza con
+      // punto decimal, independiente del locale de la hoja.
+      const celda = row[index];
+      obj[header] = celda === undefined || celda === null ? '' : String(celda);
       return obj;
     }, {} as Record<string, string>)
   );

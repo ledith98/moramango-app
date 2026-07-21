@@ -14,7 +14,7 @@ export const normalizarNombre = (s: string | undefined | null): string =>
 // Grupos fijos del inventario (columna Categoria en la hoja Insumos).
 // El orden aquí es el orden en que se muestran en el panel.
 export const CATEGORIAS_INSUMOS = [
-  'Verduras y frutas',
+  'Frutas y verduras',
   'Pan',
   'Jamón y queso',
   'Leche y agua',
@@ -23,10 +23,10 @@ export const CATEGORIAS_INSUMOS = [
   'Condimentos',
 ] as const;
 
-// Margen de frescura: 'Verduras y frutas' compradas hace más de estos
+// Margen de frescura: 'Frutas y verduras' compradas hace más de estos
 // días se marcan para revisar.
 export const DIAS_FRESCURA = 3;
-export const CATEGORIA_FRESCOS = 'Verduras y frutas';
+export const CATEGORIA_FRESCOS = 'Frutas y verduras';
 
 /**
  * Convierte una fecha de <input type="date"> (YYYY-MM-DD) al formato

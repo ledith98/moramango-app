@@ -27,8 +27,17 @@ interface ItemBiblioteca {
   proveedor: string;
   contacto: string;
   recetas: string[];
+  ingredientes: string[];
+  /** true = se une por nombre idéntico, sin vínculo declarado a mano */
+  vinculoAutomatico: boolean;
   /** false = guardado para después, no aparece en Insumos activos */
   enUso: boolean;
+}
+
+interface IngredienteCatalogo {
+  nombre: string;
+  productos: string[];
+  vinculadoA: string;
 }
 
 interface ItemActivo {
@@ -83,7 +92,7 @@ const COLOR_STATUS: Record<string, string> = {
 };
 
 const ICONO_GRUPO: Record<string, string> = {
-  'Verduras y frutas': '🥬',
+  'Frutas y verduras': '🥬',
   Pan: '🍞',
   'Jamón y queso': '🧀',
   'Leche y agua': '🥛',
@@ -101,7 +110,28 @@ const FORM_VACIO = {
   categoria: '',
   proveedor: '',
   contacto: '',
+  ultimoPrecioCompra: '',
 };
+
+/**
+ * Sugerencia automática: un ingrediente de receta corresponde al insumo si
+ * uno contiene al otro por palabras. "Lechuga" ↔ "Lechuga Italiana EVA".
+ */
+function sugiere(nombreInsumo: string, nombreIngrediente: string): boolean {
+  const limpia = (s: string) =>
+    s
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((p) => p.length > 2);
+
+  const a = limpia(nombreInsumo);
+  const b = limpia(nombreIngrediente);
+  if (a.length === 0 || b.length === 0) return false;
+  return b.some((p) => a.includes(p)) || a.some((p) => b.includes(p));
+}
 
 const inputCls =
   'w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-marron';
@@ -129,6 +159,9 @@ export default function InsumosPage() {
   const [compraPrecio, setCompraPrecio] = useState('');
   const [historial, setHistorial] = useState<CompraHistorial[] | null>(null);
   const [historialDe, setHistorialDe] = useState('');
+  const [recetasDe, setRecetasDe] = useState<ItemBiblioteca | null>(null);
+  const [ingredientesCat, setIngredientesCat] = useState<IngredienteCatalogo[]>([]);
+  const [seleccion, setSeleccion] = useState<string[]>([]);
 
   const cargar = useCallback(async () => {
     try {
@@ -172,6 +205,7 @@ export default function InsumosPage() {
       categoria: b.categoria,
       proveedor: b.proveedor,
       contacto: b.contacto,
+      ultimoPrecioCompra: b.ultimoPrecioCompra ? String(b.ultimoPrecioCompra) : '',
     });
     setEditandoId(b.id);
     setError('');
@@ -258,7 +292,7 @@ export default function InsumosPage() {
       String(a.stockActual)
     );
     if (valor === null) return;
-    const num = parseFloat(valor);
+    const num = parseFloat(valor.replace(',', '.'));
     if (isNaN(num) || num < 0) return alert('Cantidad inválida');
     await accionActivo(a.id, { accion: 'conteo', cantidad: num });
   }
@@ -267,6 +301,55 @@ export default function InsumosPage() {
     if (a.conteoFisico === null) return;
     if (!confirm(`¿Igualar el stock de ${a.nombre} a ${a.conteoFisico} ${a.unidadReceta}?`)) return;
     await accionActivo(a.id, { accion: 'ajustar' });
+  }
+
+  // ── Vínculo insumo ↔ ingredientes de las recetas ──────────────────────────
+  async function abrirRecetas(b: ItemBiblioteca) {
+    setRecetasDe(b);
+    setSeleccion(b.ingredientes);
+    setError('');
+    const res = await fetch('/api/admin/biblioteca?ingredientes=1');
+    const data = await res.json();
+    setIngredientesCat(data.ingredientes ?? []);
+  }
+
+  function alternarIngrediente(nombre: string) {
+    setSeleccion((s) => (s.includes(nombre) ? s.filter((x) => x !== nombre) : [...s, nombre]));
+  }
+
+  /** Marca de golpe los ingredientes que se parecen al nombre del insumo. */
+  function aplicarSugerencias() {
+    if (!recetasDe) return;
+    const sugeridos = ingredientesCat
+      .filter((i) => sugiere(recetasDe.nombre, i.nombre))
+      .map((i) => i.nombre);
+    setSeleccion((s) => [...new Set([...s, ...sugeridos])]);
+  }
+
+  async function guardarRecetas() {
+    if (!recetasDe) return;
+    setOcupado(true);
+    const res = await fetch('/api/admin/biblioteca', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: recetasDe.id, accion: 'ingredientes', ingredientes: seleccion }),
+    });
+    setOcupado(false);
+    if (!res.ok) return setError('No se pudo guardar el vínculo');
+    setRecetasDe(null);
+    await cargar();
+  }
+
+  /** Corrige el stock a mano cuando se capturó mal, sin tocar precios. */
+  async function editarStock(a: ItemActivo) {
+    const valor = prompt(
+      `¿Cuánto tienes realmente de ${a.nombre}? (en ${a.unidadReceta})`,
+      String(a.stockActual)
+    );
+    if (valor === null) return;
+    const num = parseFloat(valor.replace(',', '.'));
+    if (isNaN(num) || num < 0) return alert('Cantidad inválida');
+    await accionActivo(a.id, { accion: 'stock', cantidad: num });
   }
 
   /** Mueve un insumo entre "Insumos activos" y "solo biblioteca". */
@@ -529,15 +612,23 @@ export default function InsumosPage() {
                         <button
                           onClick={() => capturarConteo(a)}
                           disabled={ocupado}
-                          className="text-xs font-semibold bg-neutral-100 px-3 py-1.5 rounded-lg active:scale-95 disabled:opacity-50"
+                          className="text-xs font-semibold text-black bg-neutral-200 px-3 py-1.5 rounded-lg active:scale-95 disabled:opacity-50 whitespace-nowrap"
                         >
                           Conteo
+                        </button>
+                        <button
+                          onClick={() => editarStock(a)}
+                          disabled={ocupado}
+                          className="text-xs font-semibold text-black bg-neutral-200 px-3 py-1.5 rounded-lg active:scale-95 disabled:opacity-50 whitespace-nowrap"
+                          title="Corregir el stock si se capturó mal"
+                        >
+                          ✏️ Stock
                         </button>
                         {a.conteoFisico !== null && a.diferencia !== 0 && (
                           <button
                             onClick={() => ajustar(a)}
                             disabled={ocupado}
-                            className="text-xs font-semibold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-lg active:scale-95 disabled:opacity-50"
+                            className="text-xs font-semibold text-amber-800 bg-amber-100 px-3 py-1.5 rounded-lg active:scale-95 disabled:opacity-50 whitespace-nowrap"
                           >
                             Ajustar
                           </button>
@@ -545,7 +636,7 @@ export default function InsumosPage() {
                         <button
                           onClick={() => cambiarUso(a.id, a.nombre, false)}
                           disabled={ocupado}
-                          className="text-[11px] font-semibold text-neutral-500 px-3 py-1 rounded-lg active:scale-95 disabled:opacity-50 whitespace-nowrap"
+                          className="text-[11px] font-semibold text-neutral-700 px-3 py-1 rounded-lg active:scale-95 disabled:opacity-50 whitespace-nowrap"
                           title="Guardarlo en la biblioteca sin usarlo por ahora"
                         >
                           📚 A biblioteca
@@ -596,11 +687,19 @@ export default function InsumosPage() {
                     </span>
                     {b.recetas.length > 0 ? (
                       <p className="text-[11px] text-green-700 mt-0.5" title={b.recetas.join(', ')}>
-                        🍹 En: {b.recetas.slice(0, 3).join(', ')}
-                        {b.recetas.length > 3 ? ` +${b.recetas.length - 3}` : ''}
+                        🍹 En {b.recetas.length} producto{b.recetas.length === 1 ? '' : 's'}:{' '}
+                        {b.recetas.slice(0, 2).join(', ')}
+                        {b.recetas.length > 2 ? ` +${b.recetas.length - 2}` : ''}
                       </p>
                     ) : (
-                      <p className="text-[11px] text-amber-600 mt-0.5">⚠️ Sin receta asociada</p>
+                      <p className="text-[11px] text-amber-700 mt-0.5">
+                        ⚠️ Sin receta asociada — no se le descuenta stock
+                      </p>
+                    )}
+                    {b.ingredientes.length > 0 && (
+                      <p className="text-[11px] text-neutral-500 mt-0.5">
+                        🔗 {b.ingredientes.join(', ')}
+                      </p>
                     )}
                   </td>
                   <td className="p-3 text-neutral-700 whitespace-nowrap">{b.unidadCompra || '—'}</td>
@@ -651,15 +750,22 @@ export default function InsumosPage() {
                         {b.enUso ? '💤 Guardar' : '🧊 Usar ahora'}
                       </button>
                       <button
+                        onClick={() => abrirRecetas(b)}
+                        className="text-xs font-semibold text-black bg-neutral-200 px-2.5 py-1.5 rounded-lg active:scale-95 whitespace-nowrap"
+                        title="Elegir a qué ingredientes de las recetas corresponde"
+                      >
+                        🔗 Recetas
+                      </button>
+                      <button
                         onClick={() => verHistorial(b.id, b.nombre)}
-                        className="text-xs font-semibold bg-neutral-100 px-2.5 py-1.5 rounded-lg active:scale-95"
+                        className="text-xs font-semibold text-black bg-neutral-200 px-2.5 py-1.5 rounded-lg active:scale-95"
                         title="Historial de precios"
                       >
                         📈
                       </button>
                       <button
                         onClick={() => abrirEditar(b)}
-                        className="text-xs font-semibold bg-neutral-100 px-2.5 py-1.5 rounded-lg active:scale-95"
+                        className="text-xs font-semibold text-black bg-neutral-200 px-2.5 py-1.5 rounded-lg active:scale-95"
                         title="Editar"
                       >
                         ✏️
@@ -797,6 +903,24 @@ export default function InsumosPage() {
             </div>
           </div>
 
+          {editandoId && (
+            <>
+              <label className="block text-xs font-semibold text-neutral-500 mb-1 mt-3">
+                Último precio de compra (por {form.unidadCompra || 'unidad'})
+              </label>
+              <input
+                type="number"
+                inputMode="decimal"
+                value={form.ultimoPrecioCompra}
+                onChange={(e) => setForm({ ...form, ultimoPrecioCompra: e.target.value })}
+                className={inputCls}
+              />
+              <p className="text-[11px] text-neutral-400 mt-1">
+                Corrige aquí un precio mal capturado. No registra una compra ni suma stock.
+              </p>
+            </>
+          )}
+
           {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
 
           <button
@@ -852,6 +976,72 @@ export default function InsumosPage() {
             className="w-full bg-marron text-white font-semibold py-3 rounded-xl mt-4 active:scale-95 disabled:opacity-50"
           >
             {ocupado ? 'Guardando…' : 'Registrar compra'}
+          </button>
+        </Modal>
+      )}
+
+      {/* ── Modal: vincular con las recetas de Productos ── */}
+      {recetasDe && (
+        <Modal titulo={`Recetas de ${recetasDe.nombre}`} onCerrar={() => setRecetasDe(null)}>
+          <p className="text-xs text-neutral-500 mb-3">
+            Marca los ingredientes de tus productos que salen de este insumo. Puedes marcar varios:
+            así, cada venta descuenta del mismo stock.
+          </p>
+
+          <button
+            onClick={aplicarSugerencias}
+            className="w-full text-xs font-semibold text-black bg-neutral-200 py-2 rounded-xl mb-3 active:scale-95"
+          >
+            ✨ Marcar automáticamente los que se parecen
+          </button>
+
+          <ul className="divide-y divide-neutral-100 max-h-72 overflow-y-auto">
+            {ingredientesCat.map((ing) => {
+              const marcado = seleccion.includes(ing.nombre);
+              const ajeno = ing.vinculadoA && ing.vinculadoA !== recetasDe.nombre;
+              return (
+                <li key={ing.nombre}>
+                  <label className="flex gap-2 py-2 cursor-pointer items-start">
+                    <input
+                      type="checkbox"
+                      checked={marcado}
+                      onChange={() => alternarIngrediente(ing.nombre)}
+                      className="mt-1 accent-[var(--marca-marron)]"
+                    />
+                    <span className="flex-1">
+                      <span className="text-sm font-semibold text-neutral-900">{ing.nombre}</span>
+                      {sugiere(recetasDe.nombre, ing.nombre) && !marcado && (
+                        <span className="ml-1.5 text-[10px] font-semibold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">
+                          sugerido
+                        </span>
+                      )}
+                      <span className="block text-[11px] text-neutral-400">
+                        {ing.productos.slice(0, 3).join(', ')}
+                        {ing.productos.length > 3 ? ` +${ing.productos.length - 3}` : ''}
+                      </span>
+                      {ajeno && (
+                        <span className="block text-[11px] text-amber-700">
+                          Ya está vinculado a {ing.vinculadoA}
+                        </span>
+                      )}
+                    </span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+
+          <p className="text-[11px] text-neutral-400 mt-3">
+            Si no marcas ninguno, se intenta unir por nombre idéntico con las recetas.
+          </p>
+          {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
+
+          <button
+            onClick={guardarRecetas}
+            disabled={ocupado}
+            className="w-full bg-marron text-white font-semibold py-3 rounded-xl mt-3 active:scale-95 disabled:opacity-50"
+          >
+            {ocupado ? 'Guardando…' : `Guardar (${seleccion.length} marcados)`}
           </button>
         </Modal>
       )}

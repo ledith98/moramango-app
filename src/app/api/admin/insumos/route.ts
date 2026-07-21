@@ -20,9 +20,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { appendRow, getSheetData, updateCell } from '@/lib/googleSheets';
-import { consumoPorInsumo, normalizarNombre } from '@/lib/insumos';
+import { consumoPorInsumo } from '@/lib/insumos';
 import {
   aUnidadesReceta,
+  clavesDeInsumo,
   COL_ACT,
   COL_BIB,
   columnaEnUso,
@@ -67,8 +68,8 @@ export async function GET(req: NextRequest) {
   }
 
   const [activos, biblioteca, catalogo, pedidos, detalles] = await Promise.all([
-    getSheetData(HOJA_ACTIVOS),
-    getSheetData(HOJA_BIBLIOTECA),
+    getSheetData(HOJA_ACTIVOS, { crudo: true }),
+    getSheetData(HOJA_BIBLIOTECA, { crudo: true }),
     getSheetData('Catalogo'),
     getSheetData('PEDIDOS'),
     getSheetData('DT PEDIDOS'),
@@ -117,8 +118,9 @@ export async function GET(req: NextRequest) {
       const ultimoPrecio = parseFloat(bib.Ultimo_Precio_Compra) || 0;
       const stock = parseFloat(a.Stock_Actual) || 0;
 
-      // Las recetas consumen en unidad de receta, igual que el stock
-      const consumido = consumo.get(normalizarNombre(bib.Nombre)) || 0;
+      // Las recetas consumen en unidad de receta, igual que el stock.
+      // Un insumo puede cubrir varios ingredientes de las recetas.
+      const consumido = clavesDeInsumo(bib).reduce((t, c) => t + (consumo.get(c) || 0), 0);
       const consumoPorDia = consumido / DIAS_ANALISIS;
       const alcanzaParaDias = consumoPorDia > 0 ? stock / consumoPorDia : null;
 
@@ -179,13 +181,13 @@ export async function PATCH(req: NextRequest) {
   await prepararInventario();
 
   const { id, accion, cantidadCompra, precioTotal, cantidad, valor } = await req.json();
-  if (!id || !['compra', 'conteo', 'ajustar', 'status', 'uso'].includes(accion)) {
+  if (!id || !['compra', 'conteo', 'ajustar', 'status', 'uso', 'stock'].includes(accion)) {
     return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 });
   }
 
   const [activos, biblioteca] = await Promise.all([
-    getSheetData(HOJA_ACTIVOS),
-    getSheetData(HOJA_BIBLIOTECA),
+    getSheetData(HOJA_ACTIVOS, { crudo: true }),
+    getSheetData(HOJA_BIBLIOTECA, { crudo: true }),
   ]);
   // Se acepta el ID del activo o el de su biblioteca (relación 1:1), para
   // poder accionar desde cualquiera de las dos pestañas.
@@ -248,6 +250,16 @@ export async function PATCH(req: NextRequest) {
       agregadoEnReceta: enReceta,
       costoPorUnidadReceta: costoReceta,
     });
+  }
+
+  // ── Corregir el stock a mano, sin tocar precios ni historial ──
+  if (accion === 'stock') {
+    const num = parseFloat(cantidad);
+    if (isNaN(num) || num < 0) {
+      return NextResponse.json({ error: 'Cantidad inválida' }, { status: 400 });
+    }
+    await updateCell(HOJA_ACTIVOS, filaAct, COL_ACT.stock, redondear(num, 3));
+    return NextResponse.json({ success: true, stockActual: redondear(num, 3) });
   }
 
   if (accion === 'conteo') {

@@ -890,12 +890,19 @@ export default function Home() {
                               <div className="relative shrink-0 ml-2">
                                 <button
                                   onClick={() => agregarAlCarrito(producto)}
-                                  className="w-28 h-28 bg-neutral-100 rounded-2xl overflow-hidden flex items-center justify-center active:scale-95 transition-transform"
+                                  className="w-24 h-24 bg-neutral-100 rounded-2xl overflow-hidden flex items-center justify-center active:scale-95 transition-transform"
                                   aria-label={`Agregar ${producto.nombre}`}
                                 >
                                   {producto.imagen ? (
+                                    // object-contain + padding: los iconos son
+                                    // cuadrados con fondo propio y con cover
+                                    // se recortaban y llenaban toda la caja
                                     // eslint-disable-next-line @next/next/no-img-element
-                                    <img src={producto.imagen} alt={producto.nombre} className="w-full h-full object-cover" />
+                                    <img
+                                      src={producto.imagen}
+                                      alt={producto.nombre}
+                                      className="w-full h-full object-contain p-2"
+                                    />
                                   ) : (
                                     <span
                                       className={
@@ -1641,13 +1648,13 @@ export default function Home() {
               {/* Contenido scrollable */}
               <div className="flex-1 overflow-y-auto px-6 pb-4">
                 {/* Imagen grande */}
-                <div className="w-full h-48 bg-neutral-100 rounded-2xl overflow-hidden flex items-center justify-center mb-4 mt-2">
+                <div className="w-full h-40 bg-neutral-100 rounded-2xl overflow-hidden flex items-center justify-center mb-4 mt-2">
                   {productoDetalle.imagen ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={productoDetalle.imagen}
                       alt={productoDetalle.nombre}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-contain p-4"
                     />
                   ) : (
                     <span

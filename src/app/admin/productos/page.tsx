@@ -246,7 +246,7 @@ export default function ProductosPage() {
                       <img
                         src={p.Imagen_URL}
                         alt=""
-                        className="w-10 h-10 rounded-lg object-cover shrink-0"
+                        className="w-10 h-10 rounded-lg object-contain bg-neutral-50 shrink-0"
                       />
                     )}
                     <div className="min-w-0">
@@ -346,7 +346,7 @@ export default function ProductosPage() {
                   <div className="w-20 h-20 shrink-0 bg-neutral-100 rounded-xl overflow-hidden flex items-center justify-center">
                     {imagenUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={imagenUrl} alt="" className="w-full h-full object-cover" />
+                      <img src={imagenUrl} alt="" className="w-full h-full object-contain p-1" />
                     ) : (
                       <span className="text-3xl opacity-30">{form.emoji || '📷'}</span>
                     )}

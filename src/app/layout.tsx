@@ -14,8 +14,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Moramango',
-  description: 'Blend to Go — Pedidos en línea',
+  title: "Moramango",
+  description: "Blend to Go — Pedidos en línea",
+  manifest: "/manifest.json",
+  icons: {
+    icon: "/icon-192x192.png",
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export default function RootLayout({

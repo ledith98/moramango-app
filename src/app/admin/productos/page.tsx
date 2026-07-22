@@ -9,6 +9,7 @@ interface Producto {
   Descripcion: string;
   Precio_Venta: string;
   Disponible: string;
+  Emoji?: string;
 }
 
 interface FormProducto {
@@ -16,9 +17,24 @@ interface FormProducto {
   categoria: string;
   descripcion: string;
   precio: string;
+  emoji: string;
 }
 
-const FORM_VACIO: FormProducto = { nombre: '', categoria: '', descripcion: '', precio: '' };
+const FORM_VACIO: FormProducto = {
+  nombre: '',
+  categoria: '',
+  descripcion: '',
+  precio: '',
+  emoji: '',
+};
+
+// Atajos para no tener que abrir el teclado de emojis en la tablet
+const EMOJIS_SUGERIDOS = [
+  '🥪', '🥐', '🍞', '🥗', '🍳',
+  '🥤', '🥛', '🧃', '☕', '🍫',
+  '💧', '🥫', '🍓', '🥭', '🍌',
+  '🍍', '🍊', '🍈', '🍪', '🧁',
+];
 
 export default function ProductosPage() {
   const [productos, setProductos] = useState<Producto[]>([]);
@@ -75,6 +91,7 @@ export default function ProductosPage() {
       categoria: p.Categoría,
       descripcion: p.Descripcion,
       precio: p.Precio_Venta,
+      emoji: p.Emoji || '',
     });
     setError('');
   };
@@ -115,6 +132,7 @@ export default function ProductosPage() {
             categoria: form.categoria,
             descripcion: form.descripcion,
             precio: precioNum,
+            emoji: form.emoji,
           }),
         });
       } else {
@@ -126,6 +144,7 @@ export default function ProductosPage() {
             categoria: form.categoria,
             descripcion: form.descripcion,
             precio: precioNum,
+            emoji: form.emoji,
           }),
         });
         const data = await res.json();
@@ -169,7 +188,10 @@ export default function ProductosPage() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-xs text-neutral-400 uppercase tracking-wide">{p.Categoría}</p>
-                    <h3 className="font-bold text-neutral-900 truncate">{p.Nombre}</h3>
+                    <h3 className="font-bold text-neutral-900 truncate">
+                      {p.Emoji && <span className="mr-1">{p.Emoji}</span>}
+                      {p.Nombre}
+                    </h3>
                   </div>
                   <button
                     onClick={() => toggleDisponible(p)}
@@ -246,6 +268,50 @@ export default function ProductosPage() {
               <p className="text-xs text-neutral-400">
                 Elige una de la lista. Si escribes una que ya existe con otras mayúsculas, se
                 corrige sola para no partir el menú en dos.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-semibold text-neutral-700">
+                Emoji <span className="font-normal text-neutral-400">(opcional)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <div className="w-14 h-14 shrink-0 bg-neutral-100 rounded-xl flex items-center justify-center text-3xl">
+                  {form.emoji || <span className="text-neutral-300 text-base">—</span>}
+                </div>
+                <input
+                  value={form.emoji}
+                  onChange={(e) => setForm({ ...form, emoji: e.target.value })}
+                  placeholder="🥪"
+                  className="flex-1 bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 text-center text-xl focus:outline-none focus:border-black"
+                />
+                {form.emoji && (
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, emoji: '' })}
+                    className="text-xs font-semibold text-neutral-600 bg-neutral-100 px-3 py-2 rounded-xl active:scale-95"
+                  >
+                    Quitar
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1 pt-1">
+                {EMOJIS_SUGERIDOS.map((e) => (
+                  <button
+                    key={e}
+                    type="button"
+                    onClick={() => setForm({ ...form, emoji: form.emoji === e ? '' : e })}
+                    className={`w-9 h-9 rounded-lg text-xl active:scale-90 transition-transform ${
+                      form.emoji === e ? 'bg-marron/15 ring-2 ring-marron' : 'bg-neutral-100'
+                    }`}
+                  >
+                    {e}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-neutral-400">
+                Se muestra en la tienda cuando el producto no tiene foto. Puedes poner dos juntos
+                para los combos, por ejemplo 🥪🥤.
               </p>
             </div>
 

@@ -22,6 +22,7 @@ interface Producto {
   Categoría: string;
   Precio_Venta: string;
   Disponible: string;
+  Emoji?: string;
 }
 
 interface ItemVenta {
@@ -377,7 +378,10 @@ export default function VentaPage() {
                 >
                   <button onClick={() => agregar(p)} className="w-full text-left active:scale-95 transition-transform">
                     <p className="text-[10px] text-neutral-400 uppercase tracking-wide">{p.Categoría}</p>
-                    <p className="font-semibold text-neutral-900 text-sm leading-tight">{p.Nombre}</p>
+                    <p className="font-semibold text-neutral-900 text-sm leading-tight">
+                      {p.Emoji && <span className="mr-1">{p.Emoji}</span>}
+                      {p.Nombre}
+                    </p>
                     <p className="font-bold text-black mt-1">${parseFloat(p.Precio_Venta || '0').toFixed(2)}</p>
                   </button>
                   {cant > 0 && (

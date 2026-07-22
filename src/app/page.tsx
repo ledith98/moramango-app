@@ -231,6 +231,13 @@ export default function Home() {
     return '🍽️';
   };
 
+  /**
+   * Icono de un producto sin foto: el emoji que se le puso en el panel y,
+   * si no tiene, el genérico de su categoría.
+   */
+  const iconoProducto = (p: { emoji?: string; categoria?: string }) =>
+    (p.emoji || '').trim() || getIcono(p.categoria || '');
+
   const limpiarPrecio = (precio: any): number => {
     const num = parseFloat(precio?.toString().replace(',', '.'));
     return isNaN(num) ? 0 : num;
@@ -844,7 +851,13 @@ export default function Home() {
                                     // eslint-disable-next-line @next/next/no-img-element
                                     <img src={producto.imagen} alt={producto.nombre} className="w-full h-full object-cover" />
                                   ) : (
-                                    <span className="text-5xl opacity-20">{getIcono(categoria)}</span>
+                                    <span
+                                      className={
+                                        producto.emoji ? 'text-5xl' : 'text-5xl opacity-20'
+                                      }
+                                    >
+                                      {iconoProducto(producto)}
+                                    </span>
                                   )}
                                 </button>
 
@@ -1534,8 +1547,10 @@ export default function Home() {
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <span className="text-7xl opacity-20">
-                      {getIcono(productoDetalle.categoria || '')}
+                    <span
+                      className={productoDetalle.emoji ? 'text-7xl' : 'text-7xl opacity-20'}
+                    >
+                      {iconoProducto(productoDetalle)}
                     </span>
                   )}
                 </div>

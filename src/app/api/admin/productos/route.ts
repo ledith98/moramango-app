@@ -18,11 +18,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { appendRow, ensureColumn, findRow, getSheetData, updateCell } from '@/lib/googleSheets';
 import { getAdminSession } from '@/lib/roles';
 
+/**
+ * Deja como mucho dos emojis. Los combos llevan dos (🥪🥤) y más de eso ya
+ * no se lee en la tarjeta del producto.
+ */
+function recortarEmoji(valor: string): string {
+  return [...valor.trim()].filter((c) => c.trim()).slice(0, 4).join('');
+}
+
 export async function GET() {
   if (!(await getAdminSession())) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
+  await ensureColumn('Productos', 'Emoji');
   const productos = await getSheetData('Productos');
   const visibles = productos.filter((p) => (p.Eliminado || '').toUpperCase() !== 'TRUE');
   return NextResponse.json({ productos: visibles });
@@ -33,7 +42,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
-  const { nombre, categoria, descripcion, precio } = await req.json();
+  const { nombre, categoria, descripcion, precio, emoji } = await req.json();
 
   if (!nombre || typeof nombre !== 'string' || !nombre.trim()) {
     return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 });
@@ -47,7 +56,7 @@ export async function POST(req: NextRequest) {
   const nuevoId = `PROD-${String(existentes.length + 1).padStart(3, '0')}`;
   const ordenMenu = existentes.length + 1;
 
-  await appendRow('Productos', [
+  const fila = await appendRow('Productos', [
     nuevoId,
     nombre.trim(),
     categoria?.trim() || 'Otros',
@@ -61,6 +70,12 @@ export async function POST(req: NextRequest) {
     '',
   ]);
 
+  // Emoji va fuera del rango A–K que escribe appendRow
+  if (typeof emoji === 'string' && emoji.trim()) {
+    const colEmoji = await ensureColumn('Productos', 'Emoji');
+    await updateCell('Productos', fila, colEmoji, recortarEmoji(emoji));
+  }
+
   return NextResponse.json({ success: true, idProducto: nuevoId });
 }
 
@@ -69,7 +84,8 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
-  const { idProducto, nombre, categoria, descripcion, precio, disponible } = await req.json();
+  const { idProducto, nombre, categoria, descripcion, precio, disponible, emoji } =
+    await req.json();
 
   if (!idProducto) {
     return NextResponse.json({ error: 'Falta idProducto' }, { status: 400 });
@@ -98,6 +114,11 @@ export async function PATCH(req: NextRequest) {
   }
   if (typeof disponible === 'boolean') {
     await updateCell('Productos', fila.rowIndex, 7, disponible ? 'TRUE' : 'FALSE');
+  }
+  if (typeof emoji === 'string') {
+    // Columna resuelta por nombre: se crea sola la primera vez
+    const colEmoji = await ensureColumn('Productos', 'Emoji');
+    await updateCell('Productos', fila.rowIndex, colEmoji, recortarEmoji(emoji));
   }
 
   return NextResponse.json({ success: true });

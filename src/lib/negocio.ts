@@ -49,6 +49,19 @@ export function mensajeComprobante(idPedido: string, total?: number): string {
   );
 }
 
+/**
+ * Mensaje que el CLIENTE manda al negocio al llegar por su pedido. El
+ * aviso "de verdad" es el de Telegram, que sale solo; este es el respaldo
+ * por WhatsApp, que el cliente tiene que enviar con su propio dedo.
+ */
+export function mensajeLlegada(idPedido: string, nota?: string): string {
+  const extra = (nota || '').trim();
+  return (
+    `¡Hola! 🥭 Ya estoy afuera de Moramango por mi pedido ${idPedido}.` +
+    (extra ? `\n${extra}` : '')
+  );
+}
+
 const primerNombre = (nombre: string) => (nombre || '').trim().split(' ')[0] || 'Hola';
 
 /** Mensaje para mandarle al cliente los datos de transferencia. */

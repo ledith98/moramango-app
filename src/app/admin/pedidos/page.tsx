@@ -30,6 +30,8 @@ interface Pedido {
   Origen_Venta: string;
   Metodo_Pago?: string;
   Estado_Pago?: string;
+  /** Fecha en que el cliente avisó desde la app que ya está en el local */
+  Aviso_Llegada?: string;
 }
 
 interface DetalleItem {
@@ -274,6 +276,15 @@ export default function PedidosPage() {
                 {p.Estado_Pago === 'Pendiente' && p.Estado !== 'Cancelado' && (
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
                     🕓 SIN PAGAR
+                  </span>
+                )}
+                {/* El cliente ya avisó desde la app que está afuera */}
+                {p.Aviso_Llegada && p.Estado !== 'Entregado' && p.Estado !== 'Cancelado' && (
+                  <span
+                    className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700"
+                    title={`Avisó a las ${p.Aviso_Llegada}`}
+                  >
+                    🚗 YA LLEGÓ
                   </span>
                 )}
               </div>

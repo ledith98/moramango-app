@@ -69,6 +69,7 @@ export async function GET() {
       hora: info?.horaLegible ?? '',
       estado: p.Estado || 'Recibido',
       estadoPago: p.Estado_Pago || '',
+      avisoLlegada: p.Aviso_Llegada || '',
       metodoPago: p.Metodo_Pago || '',
       total: parseFloat(p.Total_Final) || 0,
       notas: p.Notas_Pedido || '',

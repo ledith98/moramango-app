@@ -18,6 +18,26 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/authOptions';
 import { ensureColumn, findRow, updateCell } from '@/lib/googleSheets';
 import { baseUrlDesdeRequest, crearPreferencia, mpConfigurado } from '@/lib/mercadoPago';
+import { parsearFechaHora } from '@/lib/pedidoFecha';
+import { enviarTelegram } from '@/lib/telegram';
+
+/** Minutos que deben pasar entre dos avisos de llegada del mismo pedido. */
+const ESPERA_AVISO_MIN = 2;
+
+const ahoraMTY = () =>
+  new Date().toLocaleString('es-MX', { timeZone: 'America/Monterrey' });
+
+/**
+ * Convierte una fecha de la hoja a minutos absolutos de reloj de pared en
+ * Monterrey. Sirve para restar dos marcas entre sí; no es epoch real.
+ */
+function minutosDeAviso(valor: string | undefined): number | null {
+  const info = parsearFechaHora(valor);
+  if (!info) return null;
+  const [y, m, d] = info.fechaISO.split('-').map(Number);
+  const [hh, mi] = info.horaLegible.split(':').map(Number);
+  return Math.floor(Date.UTC(y, m - 1, d, hh, mi) / 60000);
+}
 
 export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions);
@@ -26,7 +46,8 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
   }
 
   const { id } = await context.params;
-  const { accion } = await req.json();
+  const cuerpo = await req.json();
+  const { accion } = cuerpo;
   const idUsuario = (session.user as any).id_usuario;
 
   const pedidoRow = await findRow('PEDIDOS', 'ID_Pedido', id);
@@ -75,6 +96,40 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     await updateCell('PEDIDOS', pedidoRow.rowIndex, colEstadoPago, 'Pendiente');
 
     return NextResponse.json({ success: true, checkoutUrl: preferencia.checkoutUrl });
+  }
+
+  // ── Avisar que ya llegó al local ──
+  if (accion === 'llegue') {
+    if (estado === 'Entregado') {
+      return NextResponse.json({ error: 'Este pedido ya se entregó' }, { status: 400 });
+    }
+
+    const colAviso = await ensureColumn('PEDIDOS', 'Aviso_Llegada');
+    // Evita que un doble toque llene el grupo de avisos repetidos
+    const previo = minutosDeAviso(pedidoRow.data.Aviso_Llegada);
+    if (previo !== null && minutosDeAviso(ahoraMTY()) !== null) {
+      const transcurrido = minutosDeAviso(ahoraMTY())! - previo;
+      if (transcurrido >= 0 && transcurrido < ESPERA_AVISO_MIN) {
+        return NextResponse.json(
+          { error: 'Ya avisamos hace un momento, vamos para allá 🙌' },
+          { status: 429 }
+        );
+      }
+    }
+
+    await updateCell('PEDIDOS', pedidoRow.rowIndex, colAviso, ahoraMTY());
+
+    const nota = typeof cuerpo.nota === 'string' ? cuerpo.nota.trim().slice(0, 140) : '';
+    await enviarTelegram(
+      `🚗 <b>Cliente afuera</b> — ${id}\n` +
+        `${pedidoRow.data.Nombre_Cliente || 'Cliente'}` +
+        (pedidoRow.data.Telefono ? ` · ${pedidoRow.data.Telefono}` : '') +
+        `\nEstado: ${estado}` +
+        (estadoPago ? ` · Pago: ${estadoPago}` : '') +
+        (nota ? `\n📝 <i>${nota}</i>` : '')
+    );
+
+    return NextResponse.json({ success: true });
   }
 
   // ── Cancelar su propio pedido ──

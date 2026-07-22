@@ -10,6 +10,7 @@ import {
   TELEFONO_NEGOCIO,
   linkWhatsApp,
   mensajeComprobante,
+  mensajeLlegada,
 } from '@/lib/negocio';
 
 // Separa un teléfono guardado tipo "+528186003207" en lada y número
@@ -52,6 +53,8 @@ interface MiPedido {
   hora: string;
   estado: string;
   estadoPago: string;
+  /** Fecha del último aviso de "ya llegué"; vacío si nunca avisó */
+  avisoLlegada: string;
   total: number;
   yaOpino: boolean;
   items: { idProducto: string; nombre: string; cantidad: number; subtotal: number }[];
@@ -93,6 +96,11 @@ export default function Home() {
   const [verPerfil, setVerPerfil] = useState(false);
   const [verMisPedidos, setVerMisPedidos] = useState(false);
   const [misPedidos, setMisPedidos] = useState<MiPedido[]>([]);
+  // Aviso de llegada: pedido con el panel abierto, nota y el que ya avisó
+  const [avisando, setAvisando] = useState<string | null>(null);
+  const [notaLlegada, setNotaLlegada] = useState('');
+  const [avisoEnviado, setAvisoEnviado] = useState<string | null>(null);
+  const [enviandoAviso, setEnviandoAviso] = useState(false);
   const [cargandoPedidos, setCargandoPedidos] = useState(false);
   const [avisoRepetir, setAvisoRepetir] = useState('');
   const [accionPedido, setAccionPedido] = useState<string | null>(null);
@@ -493,6 +501,44 @@ export default function Home() {
    * ACTUALES del menú (no los del pedido viejo): los precios cambian, y
    * un producto puede estar agotado o ya no existir.
    */
+  /**
+   * Avisa que el cliente ya está en el local. El aviso de Telegram lo
+   * manda el servidor (llega solo), y además se abre WhatsApp con el
+   * mensaje escrito — ese sí lo tiene que enviar el cliente.
+   */
+  const avisarLlegada = async (pedido: MiPedido) => {
+    setEnviandoAviso(true);
+    try {
+      const res = await fetch(`/api/pedidos/${encodeURIComponent(pedido.idPedido)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'llegue', nota: notaLlegada }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'No se pudo enviar el aviso');
+        return;
+      }
+
+      setAvisoEnviado(pedido.idPedido);
+      setAvisando(null);
+      window.open(
+        linkWhatsApp(TELEFONO_NEGOCIO, mensajeLlegada(pedido.idPedido, notaLlegada)),
+        '_blank'
+      );
+      setNotaLlegada('');
+
+      // Refrescar para que quede la marca de "ya avisaste"
+      const r = await fetch('/api/pedidos');
+      const d = await r.json();
+      setMisPedidos(d.pedidos || []);
+    } catch {
+      alert('Error de conexión. Intenta de nuevo.');
+    } finally {
+      setEnviandoAviso(false);
+    }
+  };
+
   const volverAPedir = (pedido: MiPedido) => {
     const disponibles: ItemCarrito[] = [];
     const noDisponibles: string[] = [];
@@ -1225,6 +1271,63 @@ export default function Home() {
                           </button>
                         )}
                       </div>
+
+                      {/* Ya llegué por mi pedido — mientras siga en curso */}
+                      {p.estadoPago === 'Pagado' &&
+                        FLUJO_ESTADOS.indexOf(p.estado) >= 0 &&
+                        p.estado !== 'Entregado' && (
+                          <div className="mt-3">
+                            {avisando === p.idPedido ? (
+                              <div className="bg-green-50 border border-green-200 rounded-xl p-3 space-y-2">
+                                <p className="text-sm font-bold text-neutral-900">
+                                  ¿Quieres decirnos algo más?
+                                </p>
+                                <input
+                                  value={notaLlegada}
+                                  onChange={(e) => setNotaLlegada(e.target.value)}
+                                  maxLength={140}
+                                  placeholder="Ej. Estoy en el carro blanco (opcional)"
+                                  className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-marron"
+                                />
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => {
+                                      setAvisando(null);
+                                      setNotaLlegada('');
+                                    }}
+                                    className="flex-1 bg-white border border-neutral-200 text-neutral-600 text-sm font-semibold py-2.5 rounded-xl active:scale-95 transition-transform"
+                                  >
+                                    Cancelar
+                                  </button>
+                                  <button
+                                    onClick={() => avisarLlegada(p)}
+                                    disabled={enviandoAviso}
+                                    className="flex-[2] bg-green-600 text-white text-sm font-bold py-2.5 rounded-xl active:scale-95 transition-transform disabled:opacity-50"
+                                  >
+                                    {enviandoAviso ? 'Avisando…' : 'Avisar que ya llegué'}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    setAvisando(p.idPedido);
+                                    setNotaLlegada('');
+                                  }}
+                                  className="w-full bg-green-600 text-white text-sm font-bold py-2.5 rounded-xl active:scale-95 transition-transform"
+                                >
+                                  🚗 Ya estoy afuera
+                                </button>
+                                {(avisoEnviado === p.idPedido || p.avisoLlegada) && (
+                                  <p className="mt-1.5 text-xs text-center text-green-700">
+                                    ✅ Ya les avisamos, van para allá
+                                  </p>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
 
                       {/* Tu opinión nos interesa — solo si ya lo recibió */}
                       {p.estado === 'Entregado' && !p.yaOpino && opinando !== p.idPedido && (

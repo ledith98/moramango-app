@@ -131,7 +131,10 @@ export const escribirIngredientes = (lista: string[]): string =>
  */
 export function clavesDeInsumo(bib: Record<string, string>): string[] {
   const manuales = leerIngredientes(bib.Ingredientes).map(normalizarNombre);
-  return manuales.length > 0 ? manuales : [normalizarNombre(bib.Nombre)];
+  // Su propio nombre SIEMPRE cuenta, además de los vínculos manuales: el
+  // Recetario referencia al insumo por su nombre real, así que excluirlo
+  // rompería justo las recetas de los insumos ya vinculados a mano.
+  return [...new Set([normalizarNombre(bib.Nombre), ...manuales])].filter(Boolean);
 }
 
 /**

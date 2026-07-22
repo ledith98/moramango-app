@@ -18,6 +18,7 @@
 import { getSheetData, updateCell } from '@/lib/googleSheets';
 import { consumoPorInsumo } from '@/lib/insumos';
 import { clavesDeInsumo, COL_ACT, estaEnUso, HOJA_ACTIVOS, HOJA_BIBLIOTECA } from '@/lib/inventario';
+import { leerRecetas } from '@/lib/recetario';
 
 type Direccion = 'apartar' | 'devolver';
 
@@ -37,7 +38,7 @@ export async function moverStockDePedido(
     if (itemsPedido.length === 0) return;
 
     const [catalogo, biblioteca, activos] = await Promise.all([
-      getSheetData('Catalogo'),
+      leerRecetas(),
       getSheetData(HOJA_BIBLIOTECA, { crudo: true }),
       getSheetData(HOJA_ACTIVOS, { crudo: true }),
     ]);

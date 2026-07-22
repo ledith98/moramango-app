@@ -3,12 +3,13 @@ import { getSheetData } from '@/lib/googleSheets';
 import { disponibilidadPorProducto, type DisponibilidadProducto } from '@/lib/disponibilidad';
 import { normalizarUrlImagen } from '@/lib/imagenes';
 import { HOJA_ACTIVOS, HOJA_BIBLIOTECA } from '@/lib/inventario';
+import { leerRecetas } from '@/lib/recetario';
 
 /** Vacío si el inventario aún no está armado: la tienda no debe caerse. */
 async function calcularDisponibilidad(): Promise<Map<string, DisponibilidadProducto>> {
   try {
     const [catalogo, biblioteca, activos] = await Promise.all([
-      getSheetData('Catalogo'),
+      leerRecetas(),
       getSheetData(HOJA_BIBLIOTECA, { crudo: true }),
       getSheetData(HOJA_ACTIVOS, { crudo: true }),
     ]);

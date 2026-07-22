@@ -37,6 +37,7 @@ import {
   STATUS_INSUMO,
 } from '@/lib/inventario';
 import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
+import { leerRecetas } from '@/lib/recetario';
 import { getAdminSession } from '@/lib/roles';
 
 const DIAS_ANALISIS = 7;
@@ -70,7 +71,7 @@ export async function GET(req: NextRequest) {
   const [activos, biblioteca, catalogo, pedidos, detalles] = await Promise.all([
     getSheetData(HOJA_ACTIVOS, { crudo: true }),
     getSheetData(HOJA_BIBLIOTECA, { crudo: true }),
-    getSheetData('Catalogo'),
+    leerRecetas(),
     getSheetData('PEDIDOS'),
     getSheetData('DT PEDIDOS'),
   ]);

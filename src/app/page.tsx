@@ -12,6 +12,7 @@ import {
   mensajeComprobante,
   mensajeLlegada,
 } from '@/lib/negocio';
+import { avisoDisponibilidad } from '@/lib/disponibilidadCliente';
 
 // Separa un teléfono guardado tipo "+528186003207" en lada y número
 const parsearTelefono = (telefonoCompleto: string): { lada: string; numero: string } => {
@@ -95,6 +96,8 @@ export default function Home() {
   // adivina que se puede deslizar para ver el resto
   const filaCategorias = useRef<HTMLDivElement>(null);
   const [hayMasCategorias, setHayMasCategorias] = useState(false);
+  // Aviso flotante cuando se intenta pedir más de lo que hay
+  const [avisoStock, setAvisoStock] = useState('');
   const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
   const [verCarrito, setVerCarrito] = useState(false);
   const [verPerfil, setVerPerfil] = useState(false);
@@ -234,6 +237,12 @@ export default function Home() {
     return acc;
   }, {} as Record<string, any[]>);
 
+  useEffect(() => {
+    if (!avisoStock) return;
+    const t = setTimeout(() => setAvisoStock(''), 2600);
+    return () => clearTimeout(t);
+  }, [avisoStock]);
+
   /** La pista se esconde al llegar al final, para no estorbar. */
   const revisarCategorias = useCallback(() => {
     const el = filaCategorias.current;
@@ -279,8 +288,21 @@ export default function Home() {
   };
 
   const agregarAlCarrito = (producto: any) => {
+    // disponibles null = sin inventario cargado, sin límite
+    const tope = producto.disponibles;
     setCarrito(prev => {
       const existe = prev.find(item => item.id === producto.id);
+      if (tope !== null && tope !== undefined) {
+        const yaEnCarrito = existe?.cantidad ?? 0;
+        if (yaEnCarrito >= tope) {
+          setAvisoStock(
+            tope <= 0
+              ? `${producto.nombre} se agotó por hoy 😔`
+              : `Solo nos ${tope === 1 ? 'queda 1' : `quedan ${tope}`} de ${producto.nombre}`
+          );
+          return prev;
+        }
+      }
       if (existe) {
         return prev.map(item =>
           item.id === producto.id ? { ...item, cantidad: item.cantidad + 1 } : item
@@ -855,6 +877,13 @@ export default function Home() {
               ))}
             </div>
 
+            {/* Aviso al topar con el stock; se va solo */}
+            {avisoStock && (
+              <div className="fixed left-1/2 -translate-x-1/2 bottom-28 z-50 bg-neutral-900 text-white text-sm font-semibold px-4 py-2.5 rounded-full shadow-lg max-w-[90vw] text-center">
+                {avisoStock}
+              </div>
+            )}
+
             {/* Pista de que hay más categorías a la derecha */}
             {hayMasCategorias && (
               <div className="pointer-events-none absolute right-0 top-0 bottom-4 w-20 flex items-center justify-end pr-2 bg-gradient-to-l from-white via-white/85 to-transparent">
@@ -926,13 +955,28 @@ export default function Home() {
                                     {producto.descripcion}
                                   </p>
                                 )}
-                                <div className="mt-3 font-bold text-neutral-900">${producto.precio}</div>
+                                <div className="mt-3 flex items-center gap-2 flex-wrap">
+                                  <span className="font-bold text-neutral-900">${producto.precio}</span>
+                                  {avisoDisponibilidad(producto.disponibles) && (
+                                    <span
+                                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                        producto.disponibles <= 0
+                                          ? 'bg-neutral-200 text-neutral-500'
+                                          : 'bg-amber-100 text-amber-800'
+                                      }`}
+                                    >
+                                      {producto.disponibles > 0 && '🔥 '}
+                                      {avisoDisponibilidad(producto.disponibles)}
+                                    </span>
+                                  )}
+                                </div>
                               </button>
 
                               <div className="relative shrink-0 ml-2">
                                 <button
                                   onClick={() => agregarAlCarrito(producto)}
-                                  className="w-24 h-24 bg-neutral-100 rounded-2xl overflow-hidden flex items-center justify-center active:scale-95 transition-transform"
+                                  disabled={producto.disponibles !== null && producto.disponibles <= 0}
+                                  className="w-24 h-24 bg-neutral-100 rounded-2xl overflow-hidden flex items-center justify-center active:scale-95 transition-transform disabled:opacity-40 disabled:active:scale-100"
                                   aria-label={`Agregar ${producto.nombre}`}
                                 >
                                   {producto.imagen ? (
@@ -957,7 +1001,7 @@ export default function Home() {
                                 </button>
 
                                 {/* Indicador + para agregar (solo si no está en el carrito) */}
-                                {cantidadAgregada === 0 && (
+                                {cantidadAgregada === 0 && !(producto.disponibles !== null && producto.disponibles <= 0) && (
                                   <div className="absolute -bottom-2 -right-2 w-9 h-9 bg-marron text-white rounded-full flex items-center justify-center shadow-lg pointer-events-none">
                                     <span className="text-xl font-medium leading-none">+</span>
                                   </div>

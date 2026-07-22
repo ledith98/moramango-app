@@ -20,6 +20,7 @@ import { ensureColumn, findRow, updateCell } from '@/lib/googleSheets';
 import { baseUrlDesdeRequest, crearPreferencia, mpConfigurado } from '@/lib/mercadoPago';
 import { parsearFechaHora } from '@/lib/pedidoFecha';
 import { enviarTelegram } from '@/lib/telegram';
+import { moverStockDePedido } from '@/lib/stock';
 
 /** Minutos que deben pasar entre dos avisos de llegada del mismo pedido. */
 const ESPERA_AVISO_MIN = 2;
@@ -149,6 +150,8 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
 
     // Columna 5 = Estado en la hoja PEDIDOS
     await updateCell('PEDIDOS', pedidoRow.rowIndex, 5, 'Cancelado');
+    // Lo apartado vuelve al inventario y el producto se puede volver a vender
+    await moverStockDePedido(id, 'devolver');
     return NextResponse.json({ success: true });
   }
 

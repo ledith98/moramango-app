@@ -23,6 +23,7 @@ import { actualizarLealtad, beneficioVigente, descuentoPorBeneficio } from '@/li
 import { parsearFechaHora } from '@/lib/pedidoFecha';
 import { baseUrlDesdeRequest, crearPreferencia, mpConfigurado } from '@/lib/mercadoPago';
 import { enviarTelegram } from '@/lib/telegram';
+import { moverStockDePedido } from '@/lib/stock';
 
 /**
  * Devuelve los pedidos del usuario logueado, del más reciente al más
@@ -186,6 +187,10 @@ export async function POST(req: NextRequest) {
   // 3. Actualizar lealtad — se acumula por PEDIDO, no por artículos.
   // Las reglas viven en src/lib/lealtad.ts, compartidas con el mostrador.
   await actualizarLealtad(usuario.id_usuario, beneficioValido);
+
+  // 3.5 Apartar el stock ya: si se esperara a "Listo para recoger", dos
+  // clientes podrían pagar la última pieza con minutos de diferencia.
+  await moverStockDePedido(idPedido, 'apartar');
 
   // 4. Aviso a Telegram (si está configurado). Se hace await para que el
   // envío alcance a completarse antes de que termine la función en Vercel,

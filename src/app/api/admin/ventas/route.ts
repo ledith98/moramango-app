@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { appendRow, ensureColumn, getSheetData, updateCell } from '@/lib/googleSheets';
 import { actualizarLealtad, descuentoPorBeneficio } from '@/lib/lealtad';
 import { getAdminSession } from '@/lib/roles';
+import { moverStockDePedido } from '@/lib/stock';
 
 const ESTADOS_VALIDOS = [
   'Recibido',
@@ -134,6 +135,9 @@ export async function POST(req: NextRequest) {
       '',
     ]);
   }
+
+  // La venta en mostrador consume igual que un pedido de la app
+  await moverStockDePedido(idPedido, 'apartar');
 
   // Lealtad del cliente identificado (si la venta se ligó a alguien)
   if (idUsuario) {

@@ -7,17 +7,16 @@
  * GET  → Pedidos, filtrables por ?fecha=YYYY-MM-DD (default hoy) y ?estado=
  *        Se enriquecen con el teléfono del cliente (cruce con USUARIOS)
  * PATCH → Cambiar el estado de un pedido (incluye "Cancelado")
- *         Cuando pasa a "Listo para recoger", descuenta insumos
- *         automáticamente usando las recetas de Catalogo
+ *         El stock se aparta al CREAR el pedido; aquí solo se devuelve
+ *         cuando el pedido se cancela.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSheetData, findRow, updateCell, ensureColumn } from '@/lib/googleSheets';
 import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 import { METODO_PAGO_EN_LINEA } from '@/lib/negocio';
-import { consumoPorInsumo, normalizarNombre } from '@/lib/insumos';
-import { clavesDeInsumo, COL_ACT, estaEnUso, HOJA_ACTIVOS, HOJA_BIBLIOTECA } from '@/lib/inventario';
 import { getAdminSession } from '@/lib/roles';
+import { moverStockDePedido } from '@/lib/stock';
 
 export const ESTADOS_VALIDOS = [
   'Recibido',
@@ -95,9 +94,10 @@ export async function PATCH(req: NextRequest) {
     // Columna 5 = Estado en tu hoja PEDIDOS
     await updateCell('PEDIDOS', pedidoRow.rowIndex, 5, nuevoEstado);
 
-    // Descontar insumos cuando el pedido está listo
-    if (nuevoEstado === 'Listo para recoger') {
-      await descontarInsumos(idPedido);
+    // El stock se aparta al crear el pedido, no aquí. Al cancelar se
+    // devuelve, salvo que ya estuviera cancelado (evita duplicar).
+    if (nuevoEstado === 'Cancelado' && pedidoRow.data.Estado !== 'Cancelado') {
+      await moverStockDePedido(idPedido, 'devolver');
     }
   }
 
@@ -117,50 +117,4 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ success: true });
 }
 
-// ── Descuento automático de materia prima ─────────────────────────────────────
-// La receta (Catalogo) referencia al insumo por NOMBRE: Ingrediente ↔
-// "Nombre insumo". La columna Stock_Actual se resuelve por encabezado,
-// nunca por índice fijo (la hoja tiene Proveedor en la columna 5).
-async function descontarInsumos(idPedido: string) {
-  try {
-    const detalles = await getSheetData('DT PEDIDOS');
-    const itemsPedido = detalles.filter((d) => d.ID_Pedido === idPedido);
-    if (itemsPedido.length === 0) return;
 
-    const [catalogo, biblioteca, activos] = await Promise.all([
-      getSheetData('Catalogo'),
-      getSheetData(HOJA_BIBLIOTECA, { crudo: true }),
-      getSheetData(HOJA_ACTIVOS, { crudo: true }),
-    ]);
-
-    const consumo = consumoPorInsumo(
-      itemsPedido.map((i) => ({
-        idProducto: i.ID_Producto,
-        cantidad: parseInt(i.Cantidad) || 1,
-      })),
-      catalogo
-    );
-    if (consumo.size === 0) return;
-
-    // Cada insumo declara qué ingredientes de las recetas cubre (o se une
-    // por nombre si no hay vínculo manual). El stock vive en el insumo
-    // activo (relación 1:1) y siempre en unidad de receta.
-    for (const [clave, cantidadConsumida] of consumo) {
-      const bib = biblioteca.find((b) => clavesDeInsumo(b).includes(clave));
-      if (!bib) continue;
-
-      const idx = activos.findIndex((a) => a.ID_Biblioteca === bib.ID_Biblioteca);
-      if (idx === -1) continue;
-      if (!estaEnUso(activos[idx].En_Uso)) continue; // guardado solo en biblioteca
-
-      const stockActual = parseFloat(activos[idx].Stock_Actual) || 0;
-      const nuevoStock = Math.max(0, stockActual - cantidadConsumida);
-
-      // Fila = índice en datos + 2 (la fila 1 son encabezados)
-      await updateCell(HOJA_ACTIVOS, idx + 2, COL_ACT.stock, Math.round(nuevoStock * 1000) / 1000);
-    }
-  } catch (error) {
-    // El error no cancela el cambio de estado
-    console.error('Error descontando insumos:', error);
-  }
-}

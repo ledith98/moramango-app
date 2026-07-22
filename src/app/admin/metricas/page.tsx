@@ -96,7 +96,7 @@ export default function MetricasPage() {
               className="bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-black"
             />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 text-neutral-900">
             <label className="text-sm font-semibold text-neutral-700">Hasta</label>
             <input
               type="date"
@@ -108,7 +108,7 @@ export default function MetricasPage() {
             />
           </div>
           {metricas && metricas.pedidosCancelados > 0 && (
-            <span className="text-xs text-neutral-500 ml-auto">
+            <span className="text-xs text-neutral-700 ml-auto">
               ({metricas.pedidosCancelados} cancelado{metricas.pedidosCancelados === 1 ? '' : 's'}, no incluido{metricas.pedidosCancelados === 1 ? '' : 's'})
             </span>
           )}
@@ -133,7 +133,7 @@ export default function MetricasPage() {
 
         {/* Exportar */}
         <div className="flex flex-wrap gap-2 pt-1 border-t border-neutral-100">
-          <span className="text-xs font-semibold text-neutral-500 w-full pt-2">Exportar a Excel</span>
+          <span className="text-xs font-semibold text-neutral-700 w-full pt-2">Exportar a Excel</span>
           <button
             onClick={() => exportar(false)}
             className="text-sm font-semibold px-3 py-2 rounded-xl bg-black text-white active:scale-95 transition-transform"
@@ -150,14 +150,14 @@ export default function MetricasPage() {
       </div>
 
       {cargando ? (
-        <p className="text-neutral-500 animate-pulse">Cargando métricas...</p>
+        <p className="text-neutral-700 animate-pulse">Cargando métricas...</p>
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {tarjetas.map((t) => (
               <div key={t.label} className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100">
                 <div className="text-2xl mb-2">{t.icon}</div>
-                <p className="text-xs text-neutral-500 font-medium uppercase tracking-wide">{t.label}</p>
+                <p className="text-xs text-neutral-700 font-medium uppercase tracking-wide">{t.label}</p>
                 <p className="text-xl font-bold text-black mt-1 break-words">{t.valor}</p>
               </div>
             ))}
@@ -165,7 +165,7 @@ export default function MetricasPage() {
 
           {metricas && (
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100">
-              <p className="text-xs text-neutral-500 font-medium uppercase tracking-wide mb-3">
+              <p className="text-xs text-neutral-700 font-medium uppercase tracking-wide mb-3">
                 Ingresos por método de pago
               </p>
               <div className="space-y-2">
@@ -178,7 +178,7 @@ export default function MetricasPage() {
                     <div key={clave} className="flex items-center justify-between py-1.5 border-b border-neutral-50 last:border-0">
                       <span className="text-sm text-neutral-700">
                         {icono} {clave}
-                        <span className="text-neutral-400 ml-1.5">
+                        <span className="text-neutral-600 ml-1.5">
                           ({pedidos} pedido{pedidos === 1 ? '' : 's'})
                         </span>
                       </span>
@@ -188,7 +188,7 @@ export default function MetricasPage() {
                 })}
               </div>
               {metricas.ventasPorMetodo?.['Sin registrar'] && (
-                <p className="text-xs text-neutral-400 mt-3">
+                <p className="text-xs text-neutral-600 mt-3">
                   💡 "Sin registrar" son pedidos sin método de pago asignado — puedes ponérselo desde el detalle del pedido al cobrar.
                 </p>
               )}
@@ -198,7 +198,7 @@ export default function MetricasPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-red-700">
                       💸 Reembolsado
-                      <span className="text-neutral-400 ml-1.5">
+                      <span className="text-neutral-600 ml-1.5">
                         ({metricas.reembolsos.pedidos} pedido{metricas.reembolsos.pedidos === 1 ? '' : 's'})
                       </span>
                     </span>
@@ -206,7 +206,7 @@ export default function MetricasPage() {
                       −${metricas.reembolsos.total.toFixed(2)}
                     </span>
                   </div>
-                  <p className="text-xs text-neutral-400 mt-1">
+                  <p className="text-xs text-neutral-600 mt-1">
                     Dinero devuelto al cliente. Ya está descontado de los ingresos de arriba.
                   </p>
                 </div>

@@ -72,15 +72,15 @@ export default function UsuariosPage() {
 
   return (
     <div className="space-y-6">
-      <span className="text-sm text-neutral-500">{usuarios.length} usuario{usuarios.length === 1 ? '' : 's'}</span>
+      <span className="text-sm text-neutral-700">{usuarios.length} usuario{usuarios.length === 1 ? '' : 's'}</span>
 
       {cargando ? (
-        <p className="text-neutral-500 animate-pulse">Cargando usuarios...</p>
+        <p className="text-neutral-700 animate-pulse">Cargando usuarios...</p>
       ) : (
         <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-neutral-500 border-b border-neutral-100">
+              <tr className="text-left text-neutral-700 border-b border-neutral-100">
                 <th className="p-4 font-semibold">Nombre</th>
                 <th className="p-4 font-semibold">Contacto</th>
                 <th className="p-4 font-semibold">Rol</th>
@@ -96,7 +96,7 @@ export default function UsuariosPage() {
                       {u.Nombre}
                     </button>
                   </td>
-                  <td className="p-4 text-neutral-500">
+                  <td className="p-4 text-neutral-700">
                     <p>{u.Email}</p>
                     {u.Telefono && <p className="text-xs">{u.Telefono}</p>}
                   </td>
@@ -104,7 +104,7 @@ export default function UsuariosPage() {
                     <select
                       value={u.Rol}
                       onChange={(e) => cambiarRol(u, e.target.value)}
-                      className="bg-neutral-50 border border-neutral-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black"
+                      className="bg-neutral-50 border border-neutral-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black text-neutral-900"
                     >
                       <option value="cliente">cliente</option>
                       <option value="admin">admin</option>
@@ -150,18 +150,18 @@ export default function UsuariosPage() {
           >
             <div className="p-5 border-b border-neutral-100 shrink-0">
               <h2 className="text-lg font-bold text-black">Historial de {historialDe.Nombre}</h2>
-              <p className="text-sm text-neutral-500">{historialDe.Email}</p>
+              <p className="text-sm text-neutral-700">{historialDe.Email}</p>
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-2">
               {cargandoHistorial ? (
-                <p className="text-neutral-500 animate-pulse">Cargando...</p>
+                <p className="text-neutral-700 animate-pulse">Cargando...</p>
               ) : pedidos.length === 0 ? (
-                <p className="text-neutral-500">Este cliente no tiene pedidos todavía.</p>
+                <p className="text-neutral-700">Este cliente no tiene pedidos todavía.</p>
               ) : (
                 pedidos.map((p) => (
                   <div key={p.ID_Pedido} className="flex justify-between items-center bg-neutral-50 rounded-xl p-3">
                     <div>
-                      <p className="font-mono text-xs text-neutral-500">{p.ID_Pedido}</p>
+                      <p className="font-mono text-xs text-neutral-700">{p.ID_Pedido}</p>
                       <p className="text-sm text-neutral-700">{p.Estado}</p>
                     </div>
                     <span className="font-bold text-neutral-900">${parseFloat(p.Total_Final || '0').toFixed(2)}</span>

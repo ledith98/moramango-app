@@ -19,7 +19,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             </Link>
             <div>
               <h1 className="text-2xl font-bold text-black leading-none">Panel de Admin</h1>
-              <p className="text-sm text-neutral-500 mt-1">Moramango — {session.user?.name}</p>
+              <p className="text-sm text-neutral-700 mt-1">Moramango — {session.user?.name}</p>
             </div>
           </div>
           <AdminNav />

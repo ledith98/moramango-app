@@ -736,7 +736,7 @@ export default function Home() {
           {pagoExitoso && (
             <p className="text-sm font-semibold text-green-600 mb-2">💳 Pago en línea recibido</p>
           )}
-          <p className="text-neutral-500 mb-2">Tu número de pedido es:</p>
+          <p className="text-neutral-700 mb-2">Tu número de pedido es:</p>
           <p className="text-lg font-mono font-bold text-black bg-neutral-100 px-4 py-2 rounded-xl mb-6">
             {pedidoConfirmado}
           </p>
@@ -748,7 +748,7 @@ export default function Home() {
               </p>
               <div className="flex items-center justify-between gap-2 bg-white rounded-xl border border-neutral-200 p-2.5">
                 <div className="min-w-0">
-                  <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-semibold">CLABE</p>
+                  <p className="text-[10px] uppercase tracking-wide text-neutral-600 font-semibold">CLABE</p>
                   <span className="font-mono font-bold text-black text-sm break-all">{TRANSFERENCIA.clabe}</span>
                 </div>
                 <button
@@ -762,7 +762,7 @@ export default function Home() {
               </div>
               <div className="flex items-center justify-between gap-2 bg-white rounded-xl border border-neutral-200 p-2.5 mt-2">
                 <div className="min-w-0">
-                  <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-semibold">Concepto</p>
+                  <p className="text-[10px] uppercase tracking-wide text-neutral-600 font-semibold">Concepto</p>
                   <span className="font-mono font-bold text-black text-sm break-all">{pedidoConfirmado}</span>
                 </div>
                 <button
@@ -787,7 +787,7 @@ export default function Home() {
               </a>
             </div>
           )}
-          <p className="text-sm text-neutral-500 leading-relaxed mb-8">
+          <p className="text-sm text-neutral-700 leading-relaxed mb-8">
             Recibirás una notificación cuando tu pedido esté listo para recoger.
           </p>
           <button
@@ -823,7 +823,7 @@ export default function Home() {
                 </div>
                 <div>
                   <h1 className="text-xl font-bold tracking-tight text-black leading-none">Moramango</h1>
-                  <p className="text-xs text-neutral-500 font-medium mt-1">Blend to Go</p>
+                  <p className="text-xs text-neutral-700 font-medium mt-1">Blend to Go</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -874,7 +874,7 @@ export default function Home() {
                   }`}>
                     {cat === 'Todos' ? '✨' : getIcono(cat)}
                   </div>
-                  <span className={`text-xs capitalize ${categoriaActiva === cat ? 'font-bold text-black' : 'font-medium text-neutral-500'}`}>
+                  <span className={`text-xs capitalize ${categoriaActiva === cat ? 'font-bold text-black' : 'font-medium text-neutral-700'}`}>
                     {cat}
                   </span>
                 </button>
@@ -923,7 +923,7 @@ export default function Home() {
             )}
             {cargando ? (
               <div className="flex justify-center items-center py-10">
-                <p className="text-neutral-500 animate-pulse font-medium">Preparando menú...</p>
+                <p className="text-neutral-700 animate-pulse font-medium">Preparando menú...</p>
               </div>
             ) : (
               <div className="space-y-8">
@@ -957,11 +957,11 @@ export default function Home() {
                                 <div className="flex items-center gap-2">
                                   <h3 className="font-bold text-neutral-900 leading-tight">{producto.nombre}</h3>
                                   {tieneDescripcion && (
-                                    <span className="text-neutral-400 text-xs">›</span>
+                                    <span className="text-neutral-600 text-xs">›</span>
                                   )}
                                 </div>
                                 {producto.descripcion && (
-                                  <p className="text-xs text-neutral-500 mt-1.5 line-clamp-2 leading-relaxed">
+                                  <p className="text-xs text-neutral-700 mt-1.5 line-clamp-2 leading-relaxed">
                                     {producto.descripcion}
                                   </p>
                                 )}
@@ -1151,7 +1151,7 @@ export default function Home() {
                   onChange={(e) => setNotas(e.target.value)}
                   placeholder="Ej: Sin mayonesa, sin tomate, extra salsa..."
                   rows={3}
-                  className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none focus:border-marron transition-colors resize-none"
+                  className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-sm text-neutral-900 placeholder-neutral-600 focus:outline-none focus:border-marron transition-colors resize-none"
                 />
               </div>
             </div>
@@ -1161,7 +1161,7 @@ export default function Home() {
             <div className="bg-white px-5 pt-4 pb-5 rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.05)] border-t border-neutral-100 shrink-0">
               {beneficioAplicado && descuentoAplicado > 0 && (
                 <div className="mb-3 space-y-1">
-                  <div className="flex justify-between items-center text-sm text-neutral-500">
+                  <div className="flex justify-between items-center text-sm text-neutral-700">
                     <span>Subtotal</span>
                     <span>${totalBruto.toFixed(2)}</span>
                   </div>
@@ -1173,13 +1173,13 @@ export default function Home() {
               )}
 
               <div className="flex justify-between items-center mb-2.5">
-                <span className="text-neutral-500 font-medium">Total a pagar</span>
+                <span className="text-neutral-700 font-medium">Total a pagar</span>
                 <span className="text-2xl font-bold text-black">${totalPagar.toFixed(2)}</span>
               </div>
 
               {session && (
                 <div className="mb-3">
-                  <p className="text-xs font-semibold text-neutral-500 mb-1.5">¿Cómo quieres pagar?</p>
+                  <p className="text-xs font-semibold text-neutral-700 mb-1.5">¿Cómo quieres pagar?</p>
                   {/* En fila: apiladas ocupaban tres renglones completos */}
                   <div className="grid grid-cols-3 gap-2">
                     <button
@@ -1214,7 +1214,7 @@ export default function Home() {
                   </div>
 
                   {formaPago === 'linea' && (
-                    <p className="text-xs text-neutral-500 mt-2">
+                    <p className="text-xs text-neutral-700 mt-2">
                       Te llevaremos a Mercado Pago para completar el pago de forma segura.
                     </p>
                   )}
@@ -1227,7 +1227,7 @@ export default function Home() {
                       </p>
                       <div className="bg-white rounded-xl border border-neutral-200 p-3 space-y-2">
                         <div>
-                          <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-semibold">CLABE</p>
+                          <p className="text-[10px] uppercase tracking-wide text-neutral-600 font-semibold">CLABE</p>
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-mono font-bold text-black text-base tracking-wide break-all">
                               {TRANSFERENCIA.clabe}
@@ -1244,18 +1244,18 @@ export default function Home() {
                         </div>
                         {TRANSFERENCIA.titular && (
                           <div>
-                            <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-semibold">Titular</p>
+                            <p className="text-[10px] uppercase tracking-wide text-neutral-600 font-semibold">Titular</p>
                             <p className="text-sm text-neutral-800">{TRANSFERENCIA.titular}</p>
                           </div>
                         )}
                         {TRANSFERENCIA.banco && (
                           <div>
-                            <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-semibold">Banco</p>
+                            <p className="text-[10px] uppercase tracking-wide text-neutral-600 font-semibold">Banco</p>
                             <p className="text-sm text-neutral-800">{TRANSFERENCIA.banco}</p>
                           </div>
                         )}
                       </div>
-                      <p className="text-xs text-neutral-500 mt-3 leading-relaxed">
+                      <p className="text-xs text-neutral-700 mt-3 leading-relaxed">
                         Al confirmar registramos tu pedido. Haz la transferencia y muestra tu comprobante
                         al recoger (o envíalo por WhatsApp).
                       </p>
@@ -1299,11 +1299,11 @@ export default function Home() {
 
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {cargandoPedidos ? (
-                <p className="text-neutral-500 animate-pulse text-center py-8">Cargando tus pedidos...</p>
+                <p className="text-neutral-700 animate-pulse text-center py-8">Cargando tus pedidos...</p>
               ) : misPedidos.length === 0 ? (
                 <div className="text-center py-12">
                   <div className="text-5xl mb-3">🧾</div>
-                  <p className="text-neutral-500">Todavía no has hecho ningún pedido.</p>
+                  <p className="text-neutral-700">Todavía no has hecho ningún pedido.</p>
                   <button
                     onClick={() => setVerMisPedidos(false)}
                     className="mt-4 bg-marron text-white font-bold py-3 px-6 rounded-2xl active:scale-95 transition-transform"
@@ -1324,8 +1324,8 @@ export default function Home() {
                     >
                       <div className="flex justify-between items-start gap-2">
                         <div className="min-w-0">
-                          <p className="text-xs text-neutral-400 font-mono">{p.idPedido}</p>
-                          <p className="text-sm text-neutral-500">
+                          <p className="text-xs text-neutral-600 font-mono">{p.idPedido}</p>
+                          <p className="text-sm text-neutral-700">
                             {fechaBonita(p.fecha)} · {p.hora}
                           </p>
                         </div>
@@ -1356,7 +1356,7 @@ export default function Home() {
                             <span className="text-neutral-700">
                               {item.cantidad}× {item.nombre}
                             </span>
-                            <span className="text-neutral-500">${item.subtotal.toFixed(2)}</span>
+                            <span className="text-neutral-700">${item.subtotal.toFixed(2)}</span>
                           </div>
                         ))}
                       </div>
@@ -1398,7 +1398,7 @@ export default function Home() {
                                   placeholder="Ej. Estoy en el carro blanco (opcional)"
                                   className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-marron"
                                 />
-                                <div className="flex gap-2">
+                                <div className="flex gap-2 text-neutral-900">
                                   <button
                                     onClick={() => {
                                       setAvisando(null);
@@ -1448,7 +1448,7 @@ export default function Home() {
                         </button>
                       )}
                       {p.estado === 'Entregado' && p.yaOpino && (
-                        <p className="mt-3 text-xs text-center text-neutral-400">
+                        <p className="mt-3 text-xs text-center text-neutral-600">
                           {graciasOpinion === p.idPedido
                             ? '💛 ¡Gracias por tu opinión!'
                             : '✅ Ya calificaste este pedido'}
@@ -1485,15 +1485,15 @@ export default function Home() {
                             onChange={(e) => setComentario(e.target.value)}
                             rows={2}
                             placeholder="¿Algo que quieras contarnos? (opcional)"
-                            className="w-full bg-white border border-amber-200 rounded-xl p-2.5 text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none focus:border-marron resize-none"
+                            className="w-full bg-white border border-amber-200 rounded-xl p-2.5 text-sm text-neutral-900 placeholder-neutral-600 focus:outline-none focus:border-marron resize-none"
                           />
 
-                          <label className="flex items-center gap-2 text-xs text-neutral-600">
+                          <label className="flex items-center gap-2 text-xs text-neutral-600 text-neutral-900">
                             <input
                               type="checkbox"
                               checked={opinionAnonima}
                               onChange={(e) => setOpinionAnonima(e.target.checked)}
-                              className="w-4 h-4 accent-black"
+                              className="w-4 h-4 accent-black text-neutral-900"
                             />
                             Enviar sin mi nombre
                           </label>
@@ -1564,7 +1564,7 @@ export default function Home() {
                   <span className="text-2xl">👤</span>
                   <div>
                     <p className="font-semibold text-neutral-900">{session.user?.name}</p>
-                    <p className="text-xs text-neutral-500">{session.user?.email}</p>
+                    <p className="text-xs text-neutral-700">{session.user?.email}</p>
                   </div>
                 </div>
               )}
@@ -1651,11 +1651,11 @@ export default function Home() {
                   className="w-full bg-white border border-neutral-300 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-marron transition-colors shadow-sm" required />
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-neutral-700 block">Teléfono de Contacto</label>
-                <div className="flex gap-2">
-                  <div className="relative w-24 shrink-0">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none">+</span>
+              <div className="space-y-2 text-neutral-900">
+                <label className="text-sm font-semibold text-neutral-700 block text-neutral-900">Teléfono de Contacto</label>
+                <div className="flex gap-2 text-neutral-900">
+                  <div className="relative w-24 shrink-0 text-neutral-900">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-700 pointer-events-none">+</span>
                     <input
                       type="tel"
                       inputMode="numeric"
@@ -1680,7 +1680,7 @@ export default function Home() {
                 {errorTelefono && (
                   <p className="text-xs text-red-600 mt-1">{errorTelefono}</p>
                 )}
-                <p className="text-xs text-neutral-500">
+                <p className="text-xs text-neutral-700">
                   {ladaUsuario === '52'
                     ? 'México (+52): 10 dígitos'
                     : `Lada +${ladaUsuario}: entre 7 y 15 dígitos`}
@@ -1769,7 +1769,7 @@ export default function Home() {
 
                 {/* Categoría */}
                 {productoDetalle.categoria && (
-                  <p className="text-xs text-neutral-500 uppercase tracking-wide font-semibold mb-1">
+                  <p className="text-xs text-neutral-700 uppercase tracking-wide font-semibold mb-1">
                     {productoDetalle.categoria}
                   </p>
                 )}
@@ -1821,7 +1821,7 @@ export default function Home() {
                       </button>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs text-neutral-500">En tu pedido</p>
+                      <p className="text-xs text-neutral-700">En tu pedido</p>
                       <p className="font-bold text-neutral-900">
                         ${(limpiarPrecio(productoDetalle.precio) * cantidadEnCarritoDetalle).toFixed(2)}
                       </p>

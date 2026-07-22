@@ -69,7 +69,7 @@ export default function ReactivacionPage() {
     <div className="space-y-6">
       <div>
         <h2 className="font-bold text-neutral-900 text-lg">💛 Campaña de reactivación</h2>
-        <p className="text-sm text-neutral-500 mt-1">
+        <p className="text-sm text-neutral-700 mt-1">
           Clientes que ya compraron antes pero no han vuelto. Genera un cupón de monto fijo — se
           aplica directo en su cuenta — y avísales por WhatsApp.
         </p>
@@ -85,11 +85,11 @@ export default function ReactivacionPage() {
             onChange={(e) => setUmbral(parseInt(e.target.value) || 45)}
             className="w-20 bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-black"
           />
-          <span className="text-sm text-neutral-500">días</span>
+          <span className="text-sm text-neutral-700 text-neutral-900">días</span>
         </div>
         <div className="flex items-center gap-2">
           <label className="text-sm font-semibold text-neutral-700">Cupón de</label>
-          <span className="text-sm text-neutral-500">$</span>
+          <span className="text-sm text-neutral-700">$</span>
           <input
             type="number"
             min={1}
@@ -98,7 +98,7 @@ export default function ReactivacionPage() {
             className="w-20 bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-black"
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 text-neutral-900">
           <label className="text-sm font-semibold text-neutral-700">Vigencia</label>
           <input
             type="number"
@@ -107,17 +107,17 @@ export default function ReactivacionPage() {
             onChange={(e) => setVigenciaDias(parseInt(e.target.value) || 15)}
             className="w-20 bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-black"
           />
-          <span className="text-sm text-neutral-500">días</span>
+          <span className="text-sm text-neutral-700 text-neutral-900">días</span>
         </div>
-        <span className="text-xs text-neutral-400 ml-auto">{inactivos.length} clientes</span>
+        <span className="text-xs text-neutral-600 ml-auto">{inactivos.length} clientes</span>
       </div>
 
       {cargando ? (
-        <p className="text-neutral-500 animate-pulse">Buscando clientes inactivos...</p>
+        <p className="text-neutral-700 animate-pulse">Buscando clientes inactivos...</p>
       ) : inactivos.length === 0 ? (
         <div className="bg-white rounded-2xl p-8 text-center border border-neutral-100">
           <div className="text-5xl mb-3">🎉</div>
-          <p className="text-neutral-500">Ningún cliente lleva más de {umbral} días sin comprar.</p>
+          <p className="text-neutral-700">Ningún cliente lleva más de {umbral} días sin comprar.</p>
         </div>
       ) : (
         <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 divide-y divide-neutral-100">
@@ -128,7 +128,7 @@ export default function ReactivacionPage() {
               <div key={c.id} className="p-4 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="font-semibold text-neutral-900">{c.nombre || c.id}</p>
-                  <p className="text-xs text-neutral-500">
+                  <p className="text-xs text-neutral-700">
                     {c.telefono || 'sin teléfono'} · {c.diasSinComprar} días sin comprar
                   </p>
                   {yaTiene && (

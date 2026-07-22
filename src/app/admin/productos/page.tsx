@@ -260,7 +260,7 @@ export default function ProductosPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <span className="text-sm text-neutral-500">{productos.length} producto{productos.length === 1 ? '' : 's'}</span>
+        <span className="text-sm text-neutral-700">{productos.length} producto{productos.length === 1 ? '' : 's'}</span>
         <button
           onClick={abrirCrear}
           className="bg-black text-white font-semibold px-4 py-2.5 rounded-xl active:scale-95 transition-transform"
@@ -270,7 +270,7 @@ export default function ProductosPage() {
       </div>
 
       {cargando ? (
-        <p className="text-neutral-500 animate-pulse">Cargando productos...</p>
+        <p className="text-neutral-700 animate-pulse">Cargando productos...</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {productos.map((p) => {
@@ -288,7 +288,7 @@ export default function ProductosPage() {
                       />
                     )}
                     <div className="min-w-0">
-                      <p className="text-xs text-neutral-400 uppercase tracking-wide">
+                      <p className="text-xs text-neutral-600 uppercase tracking-wide">
                         {p.Categoría}
                       </p>
                       <h3 className="font-bold text-neutral-900 truncate">
@@ -307,17 +307,17 @@ export default function ProductosPage() {
                       onClick={() => cambiarEstado(p, e.valor)}
                       title={e.ayuda}
                       className={`text-[11px] font-semibold py-1.5 rounded-lg leading-tight transition-colors ${
-                        estado === e.valor ? e.color : 'text-neutral-500'
+                        estado === e.valor ? e.color : 'text-neutral-700'
                       }`}
                     >
                       {e.etiqueta}
                     </button>
                   ))}
                 </div>
-                <p className="text-[11px] text-neutral-400 leading-snug">
+                <p className="text-[11px] text-neutral-600 leading-snug">
                   {ESTADOS.find((e) => e.valor === estado)?.ayuda}
                 </p>
-                {p.Descripcion && <p className="text-sm text-neutral-500 line-clamp-2">{p.Descripcion}</p>}
+                {p.Descripcion && <p className="text-sm text-neutral-700 line-clamp-2">{p.Descripcion}</p>}
                 <div className="flex items-center justify-between mt-auto pt-2">
                   <span className="font-bold text-black">${parseFloat(p.Precio_Venta || '0').toFixed(2)}</span>
                   <div className="flex gap-2">
@@ -360,7 +360,7 @@ export default function ProductosPage() {
               />
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 text-neutral-900">
               <label className="text-sm font-semibold text-neutral-700">Categoría</label>
               <input
                 list="categorias-productos"
@@ -375,7 +375,7 @@ export default function ProductosPage() {
                   <option key={c} value={c} />
                 ))}
               </datalist>
-              <p className="text-xs text-neutral-400">
+              <p className="text-xs text-neutral-600">
                 Elige una de la lista. Si escribes una que ya existe con otras mayúsculas, se
                 corrige sola para no partir el menú en dos.
               </p>
@@ -384,7 +384,7 @@ export default function ProductosPage() {
             {editando && (
               <div className="space-y-1.5">
                 <label className="text-sm font-semibold text-neutral-700">
-                  Foto <span className="font-normal text-neutral-400">(opcional)</span>
+                  Foto <span className="font-normal text-neutral-600">(opcional)</span>
                 </label>
                 <div className="flex items-center gap-3">
                   <div className="w-20 h-20 shrink-0 bg-neutral-100 rounded-xl overflow-hidden flex items-center justify-center">
@@ -398,7 +398,7 @@ export default function ProductosPage() {
                   <div className="flex-1 space-y-1.5">
                     <label
                       className={`block text-center text-sm font-semibold py-2.5 rounded-xl cursor-pointer active:scale-95 transition-transform ${
-                        subiendo ? 'bg-neutral-100 text-neutral-400' : 'bg-black text-white'
+                        subiendo ? 'bg-neutral-100 text-neutral-600' : 'bg-black text-white'
                       }`}
                     >
                       {subiendo ? 'Subiendo…' : imagenUrl ? 'Cambiar foto' : '📷 Subir foto'}
@@ -406,7 +406,7 @@ export default function ProductosPage() {
                         type="file"
                         accept="image/png,image/jpeg,image/webp"
                         disabled={subiendo}
-                        className="hidden"
+                        className="hidden text-neutral-900 placeholder-neutral-600"
                         onChange={(e) => {
                           const f = e.target.files?.[0];
                           if (f) subirImagen(f);
@@ -436,13 +436,13 @@ export default function ProductosPage() {
                       className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-sm text-neutral-900 focus:outline-none focus:border-black"
                     />
                     {esEnlaceDeVisorDrive(imagenUrl) ? (
-                      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 text-neutral-900">
                         Reconocí un enlace de Google Drive y lo voy a convertir al formato que sí
                         se puede mostrar. Para que se vea, el archivo debe estar compartido como{' '}
                         <strong>&ldquo;Cualquier persona con el enlace&rdquo;</strong>.
                       </p>
                     ) : (
-                      <p className="text-xs text-neutral-400">
+                      <p className="text-xs text-neutral-600">
                         Se guarda al presionar Guardar, abajo.
                       </p>
                     )}
@@ -451,13 +451,13 @@ export default function ProductosPage() {
                   <button
                     type="button"
                     onClick={() => setPegarUrl(true)}
-                    className="text-xs font-semibold text-neutral-500 underline"
+                    className="text-xs font-semibold text-neutral-700 underline"
                   >
                     o pegar la dirección de una imagen
                   </button>
                 )}
 
-                <p className="text-xs text-neutral-400">
+                <p className="text-xs text-neutral-600">
                   PNG, JPG o WEBP, máximo 4 MB. Cuadrada se ve mejor. Si hay foto, la tienda la
                   muestra en lugar del emoji.
                 </p>
@@ -466,11 +466,11 @@ export default function ProductosPage() {
 
             <div className="space-y-1.5">
               <label className="text-sm font-semibold text-neutral-700">
-                Emoji <span className="font-normal text-neutral-400">(opcional)</span>
+                Emoji <span className="font-normal text-neutral-600">(opcional)</span>
               </label>
               <div className="flex items-center gap-2">
                 <div className="w-14 h-14 shrink-0 bg-neutral-100 rounded-xl flex items-center justify-center text-3xl">
-                  {form.emoji || <span className="text-neutral-300 text-base">—</span>}
+                  {form.emoji || <span className="text-neutral-700 text-base">—</span>}
                 </div>
                 <input
                   value={form.emoji}
@@ -502,7 +502,7 @@ export default function ProductosPage() {
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-neutral-400">
+              <p className="text-xs text-neutral-600">
                 Se muestra en la tienda cuando el producto no tiene foto. Puedes poner dos juntos
                 para los combos, por ejemplo 🥪🥤.
               </p>
@@ -518,7 +518,7 @@ export default function ProductosPage() {
               />
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 text-neutral-900">
               <label className="text-sm font-semibold text-neutral-700">Precio</label>
               <input
                 type="number"

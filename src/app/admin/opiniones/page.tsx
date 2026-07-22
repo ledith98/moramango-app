@@ -71,12 +71,12 @@ export default function OpinionesPage() {
   return (
     <div className="space-y-6">
       {cargando ? (
-        <p className="text-neutral-500 animate-pulse">Cargando opiniones...</p>
+        <p className="text-neutral-700 animate-pulse">Cargando opiniones...</p>
       ) : !datos || datos.total === 0 ? (
         <div className="bg-white rounded-2xl p-8 text-center border border-neutral-100">
           <div className="text-5xl mb-3">⭐</div>
-          <p className="text-neutral-500">Todavía no hay opiniones.</p>
-          <p className="text-xs text-neutral-400 mt-2">
+          <p className="text-neutral-700">Todavía no hay opiniones.</p>
+          <p className="text-xs text-neutral-600 mt-2">
             Se le pide su opinión al cliente cuando su pedido pasa a "Entregado".
           </p>
         </div>
@@ -85,23 +85,23 @@ export default function OpinionesPage() {
           {/* Promedios */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100">
-              <p className="text-xs text-neutral-500 font-medium uppercase tracking-wide">Sabor</p>
+              <p className="text-xs text-neutral-700 font-medium uppercase tracking-wide">Sabor</p>
               <p className={`text-2xl font-bold mt-1 ${colorNota(datos.promedios!.sabor)}`}>
                 {datos.promedios!.sabor.toFixed(1)} / 5
               </p>
               <p className="text-sm mt-1">{estrellas(Math.round(datos.promedios!.sabor))}</p>
             </div>
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100">
-              <p className="text-xs text-neutral-500 font-medium uppercase tracking-wide">Calidad</p>
+              <p className="text-xs text-neutral-700 font-medium uppercase tracking-wide">Calidad</p>
               <p className={`text-2xl font-bold mt-1 ${colorNota(datos.promedios!.calidad)}`}>
                 {datos.promedios!.calidad.toFixed(1)} / 5
               </p>
               <p className="text-sm mt-1">{estrellas(Math.round(datos.promedios!.calidad))}</p>
             </div>
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100">
-              <p className="text-xs text-neutral-500 font-medium uppercase tracking-wide">Opiniones</p>
+              <p className="text-xs text-neutral-700 font-medium uppercase tracking-wide">Opiniones</p>
               <p className="text-2xl font-bold text-black mt-1">{datos.total}</p>
-              <p className="text-xs text-neutral-400 mt-1">
+              <p className="text-xs text-neutral-600 mt-1">
                 {datos.opiniones.filter((o) => o.comentario.trim()).length} con comentario
               </p>
             </div>
@@ -114,7 +114,7 @@ export default function OpinionesPage() {
               <select
                 value={criterio}
                 onChange={(e) => setCriterio(e.target.value as Criterio)}
-                className="bg-neutral-50 border border-neutral-200 rounded-xl px-2 py-2 text-sm text-neutral-700 focus:outline-none focus:border-black"
+                className="bg-neutral-50 border border-neutral-200 rounded-xl px-2 py-2 text-sm text-neutral-700 focus:outline-none focus:border-black text-neutral-900"
               >
                 <option value="promedio">Promedio</option>
                 <option value="sabor">Sabor</option>
@@ -173,7 +173,7 @@ export default function OpinionesPage() {
                   ✕ Limpiar
                 </button>
               )}
-              <span className="text-xs text-neutral-500 ml-auto">
+              <span className="text-xs text-neutral-700 ml-auto">
                 {lista.length} de {datos.total}
               </span>
             </div>
@@ -182,7 +182,7 @@ export default function OpinionesPage() {
           {/* Lista */}
           <div className="space-y-3">
             {lista.length === 0 ? (
-              <p className="text-neutral-500 text-center py-6">
+              <p className="text-neutral-700 text-center py-6">
                 Ninguna opinión coincide con el filtro.
               </p>
             ) : (
@@ -201,9 +201,9 @@ export default function OpinionesPage() {
                           {o.anonimo ? '🕶️ ' : '👤 '}
                           {o.cliente}
                         </p>
-                        <p className="text-xs text-neutral-400 font-mono">{o.idPedido}</p>
+                        <p className="text-xs text-neutral-600 font-mono">{o.idPedido}</p>
                       </div>
-                      <span className="text-xs text-neutral-400 shrink-0">{o.fecha}</span>
+                      <span className="text-xs text-neutral-600 shrink-0">{o.fecha}</span>
                     </div>
 
                     <div className="flex gap-4 mt-2 text-sm">

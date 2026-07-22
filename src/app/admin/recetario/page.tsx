@@ -122,12 +122,12 @@ export default function RecetarioPage() {
   const sinReceta = items.filter((p) => p.lineas.length === 0).length;
   const porRevisar = items.reduce((n, p) => n + p.lineas.filter((l) => l.nota).length, 0);
 
-  if (cargando) return <p className="text-neutral-500 animate-pulse">Cargando recetario…</p>;
+  if (cargando) return <p className="text-neutral-700 animate-pulse">Cargando recetario…</p>;
 
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-sm text-neutral-500">
+        <p className="text-sm text-neutral-700">
           Qué lleva cada producto. El insumo se elige de tu biblioteca y la unidad la pone él, para
           que las cuentas de stock y costo siempre cuadren.
         </p>
@@ -157,10 +157,10 @@ export default function RecetarioPage() {
         value={busqueda}
         onChange={(e) => setBusqueda(e.target.value)}
         placeholder="Buscar producto o insumo…"
-        className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-marron"
+        className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-marron text-neutral-900"
       />
 
-      <div className="space-y-3">
+      <div className="space-y-3 text-neutral-900">
         {visibles.map((p) => {
           const activo = abierto === p.id;
           const margen = p.costoTotal !== null && p.precio > 0
@@ -181,7 +181,7 @@ export default function RecetarioPage() {
                 <span className="text-2xl shrink-0">{p.emoji || '🍽️'}</span>
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-neutral-900 truncate">{p.nombre}</p>
-                  <p className="text-xs text-neutral-400">
+                  <p className="text-xs text-neutral-600">
                     {p.lineas.length === 0 ? (
                       <span className="text-amber-700 font-semibold">Sin receta</span>
                     ) : (
@@ -194,7 +194,7 @@ export default function RecetarioPage() {
                 <div className="text-right shrink-0">
                   <p className="font-bold text-neutral-900">${p.precio.toFixed(2)}</p>
                   {p.costoTotal !== null ? (
-                    <p className="text-[11px] text-neutral-500">
+                    <p className="text-[11px] text-neutral-700">
                       cuesta ${p.costoTotal.toFixed(2)}
                       {margen !== null && (
                         <span className={margen < 30 ? 'text-red-600 font-semibold' : 'text-green-700'}>
@@ -203,16 +203,16 @@ export default function RecetarioPage() {
                       )}
                     </p>
                   ) : (
-                    <p className="text-[11px] text-neutral-400">costo incompleto</p>
+                    <p className="text-[11px] text-neutral-600">costo incompleto</p>
                   )}
                 </div>
-                <span className="text-neutral-400 shrink-0">{activo ? '▴' : '▾'}</span>
+                <span className="text-neutral-600 shrink-0">{activo ? '▴' : '▾'}</span>
               </button>
 
               {activo && (
                 <div className="border-t border-neutral-100 p-4 space-y-2">
                   {p.lineas.length === 0 && (
-                    <p className="text-sm text-neutral-400">
+                    <p className="text-sm text-neutral-600">
                       Todavía no tiene ingredientes. Agrega el primero abajo.
                     </p>
                   )}
@@ -232,7 +232,7 @@ export default function RecetarioPage() {
                       <span className="text-sm font-semibold text-neutral-900 whitespace-nowrap">
                         {l.cantidad} {l.unidad}
                       </span>
-                      <span className="text-xs text-neutral-400 w-16 text-right shrink-0">
+                      <span className="text-xs text-neutral-600 w-16 text-right shrink-0">
                         {l.costo !== null ? `$${l.costo.toFixed(2)}` : '—'}
                       </span>
                       <button
@@ -274,7 +274,7 @@ export default function RecetarioPage() {
                       placeholder="Cantidad"
                       className="w-28 bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-marron"
                     />
-                    <span className="self-center text-sm text-neutral-500">
+                    <span className="self-center text-sm text-neutral-700 text-neutral-900">
                       {insumos.find((i) => i.id === nuevoInsumo)?.unidad || ''}
                     </span>
                     <button
@@ -293,7 +293,7 @@ export default function RecetarioPage() {
         })}
 
         {visibles.length === 0 && (
-          <p className="text-center text-neutral-400 py-8">Ningún producto coincide.</p>
+          <p className="text-center text-neutral-600 py-8">Ningún producto coincide.</p>
         )}
       </div>
     </div>

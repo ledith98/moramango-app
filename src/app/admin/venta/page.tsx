@@ -364,7 +364,7 @@ export default function VentaPage() {
       <div>
         <h2 className="font-bold text-neutral-900 mb-3">Productos</h2>
         {cargando ? (
-          <p className="text-neutral-500 animate-pulse">Cargando productos...</p>
+          <p className="text-neutral-700 animate-pulse">Cargando productos...</p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {productos.map((p) => {
@@ -377,7 +377,7 @@ export default function VentaPage() {
                   }`}
                 >
                   <button onClick={() => agregar(p)} className="w-full text-left active:scale-95 transition-transform">
-                    <p className="text-[10px] text-neutral-400 uppercase tracking-wide">{p.Categoría}</p>
+                    <p className="text-[10px] text-neutral-600 uppercase tracking-wide">{p.Categoría}</p>
                     <p className="font-semibold text-neutral-900 text-sm leading-tight">
                       {p.Emoji && <span className="mr-1">{p.Emoji}</span>}
                       {p.Nombre}
@@ -437,7 +437,7 @@ export default function VentaPage() {
               </>
             )}
             <div className="flex justify-between items-center pt-2 border-t border-neutral-100">
-              <span className="font-medium text-neutral-500">Total</span>
+              <span className="font-medium text-neutral-700">Total</span>
               <span className="text-xl font-bold text-black">${total.toFixed(2)}</span>
             </div>
           </div>
@@ -447,7 +447,7 @@ export default function VentaPage() {
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 space-y-3">
           <label className="text-sm font-semibold text-neutral-700">
             Cliente registrado{' '}
-            <span className="font-normal text-neutral-400">(opcional, para su lealtad)</span>
+            <span className="font-normal text-neutral-600">(opcional, para su lealtad)</span>
           </label>
 
           {!cliente ? (
@@ -459,7 +459,7 @@ export default function VentaPage() {
                 className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black"
               />
               {resultados.length > 0 && (
-                <div className="border border-neutral-200 rounded-xl divide-y divide-neutral-100 overflow-hidden">
+                <div className="border border-neutral-200 rounded-xl divide-y divide-neutral-100 overflow-hidden text-neutral-900">
                   {resultados.map((c) => (
                     <button
                       key={c.id}
@@ -467,7 +467,7 @@ export default function VentaPage() {
                       className="w-full text-left p-3 hover:bg-neutral-50 transition-colors"
                     >
                       <p className="font-semibold text-neutral-900 text-sm">{c.nombre}</p>
-                      <p className="text-xs text-neutral-500">
+                      <p className="text-xs text-neutral-700">
                         {c.telefono || 'sin teléfono'} · {c.ciclo} pedido{c.ciclo === 1 ? '' : 's'}
                         {c.beneficio !== 'Ninguno' && (
                           <span className="text-green-600 font-semibold"> · 🎁 {etiquetaBeneficio(c.beneficio)}</span>
@@ -478,7 +478,7 @@ export default function VentaPage() {
                 </div>
               )}
               {busquedaCliente.trim().length >= 3 && resultados.length === 0 && (
-                <p className="text-xs text-neutral-400">
+                <p className="text-xs text-neutral-600">
                   Sin coincidencias. Puedes seguir sin identificarlo (venta normal).
                 </p>
               )}
@@ -488,13 +488,13 @@ export default function VentaPage() {
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="font-bold text-neutral-900">👤 {cliente.nombre}</p>
-                  <p className="text-xs text-neutral-500">
+                  <p className="text-xs text-neutral-700">
                     {cliente.telefono} · {cliente.ciclo} pedido{cliente.ciclo === 1 ? '' : 's'} acumulados
                   </p>
                 </div>
                 <button
                   onClick={quitarCliente}
-                  className="text-xs font-semibold text-neutral-500 bg-neutral-200 px-2 py-1 rounded-lg active:scale-95"
+                  className="text-xs font-semibold text-neutral-700 bg-neutral-200 px-2 py-1 rounded-lg active:scale-95"
                 >
                   Quitar
                 </button>
@@ -512,7 +512,7 @@ export default function VentaPage() {
                     : `🎁 Aplicar ${etiquetaBeneficio(cliente.beneficio)}`}
                 </button>
               ) : (
-                <p className="text-xs text-neutral-500 mt-2">
+                <p className="text-xs text-neutral-700 mt-2">
                   Le faltan {cliente.faltanParaDescuento} pedido
                   {cliente.faltanParaDescuento === 1 ? '' : 's'} para su 15% de descuento.
                 </p>
@@ -537,9 +537,9 @@ export default function VentaPage() {
             />
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 text-neutral-900">
             <label className="text-sm font-semibold text-neutral-700">
-              Teléfono <span className="font-normal text-neutral-400">(opcional, para avisos por WhatsApp)</span>
+              Teléfono <span className="font-normal text-neutral-600">(opcional, para avisos por WhatsApp)</span>
             </label>
             <input
               type="tel"

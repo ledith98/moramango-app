@@ -230,7 +230,7 @@ export default function PedidosPage() {
           onChange={(e) => setFecha(e.target.value)}
           className="bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-black"
         />
-        <label className="text-sm font-semibold text-neutral-700 ml-2">Estado</label>
+        <label className="text-sm font-semibold text-neutral-700 ml-2 text-neutral-900">Estado</label>
         <select
           value={estadoFiltro}
           onChange={(e) => setEstadoFiltro(e.target.value)}
@@ -242,13 +242,13 @@ export default function PedidosPage() {
             </option>
           ))}
         </select>
-        <span className="text-xs text-neutral-500 ml-auto">{pedidos.length} pedido{pedidos.length === 1 ? '' : 's'}</span>
+        <span className="text-xs text-neutral-700 ml-auto">{pedidos.length} pedido{pedidos.length === 1 ? '' : 's'}</span>
       </div>
 
       {cargando ? (
-        <p className="text-neutral-500 animate-pulse">Cargando pedidos...</p>
+        <p className="text-neutral-700 animate-pulse">Cargando pedidos...</p>
       ) : pedidos.length === 0 ? (
-        <p className="text-neutral-500">No hay pedidos para este filtro.</p>
+        <p className="text-neutral-700">No hay pedidos para este filtro.</p>
       ) : (
         <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 divide-y divide-neutral-100 overflow-hidden">
           {pedidos.map((p) => (
@@ -257,14 +257,14 @@ export default function PedidosPage() {
               onClick={() => abrirDetalle(p.ID_Pedido)}
               className="w-full flex items-center gap-4 p-4 text-left hover:bg-neutral-50 transition-colors"
             >
-              <span className="font-mono text-sm text-neutral-500 w-14 shrink-0">{p.HoraLegible}</span>
+              <span className="font-mono text-sm text-neutral-700 w-14 shrink-0">{p.HoraLegible}</span>
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-neutral-900 truncate">
                   {p.Origen_Venta === 'Local' && <span title="Venta en local">🏪 </span>}
                   {p.Estado_Pago === 'Pagado' && <span title="Pagado">✅ </span>}
                   {p.Nombre_Cliente_Snap}
                 </p>
-                <p className="text-xs text-neutral-500 font-mono">{p.ID_Pedido}</p>
+                <p className="text-xs text-neutral-700 font-mono">{p.ID_Pedido}</p>
               </div>
               <span className="font-bold text-neutral-900 shrink-0">${parseFloat(p.Total_Final || '0').toFixed(2)}</span>
               <div className="flex flex-col items-end gap-1 shrink-0">
@@ -303,16 +303,16 @@ export default function PedidosPage() {
             onClick={(e) => e.stopPropagation()}
           >
             {cargandoDetalle && !detalle ? (
-              <div className="p-8 text-center text-neutral-500 animate-pulse">Cargando pedido...</div>
+              <div className="p-8 text-center text-neutral-700 animate-pulse">Cargando pedido...</div>
             ) : detalle ? (
               <>
                 <div className="p-5 border-b border-neutral-100 shrink-0">
                   <div className="flex items-start justify-between">
                     <div>
-                      <p className="font-mono text-sm text-neutral-500">{detalle.pedido.ID_Pedido}</p>
+                      <p className="font-mono text-sm text-neutral-700">{detalle.pedido.ID_Pedido}</p>
                       <h2 className="text-lg font-bold text-black">{detalle.cliente?.nombre || detalle.pedido.Nombre_Cliente_Snap}</h2>
                       {detalle.cliente?.telefono && (
-                        <p className="text-sm text-neutral-500">📞 {detalle.cliente.telefono}</p>
+                        <p className="text-sm text-neutral-700">📞 {detalle.cliente.telefono}</p>
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-1.5 shrink-0">
@@ -391,7 +391,7 @@ export default function PedidosPage() {
                           {item.Cantidad}× {item.Nombre_Producto_Snap}
                         </p>
                         {item.Notas_Item && (
-                          <p className="text-xs text-neutral-500 mt-0.5">{item.Notas_Item}</p>
+                          <p className="text-xs text-neutral-700 mt-0.5">{item.Notas_Item}</p>
                         )}
                       </div>
                       <span className="text-sm font-semibold text-neutral-700">${parseFloat(item.Subtotal || '0').toFixed(2)}</span>
@@ -406,14 +406,14 @@ export default function PedidosPage() {
                   )}
 
                   <div className="flex justify-between items-center pt-2">
-                    <span className="text-neutral-500 font-medium">Total</span>
+                    <span className="text-neutral-700 font-medium">Total</span>
                     <span className="text-xl font-bold text-black">${parseFloat(detalle.pedido.Total_Final || '0').toFixed(2)}</span>
                   </div>
                 </div>
 
                 <div className="p-5 border-t border-neutral-100 shrink-0 space-y-3">
                   <div>
-                    <p className="text-xs font-semibold text-neutral-500 mb-2">Método de pago</p>
+                    <p className="text-xs font-semibold text-neutral-700 mb-2">Método de pago</p>
                     <div className="flex flex-wrap gap-2">
                       {['Efectivo', 'Terminal', 'Transferencia', METODO_PAGO_EN_LINEA].map((m) => {
                         // Los pedidos viejos con 'Mercado Pago' cuentan como 'Pago en línea'
@@ -461,7 +461,7 @@ export default function PedidosPage() {
                       </p>
                     )}
                   </div>
-                  <p className="text-xs font-semibold text-neutral-500 mb-2">
+                  <p className="text-xs font-semibold text-neutral-700 mb-2">
                     {actualizando ? 'Actualizando...' : 'Cambiar estado'}
                   </p>
                   <div className="flex flex-wrap gap-2">

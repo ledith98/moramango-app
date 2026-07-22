@@ -62,13 +62,13 @@ export default function AvisosPage() {
     <div className="max-w-2xl space-y-6">
       <div>
         <h2 className="font-bold text-neutral-900 text-lg">🔔 Avisos de pedidos por Telegram</h2>
-        <p className="text-sm text-neutral-500 mt-1">
+        <p className="text-sm text-neutral-700 mt-1">
           Recibe un mensaje en tu Telegram cada vez que entra un pedido desde la app.
         </p>
       </div>
 
       {cargando ? (
-        <p className="text-neutral-500 animate-pulse">Cargando...</p>
+        <p className="text-neutral-700 animate-pulse">Cargando...</p>
       ) : (
         <>
           {/* Estado */}
@@ -102,13 +102,13 @@ export default function AvisosPage() {
           {estado?.botConfigurado && (
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100">
               <p className="font-semibold text-neutral-900 mb-1">Tu chat id</p>
-              <p className="text-xs text-neutral-500 mb-3">
+              <p className="text-xs text-neutral-700 mb-3">
                 Abre tu bot en Telegram y envíale cualquier mensaje. Luego actualiza esta página y aquí
                 aparecerá tu chat id — cópialo y ponlo en la variable <code>TELEGRAM_CHAT_ID</code> en Vercel.
               </p>
               {estado.chats.length === 0 ? (
                 <div className="flex items-center gap-3">
-                  <p className="text-sm text-neutral-500">
+                  <p className="text-sm text-neutral-700">
                     Aún no detecto ningún chat. Escríbele al bot y pulsa actualizar.
                   </p>
                 </div>

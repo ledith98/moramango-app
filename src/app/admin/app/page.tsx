@@ -38,7 +38,7 @@ export default function AppPage() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-neutral-500">
+      <p className="text-sm text-neutral-700">
         Lo que ha cambiado en la app, de lo más reciente a lo más viejo. Si algo se ve distinto a
         como lo recordabas, seguramente está aquí.
       </p>
@@ -60,7 +60,7 @@ export default function AppPage() {
       <div className="space-y-5">
         {porFecha.map(({ fecha, items }) => (
           <div key={fecha}>
-            <p className="text-xs font-bold text-neutral-400 uppercase tracking-wide mb-2">
+            <p className="text-xs font-bold text-neutral-600 uppercase tracking-wide mb-2">
               {fechaBonita(fecha)}
             </p>
             <div className="space-y-2">
@@ -81,7 +81,7 @@ export default function AppPage() {
                   </div>
                   <p className="text-sm text-neutral-600 leading-relaxed">{c.detalle}</p>
                   {c.donde && (
-                    <p className="text-[11px] text-neutral-400 mt-1.5">📍 {c.donde}</p>
+                    <p className="text-[11px] text-neutral-600 mt-1.5">📍 {c.donde}</p>
                   )}
                 </div>
               ))}
@@ -90,7 +90,7 @@ export default function AppPage() {
         ))}
 
         {visibles.length === 0 && (
-          <p className="text-center text-neutral-400 py-8">Nada de este tipo todavía.</p>
+          <p className="text-center text-neutral-600 py-8">Nada de este tipo todavía.</p>
         )}
       </div>
     </div>

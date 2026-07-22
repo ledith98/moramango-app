@@ -32,6 +32,22 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-07-22',
     tipo: 'mejora',
+    titulo: 'Todo el texto más oscuro y legible',
+    detalle:
+      'Había textos en gris muy claro que no se alcanzaban a leer, sobre todo el buscador y el filtro de categorías en Insumos. Se oscureció el texto de toda la app y los campos de formulario ahora llevan color propio, para que no hereden grises. De aquí en adelante nada va en gris claro.',
+    donde: 'Todo el panel y la tienda',
+  },
+  {
+    fecha: '2026-07-22',
+    tipo: 'nuevo',
+    titulo: 'Este apartado (APP)',
+    detalle:
+      'Aquí queda registrado todo lo que se le va cambiando a la aplicación, para que quien entre al panel sepa qué se movió sin tener que preguntar.',
+    donde: 'APP',
+  },
+  {
+    fecha: '2026-07-22',
+    tipo: 'mejora',
     titulo: 'Lista de compras siempre a la mano',
     detalle:
       'Antes solo aparecía cuando ya había alertas de consumo, y esas necesitan semanas de ventas. Ahora se abre cuando quieras desde el botón, viene marcada con lo que está en cero o por acabarse, puedes palomear lo que falte y copiarla agrupada por categoría para recorrer la tienda por pasillos.',

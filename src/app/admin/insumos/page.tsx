@@ -478,7 +478,7 @@ export default function InsumosPage() {
   }
 
   if (cargando) {
-    return <p className="p-6 text-neutral-500">Cargando inventario…</p>;
+    return <p className="p-6 text-neutral-700">Cargando inventario…</p>;
   }
 
   return (
@@ -518,7 +518,7 @@ export default function InsumosPage() {
             key={valor}
             onClick={() => setPestana(valor)}
             className={`px-4 py-2 rounded-xl text-sm font-semibold transition ${
-              pestana === valor ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'
+              pestana === valor ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-700'
             }`}
           >
             {etiqueta}
@@ -526,7 +526,7 @@ export default function InsumosPage() {
         ))}
       </div>
 
-      <p className="text-xs text-neutral-500 mb-4">
+      <p className="text-xs text-neutral-700 mb-4">
         {pestana === 'activos'
           ? 'Lo que usas hoy: stock, consumo y compras. Con "📚 A biblioteca" lo guardas sin borrarlo.'
           : 'Tu catálogo completo, incluidos los insumos guardados para después. Con "🧊 Usar ahora" vuelven a la operación diaria.'}
@@ -545,12 +545,12 @@ export default function InsumosPage() {
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
           placeholder="Buscar insumo…"
-          className="flex-1 min-w-[180px] bg-white border border-neutral-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-marron"
+          className="flex-1 min-w-[180px] bg-white border border-neutral-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-marron text-neutral-900"
         />
         <select
           value={filtroGrupo}
           onChange={(e) => setFiltroGrupo(e.target.value)}
-          className="bg-white border border-neutral-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-marron"
+          className="bg-white border border-neutral-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-marron text-neutral-900"
         >
           <option value="Todos">Todas las categorías</option>
           {[...todasCategorias, SIN_CATEGORIA].map((c) => (
@@ -580,7 +580,7 @@ export default function InsumosPage() {
                     {a.nivel === 'rojo' ? '🔴' : '🟡'} <strong>{a.nombre}</strong> — queda para ~
                     {a.alcanzaParaDias ?? 0} día{a.alcanzaParaDias === 1 ? '' : 's'}
                     {a.sugerenciaCompra > 0 && (
-                      <span className="text-neutral-500">
+                      <span className="text-neutral-700">
                         {' '}
                         · comprar {a.sugerenciaCompra} {a.unidadCompra || ''}
                       </span>
@@ -591,14 +591,14 @@ export default function InsumosPage() {
             </div>
           )}
 
-          <p className="text-xs text-neutral-400 mb-2">
+          <p className="text-xs text-neutral-600 mb-2">
             El consumo por día se calcula con las ventas de los últimos {diasAnalisis} días.
           </p>
 
           <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-neutral-500 border-b border-neutral-100">
+                <tr className="text-left text-neutral-700 border-b border-neutral-100">
                   <th className="p-3 font-semibold">Insumo</th>
                   <th className="p-3 font-semibold">Stock</th>
                   <th className="p-3 font-semibold">Consumo/día</th>
@@ -615,7 +615,7 @@ export default function InsumosPage() {
                     <tr className="bg-neutral-50">
                       <td colSpan={8} className="px-3 py-2 font-bold text-neutral-700 text-xs uppercase tracking-wide">
                         {ICONO_GRUPO[grupo.categoria] ?? '·'} {grupo.categoria}
-                        <span className="font-normal text-neutral-400 ml-1.5 normal-case tracking-normal">
+                        <span className="font-normal text-neutral-600 ml-1.5 normal-case tracking-normal">
                           ({grupo.items.length})
                         </span>
                       </td>
@@ -624,7 +624,7 @@ export default function InsumosPage() {
                   <tr key={a.id} className="hover:bg-neutral-50">
                     <td className="p-3">
                       <p className="font-semibold text-neutral-900">{a.nombre}</p>
-                      <p className="text-xs text-neutral-400">{a.categoria || SIN_CATEGORIA}</p>
+                      <p className="text-xs text-neutral-600">{a.categoria || SIN_CATEGORIA}</p>
                     </td>
                     <td className="p-3 font-semibold text-neutral-900 whitespace-nowrap">
                       {a.stockActual} {a.unidadReceta}
@@ -640,7 +640,7 @@ export default function InsumosPage() {
                             ~{a.alcanzaParaDias} día{a.alcanzaParaDias === 1 ? '' : 's'}
                           </span>
                         ) : (
-                          <span className="text-neutral-400">sin datos</span>
+                          <span className="text-neutral-600">sin datos</span>
                         )}
                       </span>
                     </td>
@@ -658,7 +658,7 @@ export default function InsumosPage() {
                           </button>
                         </>
                       ) : (
-                        <span className="text-neutral-400 text-xs">Sin registrar</span>
+                        <span className="text-neutral-600 text-xs">Sin registrar</span>
                       )}
                     </td>
                     <td className="p-3">
@@ -697,11 +697,11 @@ export default function InsumosPage() {
                             )}
                           </p>
                           {a.fechaConteo && (
-                            <p className="text-[10px] text-neutral-400">{a.fechaConteo}</p>
+                            <p className="text-[10px] text-neutral-600">{a.fechaConteo}</p>
                           )}
                         </div>
                       ) : (
-                        <span className="text-neutral-400">—</span>
+                        <span className="text-neutral-600">—</span>
                       )}
                     </td>
                     <td className="p-3">
@@ -760,7 +760,7 @@ export default function InsumosPage() {
                 ))}
                 {activosFiltrados.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="p-6 text-center text-neutral-400">
+                    <td colSpan={8} className="p-6 text-center text-neutral-600">
                       No hay insumos activos que mostrar.
                     </td>
                   </tr>
@@ -773,7 +773,7 @@ export default function InsumosPage() {
         <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-neutral-500 border-b border-neutral-100">
+              <tr className="text-left text-neutral-700 border-b border-neutral-100">
                 <th className="p-3 font-semibold">Insumo</th>
                 <th className="p-3 font-semibold">Se compra por</th>
                 <th className="p-3 font-semibold">Equivale a</th>
@@ -788,12 +788,12 @@ export default function InsumosPage() {
                 <tr key={b.id} className="hover:bg-neutral-50">
                   <td className="p-3">
                     <p className="font-semibold text-neutral-900">{b.nombre}</p>
-                    <p className="text-xs text-neutral-400">
+                    <p className="text-xs text-neutral-600">
                       {b.id} · {b.categoria || SIN_CATEGORIA}
                     </p>
                     <span
                       className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full mt-1 ${
-                        b.enUso ? 'bg-green-100 text-green-700' : 'bg-neutral-100 text-neutral-500'
+                        b.enUso ? 'bg-green-100 text-green-700' : 'bg-neutral-100 text-neutral-700'
                       }`}
                     >
                       {b.enUso ? '🧊 En uso' : '💤 Guardado para después'}
@@ -810,7 +810,7 @@ export default function InsumosPage() {
                       </p>
                     )}
                     {b.ingredientes.length > 0 && (
-                      <p className="text-[11px] text-neutral-500 mt-0.5">
+                      <p className="text-[11px] text-neutral-700 mt-0.5">
                         🔗 {b.ingredientes.join(', ')}
                       </p>
                     )}
@@ -823,28 +823,28 @@ export default function InsumosPage() {
                     {b.ultimoPrecioCompra > 0 ? (
                       <>
                         ${b.ultimoPrecioCompra}
-                        <span className="text-neutral-400 text-xs"> / {b.unidadCompra}</span>
+                        <span className="text-neutral-600 text-xs"> / {b.unidadCompra}</span>
                       </>
                     ) : (
-                      <span className="text-neutral-400">—</span>
+                      <span className="text-neutral-600">—</span>
                     )}
                   </td>
                   <td className="p-3 whitespace-nowrap">
                     {b.costoPorUnidadReceta !== null ? (
                       <span className="font-semibold text-neutral-900">
                         ${b.costoPorUnidadReceta}
-                        <span className="text-neutral-400 font-normal text-xs">
+                        <span className="text-neutral-600 font-normal text-xs">
                           {' '}
                           / {b.unidadReceta}
                         </span>
                       </span>
                     ) : (
-                      <span className="text-neutral-400">registra una compra</span>
+                      <span className="text-neutral-600">registra una compra</span>
                     )}
                   </td>
                   <td className="p-3 text-neutral-600">
-                    {b.proveedor || <span className="text-neutral-400">—</span>}
-                    {b.contacto && <p className="text-[11px] text-neutral-400">{b.contacto}</p>}
+                    {b.proveedor || <span className="text-neutral-600">—</span>}
+                    {b.contacto && <p className="text-[11px] text-neutral-600">{b.contacto}</p>}
                   </td>
                   <td className="p-3">
                     <div className="flex gap-1 justify-end flex-wrap">
@@ -897,7 +897,7 @@ export default function InsumosPage() {
               ))}
               {bibliotecaFiltrada.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="p-6 text-center text-neutral-400">
+                  <td colSpan={7} className="p-6 text-center text-neutral-600">
                     Aún no hay insumos en la biblioteca.
                   </td>
                 </tr>
@@ -913,7 +913,7 @@ export default function InsumosPage() {
           titulo={editandoId ? 'Editar insumo' : 'Nuevo insumo'}
           onCerrar={() => setModalInsumo(false)}
         >
-          <label className="block text-xs font-semibold text-neutral-500 mb-1">Nombre</label>
+          <label className="block text-xs font-semibold text-neutral-700 mb-1">Nombre</label>
           <input
             value={form.nombre}
             onChange={(e) => setForm({ ...form, nombre: e.target.value })}
@@ -921,9 +921,9 @@ export default function InsumosPage() {
             className={inputCls}
           />
 
-          <div className="grid grid-cols-2 gap-3 mt-3">
+          <div className="grid grid-cols-2 gap-3 mt-3 text-neutral-900">
             <div>
-              <label className="block text-xs font-semibold text-neutral-500 mb-1">
+              <label className="block text-xs font-semibold text-neutral-700 mb-1">
                 Se compra por
               </label>
               <input
@@ -939,7 +939,7 @@ export default function InsumosPage() {
               </datalist>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-neutral-500 mb-1">
+              <label className="block text-xs font-semibold text-neutral-700 mb-1">
                 Unidad en recetas
               </label>
               <input
@@ -956,11 +956,11 @@ export default function InsumosPage() {
             </div>
           </div>
 
-          <label className="block text-xs font-semibold text-neutral-500 mb-1 mt-3">
+          <label className="block text-xs font-semibold text-neutral-700 mb-1 mt-3">
             Equivalencia
           </label>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-neutral-500 whitespace-nowrap">
+            <span className="text-sm text-neutral-700 whitespace-nowrap">
               1 {form.unidadCompra || 'unidad'} =
             </span>
             <input
@@ -969,10 +969,10 @@ export default function InsumosPage() {
               onChange={(e) => setForm({ ...form, equivalencia: e.target.value })}
               className={inputCls}
             />
-            <span className="text-sm text-neutral-500">{form.unidadReceta || 'u'}</span>
+            <span className="text-sm text-neutral-700 text-neutral-900">{form.unidadReceta || 'u'}</span>
           </div>
 
-          <label className="block text-xs font-semibold text-neutral-500 mb-1 mt-3">Categoría</label>
+          <label className="block text-xs font-semibold text-neutral-700 mb-1 mt-3">Categoría</label>
           <select
             value={form.categoria}
             onChange={(e) => {
@@ -999,7 +999,7 @@ export default function InsumosPage() {
 
           <div className="grid grid-cols-2 gap-3 mt-3">
             <div>
-              <label className="block text-xs font-semibold text-neutral-500 mb-1">Proveedor</label>
+              <label className="block text-xs font-semibold text-neutral-700 mb-1">Proveedor</label>
               <input
                 value={form.proveedor}
                 onChange={(e) => setForm({ ...form, proveedor: e.target.value })}
@@ -1007,7 +1007,7 @@ export default function InsumosPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-neutral-500 mb-1">Contacto</label>
+              <label className="block text-xs font-semibold text-neutral-700 mb-1 text-neutral-900">Contacto</label>
               <input
                 value={form.contacto}
                 onChange={(e) => setForm({ ...form, contacto: e.target.value })}
@@ -1018,7 +1018,7 @@ export default function InsumosPage() {
 
           {editandoId && (
             <>
-              <label className="block text-xs font-semibold text-neutral-500 mb-1 mt-3">
+              <label className="block text-xs font-semibold text-neutral-700 mb-1 mt-3">
                 Último precio de compra (por {form.unidadCompra || 'unidad'})
               </label>
               <input
@@ -1028,7 +1028,7 @@ export default function InsumosPage() {
                 onChange={(e) => setForm({ ...form, ultimoPrecioCompra: e.target.value })}
                 className={inputCls}
               />
-              <p className="text-[11px] text-neutral-400 mt-1">
+              <p className="text-[11px] text-neutral-600 mt-1 text-neutral-900">
                 Corrige aquí un precio mal capturado. No registra una compra ni suma stock.
               </p>
             </>
@@ -1049,7 +1049,7 @@ export default function InsumosPage() {
       {/* ── Modal: registrar compra ── */}
       {compraDe && (
         <Modal titulo={`Compra de ${compraDe.nombre}`} onCerrar={() => setCompraDe(null)}>
-          <label className="block text-xs font-semibold text-neutral-500 mb-1">
+          <label className="block text-xs font-semibold text-neutral-700 mb-1">
             ¿Cuánto compraste? (en {compraDe.unidadCompra || 'unidades'})
           </label>
           <input
@@ -1061,7 +1061,7 @@ export default function InsumosPage() {
             autoFocus
           />
 
-          <label className="block text-xs font-semibold text-neutral-500 mb-1 mt-3">
+          <label className="block text-xs font-semibold text-neutral-700 mb-1 mt-3">
             ¿Cuánto pagaste en total? ($)
           </label>
           <input
@@ -1073,7 +1073,7 @@ export default function InsumosPage() {
             className={inputCls}
           />
 
-          <p className="text-xs text-neutral-500 mt-3 bg-neutral-50 rounded-xl p-3">
+          <p className="text-xs text-neutral-700 mt-3 bg-neutral-50 rounded-xl p-3">
             Se sumarán{' '}
             <strong>
               {(parseFloat(compraCantidad) || 0) * compraDe.equivalencia} {compraDe.unidadReceta}
@@ -1096,7 +1096,7 @@ export default function InsumosPage() {
       {/* ── Modal: lista de compras ── */}
       {listaAbierta && (
         <Modal titulo="🛒 Lista de compras" onCerrar={() => setListaAbierta(false)}>
-          <p className="text-xs text-neutral-500 mb-3">
+          <p className="text-xs text-neutral-700 mb-3">
             Vienen marcados los que se están acabando o están en cero. Marca o desmarca lo que
             quieras y cópiala para llevarla al mercado.
           </p>
@@ -1123,7 +1123,7 @@ export default function InsumosPage() {
                 const items = activos.filter((a) => (a.categoria || SIN_CATEGORIA) === cat);
                 return (
                   <div key={cat} className="mb-3">
-                    <p className="text-[11px] font-bold text-neutral-500 uppercase tracking-wide mb-1">
+                    <p className="text-[11px] font-bold text-neutral-700 uppercase tracking-wide mb-1">
                       {ICONO_GRUPO[cat] ?? '·'} {cat}
                     </p>
                     {items.map((a) => (
@@ -1136,11 +1136,11 @@ export default function InsumosPage() {
                               s.includes(a.id) ? s.filter((x) => x !== a.id) : [...s, a.id]
                             )
                           }
-                          className="mt-1 accent-[var(--marca-marron)]"
+                          className="mt-1 accent-[var(--marca-marron)] text-neutral-900"
                         />
                         <span className="flex-1 min-w-0">
                           <span className="text-sm text-neutral-900">{a.nombre}</span>
-                          <span className="block text-[11px] text-neutral-400">
+                          <span className="block text-[11px] text-neutral-600">
                             quedan {a.stockActual} {a.unidadReceta}
                             {a.sugerenciaCompra > 0 &&
                               ` · comprar ${a.sugerenciaCompra} ${a.unidadCompra || ''}`}
@@ -1167,7 +1167,7 @@ export default function InsumosPage() {
       {/* ── Modal: vincular con las recetas de Productos ── */}
       {recetasDe && (
         <Modal titulo={`Recetas de ${recetasDe.nombre}`} onCerrar={() => setRecetasDe(null)}>
-          <p className="text-xs text-neutral-500 mb-3">
+          <p className="text-xs text-neutral-700 mb-3">
             Marca los ingredientes de tus productos que salen de este insumo. Puedes marcar varios:
             así, cada venta descuenta del mismo stock.
           </p>
@@ -1186,9 +1186,9 @@ export default function InsumosPage() {
             className={`${inputCls} mb-3`}
           />
 
-          <div className="max-h-80 overflow-y-auto -mx-1 px-1">
+          <div className="max-h-80 overflow-y-auto -mx-1 px-1 text-neutral-900">
             {productosVisibles.length === 0 && (
-              <p className="text-sm text-neutral-400 py-4 text-center">
+              <p className="text-sm text-neutral-600 py-4 text-center">
                 Ningún producto coincide con “{buscaProducto}”.
               </p>
             )}
@@ -1201,7 +1201,7 @@ export default function InsumosPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-semibold text-sm text-neutral-900">{p.nombre}</p>
-                      <p className="text-[11px] text-neutral-400">
+                      <p className="text-[11px] text-neutral-600">
                         {p.categoria}
                         {!p.disponible && ' · apagado en la tienda'}
                         {marcados > 0 && ` · ${marcados} marcado${marcados === 1 ? '' : 's'}`}
@@ -1233,11 +1233,11 @@ export default function InsumosPage() {
                                 type="checkbox"
                                 checked={marcado}
                                 onChange={() => alternarIngrediente(ing.nombre)}
-                                className="mt-1 accent-[var(--marca-marron)]"
+                                className="mt-1 accent-[var(--marca-marron)] text-neutral-900"
                               />
-                              <span className="flex-1 min-w-0">
+                              <span className="flex-1 min-w-0 text-neutral-900">
                                 <span className="text-sm text-neutral-900">{ing.nombre}</span>
-                                <span className="text-[11px] text-neutral-400">
+                                <span className="text-[11px] text-neutral-600 text-neutral-900">
                                   {' '}
                                   {ing.cantidad} {ing.unidad}
                                 </span>
@@ -1263,7 +1263,7 @@ export default function InsumosPage() {
             })}
           </div>
 
-          <p className="text-[11px] text-neutral-400 mt-3">
+          <p className="text-[11px] text-neutral-600 mt-3">
             El mismo ingrediente puede aparecer en varios productos: al marcarlo en uno queda
             marcado en todos, porque todos descuentan del mismo insumo. Si no marcas ninguno, se
             intenta unir por nombre idéntico.
@@ -1284,7 +1284,7 @@ export default function InsumosPage() {
       {historial !== null && (
         <Modal titulo={`Precios de ${historialDe}`} onCerrar={() => setHistorial(null)}>
           {historial.length === 0 ? (
-            <p className="text-sm text-neutral-500">Todavía no hay compras registradas.</p>
+            <p className="text-sm text-neutral-700">Todavía no hay compras registradas.</p>
           ) : (
             <ul className="divide-y divide-neutral-100 text-sm">
               {historial.map((h, k) => (
@@ -1293,11 +1293,11 @@ export default function InsumosPage() {
                     <p className="text-neutral-900 font-semibold">
                       {h.cantidad} {h.unidadCompra} · ${h.precioTotal}
                     </p>
-                    <p className="text-xs text-neutral-400">{h.fecha}</p>
+                    <p className="text-xs text-neutral-600">{h.fecha}</p>
                   </div>
                   <p className="text-neutral-600 text-right whitespace-nowrap">
                     ${h.precioUnidadCompra}
-                    <span className="text-neutral-400 text-xs"> / {h.unidadCompra}</span>
+                    <span className="text-neutral-600 text-xs"> / {h.unidadCompra}</span>
                   </p>
                 </li>
               ))}
@@ -1323,7 +1323,7 @@ function Modal({
       <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md p-5 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-bold text-lg text-neutral-900">{titulo}</h2>
-          <button onClick={onCerrar} className="text-neutral-400 text-xl leading-none px-2">
+          <button onClick={onCerrar} className="text-neutral-600 text-xl leading-none px-2">
             ✕
           </button>
         </div>

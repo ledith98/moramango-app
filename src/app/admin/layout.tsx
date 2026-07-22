@@ -12,7 +12,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <div className="flex items-center gap-3">
             <Link
               href="/"
-              className="w-10 h-10 flex items-center justify-center bg-white rounded-full font-bold text-neutral-700 shadow-sm active:scale-90 transition-transform shrink-0"
+              className="w-10 h-10 flex items-center justify-center bg-marron/15 text-marron rounded-full font-bold text-2xl leading-none shadow-sm active:scale-90 transition-transform shrink-0"
               title="Volver a la tienda"
             >
               ←

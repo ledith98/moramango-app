@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSession, signIn, signOut } from 'next-auth/react';
 import { esBeneficioReactivacion as esReactivacion, montoReactivacion } from '@/lib/beneficioCliente';
@@ -91,6 +91,10 @@ export default function Home() {
   const [cargando, setCargando] = useState(true);
   const [enviando, setEnviando] = useState(false);
   const [categoriaActiva, setCategoriaActiva] = useState<string>('Todos');
+  // Las categorías se salen de la pantalla; sin una pista visual nadie
+  // adivina que se puede deslizar para ver el resto
+  const filaCategorias = useRef<HTMLDivElement>(null);
+  const [hayMasCategorias, setHayMasCategorias] = useState(false);
   const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
   const [verCarrito, setVerCarrito] = useState(false);
   const [verPerfil, setVerPerfil] = useState(false);
@@ -230,10 +234,33 @@ export default function Home() {
     return acc;
   }, {} as Record<string, any[]>);
 
+  /** La pista se esconde al llegar al final, para no estorbar. */
+  const revisarCategorias = useCallback(() => {
+    const el = filaCategorias.current;
+    if (!el) return;
+    const restante = el.scrollWidth - el.clientWidth - el.scrollLeft;
+    setHayMasCategorias(restante > 8);
+  }, []);
+
+  useEffect(() => {
+    const el = filaCategorias.current;
+    revisarCategorias();
+    // Listener nativo en vez de la prop onScroll: 'scroll' no burbujea y
+    // así el cálculo no depende de cómo React lo enganche
+    el?.addEventListener('scroll', revisarCategorias, { passive: true });
+    window.addEventListener('resize', revisarCategorias);
+    return () => {
+      el?.removeEventListener('scroll', revisarCategorias);
+      window.removeEventListener('resize', revisarCategorias);
+    };
+  }, [revisarCategorias, productos]);
+
   const getIcono = (cat: string) => {
     const c = cat.toLowerCase();
-    if (c.includes('jugo')) return '🥤';
+    // Mango en Jugos: comunica que son naturales, no de polvo ni de lata
+    if (c.includes('jugo')) return '🥭';
     if (c.includes('licuado')) return '🥛';
+    if (c.includes('bebida') || c.includes('café') || c.includes('cafe')) return '🥤';
     if (c.includes('salada') || c.includes('sándwich')) return '🥪';
     if (c.includes('dulce') || c.includes('postre')) return '🥐';
     return '🍽️';
@@ -803,7 +830,12 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="flex overflow-x-auto gap-4 mt-6 px-4 pb-4" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+            <div className="relative">
+            <div
+              ref={filaCategorias}
+              className="flex overflow-x-auto gap-4 mt-6 px-4 pb-4"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+            >
               <style jsx>{`div::-webkit-scrollbar { display: none; }`}</style>
               {categoriasMenu.map(cat => (
                 <button
@@ -821,6 +853,16 @@ export default function Home() {
                   </span>
                 </button>
               ))}
+            </div>
+
+            {/* Pista de que hay más categorías a la derecha */}
+            {hayMasCategorias && (
+              <div className="pointer-events-none absolute right-0 top-0 bottom-4 w-20 flex items-center justify-end pr-2 bg-gradient-to-l from-white via-white/85 to-transparent">
+                <span className="w-8 h-8 rounded-full bg-marron text-white flex items-center justify-center text-lg font-bold shadow-md animate-pulse">
+                  ›
+                </span>
+              </div>
+            )}
             </div>
           </header>
 
@@ -980,7 +1022,7 @@ export default function Home() {
         {verCarrito && (
           <div className="absolute inset-0 bg-neutral-50 z-50 flex flex-col h-full">
             <header className="bg-white p-4 flex items-center shadow-sm shrink-0">
-              <button onClick={() => setVerCarrito(false)} className="w-10 h-10 flex items-center justify-center bg-neutral-100 rounded-full font-bold active:scale-90 mr-3">←</button>
+              <button onClick={() => setVerCarrito(false)} className="w-10 h-10 flex items-center justify-center bg-marron/15 text-marron rounded-full font-bold text-2xl leading-none active:scale-90 mr-3">←</button>
               <h2 className="text-xl font-bold text-black">Tu Pedido</h2>
             </header>
 
@@ -1060,7 +1102,9 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="bg-white p-6 rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.05)] border-t border-neutral-100 shrink-0">
+            {/* Panel compacto: cada renglón que crece aquí le come espacio
+                a la lista de productos, que es lo que el cliente revisa */}
+            <div className="bg-white px-5 pt-4 pb-5 rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.05)] border-t border-neutral-100 shrink-0">
               {beneficioAplicado && descuentoAplicado > 0 && (
                 <div className="mb-3 space-y-1">
                   <div className="flex justify-between items-center text-sm text-neutral-500">
@@ -1074,40 +1118,44 @@ export default function Home() {
                 </div>
               )}
 
-              <div className="flex justify-between items-center mb-4">
-                <span className="text-neutral-500 font-medium text-lg">Total a pagar</span>
+              <div className="flex justify-between items-center mb-2.5">
+                <span className="text-neutral-500 font-medium">Total a pagar</span>
                 <span className="text-2xl font-bold text-black">${totalPagar.toFixed(2)}</span>
               </div>
 
               {session && (
-                <div className="mb-4">
-                  <p className="text-xs font-semibold text-neutral-500 mb-2">¿Cómo quieres pagar?</p>
-                  <div className="grid grid-cols-1 gap-2">
+                <div className="mb-3">
+                  <p className="text-xs font-semibold text-neutral-500 mb-1.5">¿Cómo quieres pagar?</p>
+                  {/* En fila: apiladas ocupaban tres renglones completos */}
+                  <div className="grid grid-cols-3 gap-2">
                     <button
                       onClick={() => setFormaPago('recoger')}
-                      className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                      className={`py-2 px-1 rounded-xl text-[11px] font-semibold leading-tight transition-colors ${
                         formaPago === 'recoger' ? 'bg-marron text-white' : 'bg-neutral-100 text-neutral-600'
                       }`}
                     >
-                      🏪 Pagar al recoger
+                      <span className="block text-base">🏪</span>
+                      Al recoger
                     </button>
                     {TRANSFERENCIA_HABILITADA && (
                       <button
                         onClick={() => setFormaPago('transferencia')}
-                        className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                        className={`py-2 px-1 rounded-xl text-[11px] font-semibold leading-tight transition-colors ${
                           formaPago === 'transferencia' ? 'bg-marron text-white' : 'bg-neutral-100 text-neutral-600'
                         }`}
                       >
-                        📲 Transferencia
+                        <span className="block text-base">📲</span>
+                        Transferencia
                       </button>
                     )}
                     <button
                       onClick={() => setFormaPago('linea')}
-                      className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                      className={`py-2 px-1 rounded-xl text-[11px] font-semibold leading-tight transition-colors ${
                         formaPago === 'linea' ? 'bg-marron text-white' : 'bg-neutral-100 text-neutral-600'
                       }`}
                     >
-                      💳 Pagar en línea (tarjeta)
+                      <span className="block text-base">💳</span>
+                      Tarjeta
                     </button>
                   </div>
 
@@ -1188,7 +1236,7 @@ export default function Home() {
             <header className="bg-white p-4 flex items-center shadow-sm shrink-0">
               <button
                 onClick={() => setVerMisPedidos(false)}
-                className="w-10 h-10 flex items-center justify-center bg-neutral-100 rounded-full font-bold active:scale-90 mr-3"
+                className="w-10 h-10 flex items-center justify-center bg-marron/15 text-marron rounded-full font-bold text-2xl leading-none active:scale-90 mr-3"
               >
                 ←
               </button>
@@ -1452,7 +1500,7 @@ export default function Home() {
         {verPerfil && (
           <div className="absolute inset-0 bg-neutral-50 z-50 flex flex-col h-full">
             <header className="bg-white p-4 flex items-center shadow-sm shrink-0">
-              <button onClick={() => setVerPerfil(false)} className="w-10 h-10 flex items-center justify-center bg-neutral-100 rounded-full font-bold active:scale-90 mr-3">←</button>
+              <button onClick={() => setVerPerfil(false)} className="w-10 h-10 flex items-center justify-center bg-marron/15 text-marron rounded-full font-bold text-2xl leading-none active:scale-90 mr-3">←</button>
               <h2 className="text-xl font-bold text-black">Mis Datos</h2>
             </header>
 

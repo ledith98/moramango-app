@@ -10,6 +10,7 @@ interface Producto {
   Precio_Venta: string;
   Disponible: string;
   Emoji?: string;
+  Imagen_URL?: string;
 }
 
 interface FormProducto {
@@ -49,6 +50,10 @@ export default function ProductosPage() {
   const [form, setForm] = useState<FormProducto>(FORM_VACIO);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
+  // Foto del producto (solo al editar: se necesita el ID para guardarla)
+  const [imagenUrl, setImagenUrl] = useState('');
+  const [subiendo, setSubiendo] = useState(false);
+  const [pegarUrl, setPegarUrl] = useState(false);
 
   const cargarProductos = useCallback(() => {
     setCargando(true);
@@ -98,13 +103,55 @@ export default function ProductosPage() {
       precio: p.Precio_Venta,
       emoji: p.Emoji || '',
     });
+    setImagenUrl(p.Imagen_URL || '');
+    setPegarUrl(false);
     setError('');
   };
 
   const abrirCrear = () => {
     setCreando(true);
     setForm(FORM_VACIO);
+    setImagenUrl('');
+    setPegarUrl(false);
     setError('');
+  };
+
+  /** Sube la foto y la guarda de inmediato, sin esperar a "Guardar". */
+  const subirImagen = async (archivo: File) => {
+    if (!editando) return;
+    setSubiendo(true);
+    setError('');
+    try {
+      const datos = new FormData();
+      datos.append('idProducto', editando.ID_Producto);
+      datos.append('archivo', archivo);
+      const res = await fetch('/api/admin/productos/imagen', { method: 'POST', body: datos });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'No se pudo subir la imagen');
+        // Sin almacenamiento activo queda el camino de pegar la dirección
+        if (data.codigo === 'SIN_ALMACENAMIENTO') setPegarUrl(true);
+        return;
+      }
+      setImagenUrl(data.url);
+      cargarProductos();
+    } catch {
+      setError('Error de conexión al subir la imagen');
+    } finally {
+      setSubiendo(false);
+    }
+  };
+
+  const quitarImagen = async () => {
+    if (!editando) return;
+    if (!confirm('¿Quitar la foto? El producto volverá a mostrar su emoji.')) return;
+    setSubiendo(true);
+    await fetch(`/api/admin/productos/imagen?id=${encodeURIComponent(editando.ID_Producto)}`, {
+      method: 'DELETE',
+    });
+    setImagenUrl('');
+    setSubiendo(false);
+    cargarProductos();
   };
 
   const cerrarModal = () => {
@@ -138,6 +185,7 @@ export default function ProductosPage() {
             descripcion: form.descripcion,
             precio: precioNum,
             emoji: form.emoji,
+            imagenUrl,
           }),
         });
       } else {
@@ -191,12 +239,24 @@ export default function ProductosPage() {
             return (
               <div key={p.ID_Producto} className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 flex flex-col gap-2">
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-xs text-neutral-400 uppercase tracking-wide">{p.Categoría}</p>
-                    <h3 className="font-bold text-neutral-900 truncate">
-                      {p.Emoji && <span className="mr-1">{p.Emoji}</span>}
-                      {p.Nombre}
-                    </h3>
+                  <div className="min-w-0 flex items-start gap-2">
+                    {p.Imagen_URL && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={p.Imagen_URL}
+                        alt=""
+                        className="w-10 h-10 rounded-lg object-cover shrink-0"
+                      />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-xs text-neutral-400 uppercase tracking-wide">
+                        {p.Categoría}
+                      </p>
+                      <h3 className="font-bold text-neutral-900 truncate">
+                        {!p.Imagen_URL && p.Emoji && <span className="mr-1">{p.Emoji}</span>}
+                        {p.Nombre}
+                      </h3>
+                    </div>
                   </div>
                   <button
                     onClick={() => toggleDisponible(p)}
@@ -275,6 +335,81 @@ export default function ProductosPage() {
                 corrige sola para no partir el menú en dos.
               </p>
             </div>
+
+            {editando && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-neutral-700">
+                  Foto <span className="font-normal text-neutral-400">(opcional)</span>
+                </label>
+                <div className="flex items-center gap-3">
+                  <div className="w-20 h-20 shrink-0 bg-neutral-100 rounded-xl overflow-hidden flex items-center justify-center">
+                    {imagenUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={imagenUrl} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-3xl opacity-30">{form.emoji || '📷'}</span>
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-1.5">
+                    <label
+                      className={`block text-center text-sm font-semibold py-2.5 rounded-xl cursor-pointer active:scale-95 transition-transform ${
+                        subiendo ? 'bg-neutral-100 text-neutral-400' : 'bg-black text-white'
+                      }`}
+                    >
+                      {subiendo ? 'Subiendo…' : imagenUrl ? 'Cambiar foto' : '📷 Subir foto'}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        disabled={subiendo}
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) subirImagen(f);
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                    {imagenUrl && (
+                      <button
+                        type="button"
+                        onClick={quitarImagen}
+                        disabled={subiendo}
+                        className="w-full text-xs font-semibold text-red-600 bg-red-50 py-2 rounded-xl active:scale-95 disabled:opacity-50"
+                      >
+                        Quitar foto
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {pegarUrl ? (
+                  <div className="space-y-1.5 pt-1">
+                    <input
+                      value={imagenUrl}
+                      onChange={(e) => setImagenUrl(e.target.value)}
+                      placeholder="https://..."
+                      className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-sm text-neutral-900 focus:outline-none focus:border-black"
+                    />
+                    <p className="text-xs text-neutral-400">
+                      Se guarda al presionar Guardar, abajo.
+                    </p>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setPegarUrl(true)}
+                    className="text-xs font-semibold text-neutral-500 underline"
+                  >
+                    o pegar la dirección de una imagen
+                  </button>
+                )}
+
+                <p className="text-xs text-neutral-400">
+                  PNG, JPG o WEBP, máximo 4 MB. Cuadrada se ve mejor. Si hay foto, la tienda la
+                  muestra en lugar del emoji.
+                </p>
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <label className="text-sm font-semibold text-neutral-700">

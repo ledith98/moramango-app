@@ -84,7 +84,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
-  const { idProducto, nombre, categoria, descripcion, precio, disponible, emoji } =
+  const { idProducto, nombre, categoria, descripcion, precio, disponible, emoji, imagenUrl } =
     await req.json();
 
   if (!idProducto) {
@@ -119,6 +119,18 @@ export async function PATCH(req: NextRequest) {
     // Columna resuelta por nombre: se crea sola la primera vez
     const colEmoji = await ensureColumn('Productos', 'Emoji');
     await updateCell('Productos', fila.rowIndex, colEmoji, recortarEmoji(emoji));
+  }
+  // Respaldo para cuando la foto vive fuera (Drive, Imgur…) en vez de subirse
+  if (typeof imagenUrl === 'string') {
+    const limpia = imagenUrl.trim();
+    if (limpia && !/^https:\/\//i.test(limpia)) {
+      return NextResponse.json(
+        { error: 'La dirección de la imagen debe empezar con https://' },
+        { status: 400 }
+      );
+    }
+    const colImagen = await ensureColumn('Productos', 'Imagen_URL');
+    await updateCell('Productos', fila.rowIndex, colImagen, limpia);
   }
 
   return NextResponse.json({ success: true });

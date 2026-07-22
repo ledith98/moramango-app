@@ -16,6 +16,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { appendRow, ensureColumn, findRow, getSheetData, updateCell } from '@/lib/googleSheets';
+import { normalizarUrlImagen } from '@/lib/imagenes';
 import { getAdminSession } from '@/lib/roles';
 
 /**
@@ -131,8 +132,10 @@ export async function PATCH(req: NextRequest) {
         { status: 400 }
       );
     }
+    // Un enlace de Drive copiado del botón Compartir apunta al visor, no
+    // al archivo: se traduce para que el <img> reciba la imagen
     const colImagen = await ensureColumn('Productos', 'Imagen_URL');
-    await updateCell('Productos', fila.rowIndex, colImagen, limpia);
+    await updateCell('Productos', fila.rowIndex, colImagen, normalizarUrlImagen(limpia));
   }
 
   return NextResponse.json({ success: true });

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { esEnlaceDeVisorDrive } from '@/lib/imagenes';
 
 interface Producto {
   ID_Producto: string;
@@ -390,9 +391,17 @@ export default function ProductosPage() {
                       placeholder="https://..."
                       className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-sm text-neutral-900 focus:outline-none focus:border-black"
                     />
-                    <p className="text-xs text-neutral-400">
-                      Se guarda al presionar Guardar, abajo.
-                    </p>
+                    {esEnlaceDeVisorDrive(imagenUrl) ? (
+                      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                        Reconocí un enlace de Google Drive y lo voy a convertir al formato que sí
+                        se puede mostrar. Para que se vea, el archivo debe estar compartido como{' '}
+                        <strong>&ldquo;Cualquier persona con el enlace&rdquo;</strong>.
+                      </p>
+                    ) : (
+                      <p className="text-xs text-neutral-400">
+                        Se guarda al presionar Guardar, abajo.
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <button

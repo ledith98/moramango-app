@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSheetData } from '@/lib/googleSheets';
+import { normalizarUrlImagen } from '@/lib/imagenes';
 
 export async function GET() {
   try {
@@ -16,7 +17,9 @@ export async function GET() {
         categoria: p.Categoria ?? p['Categoría'] ?? 'Otros',
         descripcion: p.Descripcion ?? '',
         precio: parseFloat(p.Precio_Venta) || 0,
-        imagen: p.Imagen_URL ?? '',
+        // Se normaliza también al leer: cubre las URLs que ya estaban
+        // guardadas antes de que existiera la traducción
+        imagen: normalizarUrlImagen(p.Imagen_URL ?? ''),
         emoji: (p.Emoji ?? '').trim(),
         orden: parseInt(p.Orden_Menu) || 999,
       }))

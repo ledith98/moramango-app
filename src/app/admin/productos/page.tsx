@@ -41,6 +41,21 @@ export default function ProductosPage() {
     cargarProductos();
   }, [cargarProductos]);
 
+  // La tienda agrupa el menú por el texto exacto de la categoría, así que
+  // "Combos" y "COMBOS" salían como dos secciones distintas.
+  const categoriasExistentes = Array.from(
+    new Set(productos.map((p) => (p.Categoría || '').trim()).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b, 'es'));
+
+  /** Reusa la categoría que ya existe si solo cambian mayúsculas o acentos. */
+  const canonizarCategoria = (valor: string) => {
+    const limpia = (s: string) =>
+      s.trim().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
+    const escrita = limpia(valor);
+    if (!escrita) return valor.trim();
+    return categoriasExistentes.find((c) => limpia(c) === escrita) ?? valor.trim();
+  };
+
   const toggleDisponible = async (p: Producto) => {
     const nuevoValor = !(p.Disponible === 'TRUE' || p.Disponible === 'true');
     setProductos((prev) =>
@@ -216,11 +231,22 @@ export default function ProductosPage() {
             <div className="space-y-1.5">
               <label className="text-sm font-semibold text-neutral-700">Categoría</label>
               <input
+                list="categorias-productos"
                 value={form.categoria}
                 onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+                onBlur={(e) => setForm({ ...form, categoria: canonizarCategoria(e.target.value) })}
                 placeholder="Ej. Jugos"
                 className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black"
               />
+              <datalist id="categorias-productos">
+                {categoriasExistentes.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
+              <p className="text-xs text-neutral-400">
+                Elige una de la lista. Si escribes una que ya existe con otras mayúsculas, se
+                corrige sola para no partir el menú en dos.
+              </p>
             </div>
 
             <div className="space-y-1.5">

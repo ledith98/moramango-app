@@ -19,3 +19,32 @@ export function avisoDisponibilidad(disponibles: number | null, umbral = 3): str
   }
   return '';
 }
+
+export interface EstadoVenta {
+  /** false = el botón de agregar va apagado */
+  sePuedeComprar: boolean;
+  /** Texto del distintivo; '' = no mostrar ninguno */
+  etiqueta: string;
+  /** true = el distintivo va en gris (no es urgencia, es un alto) */
+  apagado: boolean;
+}
+
+/**
+ * Junta las dos razones por las que algo no se vende: la pausa manual del
+ * panel y el stock. La pausa manual gana, porque es una decisión explícita
+ * del negocio y el número de stock puede estar desactualizado.
+ */
+export function estadoDeVenta(producto: {
+  disponible?: boolean;
+  disponibles?: number | null;
+}): EstadoVenta {
+  if (producto.disponible === false) {
+    return { sePuedeComprar: false, etiqueta: 'No disponible por el momento', apagado: true };
+  }
+
+  const aviso = avisoDisponibilidad(producto.disponibles ?? null);
+  if (aviso === 'Agotado') {
+    return { sePuedeComprar: false, etiqueta: 'Agotado por hoy', apagado: true };
+  }
+  return { sePuedeComprar: true, etiqueta: aviso, apagado: false };
+}

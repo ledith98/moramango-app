@@ -87,7 +87,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
-  const { idProducto, nombre, categoria, descripcion, precio, disponible, emoji, imagenUrl } =
+  const { idProducto, nombre, categoria, descripcion, precio, disponible, oculto, emoji, imagenUrl } =
     await req.json();
 
   if (!idProducto) {
@@ -117,6 +117,12 @@ export async function PATCH(req: NextRequest) {
   }
   if (typeof disponible === 'boolean') {
     await updateCell('Productos', fila.rowIndex, 7, disponible ? 'TRUE' : 'FALSE');
+  }
+  // Oculto es independiente de Disponible: uno saca el producto del menú,
+  // el otro solo frena la venta dejándolo a la vista
+  if (typeof oculto === 'boolean') {
+    const colOculto = await ensureColumn('Productos', 'Oculto');
+    await updateCell('Productos', fila.rowIndex, colOculto, oculto ? 'TRUE' : '');
   }
   if (typeof emoji === 'string') {
     // Columna resuelta por nombre: se crea sola la primera vez

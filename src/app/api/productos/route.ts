@@ -30,7 +30,14 @@ export async function GET() {
     const disponibilidad = await calcularDisponibilidad();
 
     const publicos = todos
-      .filter((p) => p.Disponible === 'TRUE' || p.Disponible === 'true')
+      // Tres estados, no dos:
+      //   Oculto=TRUE            → ni siquiera aparece
+      //   Disponible=FALSE       → aparece, pero no se puede comprar
+      //   Disponible=TRUE        → normal
+      // Así se puede pausar la venta de algo sin borrarlo del menú: el
+      // cliente ve que existe y que hoy no hay.
+      .filter((p) => (p.Oculto || '').toUpperCase() !== 'TRUE')
+      .filter((p) => (p.Eliminado || '').toUpperCase() !== 'TRUE')
       .map((p) => ({
         id: p.ID_Producto,
         nombre: p.Nombre,
@@ -42,6 +49,8 @@ export async function GET() {
         imagen: normalizarUrlImagen(p.Imagen_URL ?? ''),
         emoji: (p.Emoji ?? '').trim(),
         disponibles: disponibilidad.get(p.ID_Producto)?.disponibles ?? null,
+        /** false = pausado a mano desde el panel, se ve pero no se vende */
+        disponible: (p.Disponible ?? '').toString().toUpperCase() !== 'FALSE',
         orden: parseInt(p.Orden_Menu) || 999,
       }))
       .sort((a, b) => a.orden - b.orden);

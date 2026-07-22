@@ -12,7 +12,36 @@ interface Producto {
   Disponible: string;
   Emoji?: string;
   Imagen_URL?: string;
+  Oculto?: string;
 }
+
+type EstadoProducto = 'vendiendo' | 'pausado' | 'oculto';
+
+const ESTADOS: { valor: EstadoProducto; etiqueta: string; ayuda: string; color: string }[] = [
+  {
+    valor: 'vendiendo',
+    etiqueta: '✅ A la venta',
+    ayuda: 'Se ve en el menú y se puede comprar.',
+    color: 'bg-green-600 text-white',
+  },
+  {
+    valor: 'pausado',
+    etiqueta: '⏸️ Sin existencia',
+    ayuda: 'Se ve en el menú como "No disponible por el momento", pero no se puede comprar.',
+    color: 'bg-amber-500 text-white',
+  },
+  {
+    valor: 'oculto',
+    etiqueta: '🙈 Fuera del menú',
+    ayuda: 'No aparece en la tienda. Para productos suspendidos o de temporada.',
+    color: 'bg-neutral-700 text-white',
+  },
+];
+
+const estadoDe = (p: Producto): EstadoProducto => {
+  if ((p.Oculto || '').toUpperCase() === 'TRUE') return 'oculto';
+  return (p.Disponible || '').toUpperCase() === 'FALSE' ? 'pausado' : 'vendiendo';
+};
 
 interface FormProducto {
   nombre: string;
@@ -83,15 +112,24 @@ export default function ProductosPage() {
     return categoriasExistentes.find((c) => limpia(c) === escrita) ?? valor.trim();
   };
 
-  const toggleDisponible = async (p: Producto) => {
-    const nuevoValor = !(p.Disponible === 'TRUE' || p.Disponible === 'true');
+  /**
+   * Tres estados, no dos. 'pausado' es el caso que faltaba: se acabó hoy
+   * pero el cliente debe seguir viendo que el producto existe.
+   */
+  const cambiarEstado = async (p: Producto, estado: EstadoProducto) => {
+    const disponible = estado === 'vendiendo';
+    const oculto = estado === 'oculto';
     setProductos((prev) =>
-      prev.map((x) => (x.ID_Producto === p.ID_Producto ? { ...x, Disponible: nuevoValor ? 'TRUE' : 'FALSE' } : x))
+      prev.map((x) =>
+        x.ID_Producto === p.ID_Producto
+          ? { ...x, Disponible: disponible ? 'TRUE' : 'FALSE', Oculto: oculto ? 'TRUE' : '' }
+          : x
+      )
     );
     await fetch('/api/admin/productos', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idProducto: p.ID_Producto, disponible: nuevoValor }),
+      body: JSON.stringify({ idProducto: p.ID_Producto, disponible, oculto }),
     });
   };
 
@@ -236,7 +274,7 @@ export default function ProductosPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {productos.map((p) => {
-            const disponible = p.Disponible === 'TRUE' || p.Disponible === 'true';
+            const estado = estadoDe(p);
             return (
               <div key={p.ID_Producto} className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 flex flex-col gap-2">
                 <div className="flex items-start justify-between gap-2">
@@ -259,20 +297,26 @@ export default function ProductosPage() {
                       </h3>
                     </div>
                   </div>
-                  <button
-                    onClick={() => toggleDisponible(p)}
-                    className={`shrink-0 w-11 h-6 rounded-full transition-colors relative ${
-                      disponible ? 'bg-green-500' : 'bg-neutral-300'
-                    }`}
-                    title={disponible ? 'Disponible — click para desactivar' : 'No disponible — click para activar'}
-                  >
-                    <span
-                      className={`absolute left-0 top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
-                        disponible ? 'translate-x-[22px]' : 'translate-x-0.5'
-                      }`}
-                    />
-                  </button>
                 </div>
+
+                {/* Tres estados: vender, pausar sin esconder, o sacar del menú */}
+                <div className="grid grid-cols-3 gap-1 bg-neutral-100 p-1 rounded-xl">
+                  {ESTADOS.map((e) => (
+                    <button
+                      key={e.valor}
+                      onClick={() => cambiarEstado(p, e.valor)}
+                      title={e.ayuda}
+                      className={`text-[11px] font-semibold py-1.5 rounded-lg leading-tight transition-colors ${
+                        estado === e.valor ? e.color : 'text-neutral-500'
+                      }`}
+                    >
+                      {e.etiqueta}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-neutral-400 leading-snug">
+                  {ESTADOS.find((e) => e.valor === estado)?.ayuda}
+                </p>
                 {p.Descripcion && <p className="text-sm text-neutral-500 line-clamp-2">{p.Descripcion}</p>}
                 <div className="flex items-center justify-between mt-auto pt-2">
                   <span className="font-bold text-black">${parseFloat(p.Precio_Venta || '0').toFixed(2)}</span>

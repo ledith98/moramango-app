@@ -12,7 +12,7 @@ import {
   mensajeComprobante,
   mensajeLlegada,
 } from '@/lib/negocio';
-import { avisoDisponibilidad } from '@/lib/disponibilidadCliente';
+import { estadoDeVenta } from '@/lib/disponibilidadCliente';
 
 // Separa un teléfono guardado tipo "+528186003207" en lada y número
 const parsearTelefono = (telefonoCompleto: string): { lada: string; numero: string } => {
@@ -288,6 +288,10 @@ export default function Home() {
   };
 
   const agregarAlCarrito = (producto: any) => {
+    if (producto.disponible === false) {
+      setAvisoStock(`${producto.nombre} no está disponible por el momento`);
+      return;
+    }
     // disponibles null = sin inventario cargado, sin límite
     const tope = producto.disponibles;
     setCarrito(prev => {
@@ -933,9 +937,15 @@ export default function Home() {
                           const itemEnCarrito = carrito.find(item => item.id === producto.id);
                           const cantidadAgregada = itemEnCarrito ? itemEnCarrito.cantidad : 0;
                           const tieneDescripcion = producto.descripcion && producto.descripcion.trim();
+                          const venta = estadoDeVenta(producto);
 
                           return (
-                            <div key={producto.id || index} className="flex gap-4 p-4 rounded-3xl bg-white shadow-sm border border-neutral-100">
+                            <div
+                              key={producto.id || index}
+                              className={`flex gap-4 p-4 rounded-3xl bg-white shadow-sm border border-neutral-100 ${
+                                venta.sePuedeComprar ? '' : 'opacity-70'
+                              }`}
+                            >
                               {/* Área de texto — tappable si tiene descripción */}
                               <button
                                 onClick={() => abrirDetalle(producto)}
@@ -957,16 +967,16 @@ export default function Home() {
                                 )}
                                 <div className="mt-3 flex items-center gap-2 flex-wrap">
                                   <span className="font-bold text-neutral-900">${producto.precio}</span>
-                                  {avisoDisponibilidad(producto.disponibles) && (
+                                  {venta.etiqueta && (
                                     <span
                                       className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                        producto.disponibles <= 0
-                                          ? 'bg-neutral-200 text-neutral-500'
+                                        venta.apagado
+                                          ? 'bg-neutral-200 text-neutral-600'
                                           : 'bg-amber-100 text-amber-800'
                                       }`}
                                     >
-                                      {producto.disponibles > 0 && '🔥 '}
-                                      {avisoDisponibilidad(producto.disponibles)}
+                                      {!venta.apagado && '🔥 '}
+                                      {venta.etiqueta}
                                     </span>
                                   )}
                                 </div>
@@ -975,7 +985,7 @@ export default function Home() {
                               <div className="relative shrink-0 ml-2">
                                 <button
                                   onClick={() => agregarAlCarrito(producto)}
-                                  disabled={producto.disponibles !== null && producto.disponibles <= 0}
+                                  disabled={!venta.sePuedeComprar}
                                   className="w-24 h-24 bg-neutral-100 rounded-2xl overflow-hidden flex items-center justify-center active:scale-95 transition-transform disabled:opacity-40 disabled:active:scale-100"
                                   aria-label={`Agregar ${producto.nombre}`}
                                 >
@@ -1001,7 +1011,7 @@ export default function Home() {
                                 </button>
 
                                 {/* Indicador + para agregar (solo si no está en el carrito) */}
-                                {cantidadAgregada === 0 && !(producto.disponibles !== null && producto.disponibles <= 0) && (
+                                {cantidadAgregada === 0 && venta.sePuedeComprar && (
                                   <div className="absolute -bottom-2 -right-2 w-9 h-9 bg-marron text-white rounded-full flex items-center justify-center shadow-lg pointer-events-none">
                                     <span className="text-xl font-medium leading-none">+</span>
                                   </div>

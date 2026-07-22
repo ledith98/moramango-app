@@ -34,10 +34,20 @@ interface ItemBiblioteca {
   enUso: boolean;
 }
 
-interface IngredienteCatalogo {
+interface IngredienteReceta {
   nombre: string;
-  productos: string[];
+  cantidad: string;
+  unidad: string;
+  /** Nombre del insumo que ya reclama este ingrediente, si hay otro */
   vinculadoA: string;
+}
+
+interface ProductoConReceta {
+  id: string;
+  nombre: string;
+  categoria: string;
+  disponible: boolean;
+  ingredientes: IngredienteReceta[];
 }
 
 interface ItemActivo {
@@ -159,9 +169,10 @@ export default function InsumosPage() {
   const [compraPrecio, setCompraPrecio] = useState('');
   const [historial, setHistorial] = useState<CompraHistorial[] | null>(null);
   const [historialDe, setHistorialDe] = useState('');
-  const [recetasDe, setRecetasDe] = useState<ItemBiblioteca | null>(null);
-  const [ingredientesCat, setIngredientesCat] = useState<IngredienteCatalogo[]>([]);
+  const [recetasDe, setRecetasDe] = useState<{ id: string; nombre: string } | null>(null);
+  const [productosCat, setProductosCat] = useState<ProductoConReceta[]>([]);
   const [seleccion, setSeleccion] = useState<string[]>([]);
+  const [buscaProducto, setBuscaProducto] = useState('');
 
   const cargar = useCallback(async () => {
     try {
@@ -304,25 +315,43 @@ export default function InsumosPage() {
   }
 
   // ── Vínculo insumo ↔ ingredientes de las recetas ──────────────────────────
-  async function abrirRecetas(b: ItemBiblioteca) {
-    setRecetasDe(b);
-    setSeleccion(b.ingredientes);
+  /**
+   * Se abre desde las dos pestañas: en Biblioteca el id es el del insumo,
+   * en Activos se usa el idBiblioteca, que es el mismo registro.
+   */
+  async function abrirRecetas(idBiblioteca: string, nombre: string) {
+    const yaVinculados =
+      biblioteca.find((b) => b.id === idBiblioteca)?.ingredientes ?? [];
+    setRecetasDe({ id: idBiblioteca, nombre });
+    setSeleccion(yaVinculados);
+    setBuscaProducto('');
     setError('');
     const res = await fetch('/api/admin/biblioteca?ingredientes=1');
     const data = await res.json();
-    setIngredientesCat(data.ingredientes ?? []);
+    setProductosCat(data.productos ?? []);
   }
 
   function alternarIngrediente(nombre: string) {
     setSeleccion((s) => (s.includes(nombre) ? s.filter((x) => x !== nombre) : [...s, nombre]));
   }
 
+  /** Marca o desmarca de golpe toda la receta de un producto. */
+  function alternarProducto(p: ProductoConReceta) {
+    const nombres = p.ingredientes.map((i) => i.nombre);
+    const todosMarcados = nombres.every((n) => seleccion.includes(n));
+    setSeleccion((s) =>
+      todosMarcados
+        ? s.filter((x) => !nombres.includes(x))
+        : [...new Set([...s, ...nombres])]
+    );
+  }
+
   /** Marca de golpe los ingredientes que se parecen al nombre del insumo. */
   function aplicarSugerencias() {
     if (!recetasDe) return;
-    const sugeridos = ingredientesCat
-      .filter((i) => sugiere(recetasDe.nombre, i.nombre))
-      .map((i) => i.nombre);
+    const sugeridos = productosCat
+      .flatMap((p) => p.ingredientes.map((i) => i.nombre))
+      .filter((n) => sugiere(recetasDe.nombre, n));
     setSeleccion((s) => [...new Set([...s, ...sugeridos])]);
   }
 
@@ -379,6 +408,17 @@ export default function InsumosPage() {
     if (filtroGrupo !== 'Todos' && (categoria || SIN_CATEGORIA) !== filtroGrupo) return false;
     return true;
   };
+
+  // El buscador del modal mira nombre de producto e ingredientes, para
+  // poder llegar por cualquiera de los dos.
+  const qProducto = buscaProducto.trim().toLowerCase();
+  const productosVisibles = qProducto
+    ? productosCat.filter(
+        (p) =>
+          p.nombre.toLowerCase().includes(qProducto) ||
+          p.ingredientes.some((i) => i.nombre.toLowerCase().includes(qProducto))
+      )
+    : productosCat;
 
   const activosFiltrados = activos.filter((a) => coincide(a.nombre, a.categoria));
   const bibliotecaFiltrada = biblioteca.filter((b) => coincide(b.nombre, b.categoria));
@@ -617,6 +657,13 @@ export default function InsumosPage() {
                           Conteo
                         </button>
                         <button
+                          onClick={() => abrirRecetas(a.idBiblioteca, a.nombre)}
+                          className="text-xs font-semibold text-black bg-neutral-200 px-3 py-1.5 rounded-lg active:scale-95 whitespace-nowrap"
+                          title="Elegir en qué productos se usa este insumo"
+                        >
+                          🔗 Recetas
+                        </button>
+                        <button
                           onClick={() => editarStock(a)}
                           disabled={ocupado}
                           className="text-xs font-semibold text-black bg-neutral-200 px-3 py-1.5 rounded-lg active:scale-95 disabled:opacity-50 whitespace-nowrap"
@@ -750,7 +797,7 @@ export default function InsumosPage() {
                         {b.enUso ? '💤 Guardar' : '🧊 Usar ahora'}
                       </button>
                       <button
-                        onClick={() => abrirRecetas(b)}
+                        onClick={() => abrirRecetas(b.id, b.nombre)}
                         className="text-xs font-semibold text-black bg-neutral-200 px-2.5 py-1.5 rounded-lg active:scale-95 whitespace-nowrap"
                         title="Elegir a qué ingredientes de las recetas corresponde"
                       >
@@ -995,44 +1042,94 @@ export default function InsumosPage() {
             ✨ Marcar automáticamente los que se parecen
           </button>
 
-          <ul className="divide-y divide-neutral-100 max-h-72 overflow-y-auto">
-            {ingredientesCat.map((ing) => {
-              const marcado = seleccion.includes(ing.nombre);
-              const ajeno = ing.vinculadoA && ing.vinculadoA !== recetasDe.nombre;
+          <input
+            value={buscaProducto}
+            onChange={(e) => setBuscaProducto(e.target.value)}
+            placeholder="Buscar producto o ingrediente…"
+            className={`${inputCls} mb-3`}
+          />
+
+          <div className="max-h-80 overflow-y-auto -mx-1 px-1">
+            {productosVisibles.length === 0 && (
+              <p className="text-sm text-neutral-400 py-4 text-center">
+                Ningún producto coincide con “{buscaProducto}”.
+              </p>
+            )}
+
+            {productosVisibles.map((p) => {
+              const nombres = p.ingredientes.map((i) => i.nombre);
+              const marcados = nombres.filter((n) => seleccion.includes(n)).length;
               return (
-                <li key={ing.nombre}>
-                  <label className="flex gap-2 py-2 cursor-pointer items-start">
-                    <input
-                      type="checkbox"
-                      checked={marcado}
-                      onChange={() => alternarIngrediente(ing.nombre)}
-                      className="mt-1 accent-[var(--marca-marron)]"
-                    />
-                    <span className="flex-1">
-                      <span className="text-sm font-semibold text-neutral-900">{ing.nombre}</span>
-                      {sugiere(recetasDe.nombre, ing.nombre) && !marcado && (
-                        <span className="ml-1.5 text-[10px] font-semibold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">
-                          sugerido
-                        </span>
-                      )}
-                      <span className="block text-[11px] text-neutral-400">
-                        {ing.productos.slice(0, 3).join(', ')}
-                        {ing.productos.length > 3 ? ` +${ing.productos.length - 3}` : ''}
-                      </span>
-                      {ajeno && (
-                        <span className="block text-[11px] text-amber-700">
-                          Ya está vinculado a {ing.vinculadoA}
-                        </span>
-                      )}
-                    </span>
-                  </label>
-                </li>
+                <div key={p.id} className="border border-neutral-100 rounded-2xl p-3 mb-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm text-neutral-900">{p.nombre}</p>
+                      <p className="text-[11px] text-neutral-400">
+                        {p.categoria}
+                        {!p.disponible && ' · apagado en la tienda'}
+                        {marcados > 0 && ` · ${marcados} marcado${marcados === 1 ? '' : 's'}`}
+                      </p>
+                    </div>
+                    {p.ingredientes.length > 0 && (
+                      <button
+                        onClick={() => alternarProducto(p)}
+                        className="text-[11px] font-semibold text-black bg-neutral-200 px-2.5 py-1 rounded-lg active:scale-95 whitespace-nowrap shrink-0"
+                      >
+                        {marcados === nombres.length ? 'Quitar todo' : 'Marcar todo'}
+                      </button>
+                    )}
+                  </div>
+
+                  {p.ingredientes.length === 0 ? (
+                    <p className="text-[11px] text-amber-700 mt-2">
+                      Sin receta registrada en Catálogo — no hay nada que marcar todavía.
+                    </p>
+                  ) : (
+                    <ul className="mt-2 space-y-0.5">
+                      {p.ingredientes.map((ing) => {
+                        const marcado = seleccion.includes(ing.nombre);
+                        const ajeno = ing.vinculadoA && ing.vinculadoA !== recetasDe.nombre;
+                        return (
+                          <li key={ing.nombre}>
+                            <label className="flex gap-2 py-1 cursor-pointer items-start">
+                              <input
+                                type="checkbox"
+                                checked={marcado}
+                                onChange={() => alternarIngrediente(ing.nombre)}
+                                className="mt-1 accent-[var(--marca-marron)]"
+                              />
+                              <span className="flex-1 min-w-0">
+                                <span className="text-sm text-neutral-900">{ing.nombre}</span>
+                                <span className="text-[11px] text-neutral-400">
+                                  {' '}
+                                  {ing.cantidad} {ing.unidad}
+                                </span>
+                                {sugiere(recetasDe.nombre, ing.nombre) && !marcado && (
+                                  <span className="ml-1.5 text-[10px] font-semibold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">
+                                    sugerido
+                                  </span>
+                                )}
+                                {ajeno && (
+                                  <span className="block text-[11px] text-amber-700">
+                                    Ya está vinculado a {ing.vinculadoA}
+                                  </span>
+                                )}
+                              </span>
+                            </label>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
               );
             })}
-          </ul>
+          </div>
 
           <p className="text-[11px] text-neutral-400 mt-3">
-            Si no marcas ninguno, se intenta unir por nombre idéntico con las recetas.
+            El mismo ingrediente puede aparecer en varios productos: al marcarlo en uno queda
+            marcado en todos, porque todos descuentan del mismo insumo. Si no marcas ninguno, se
+            intenta unir por nombre idéntico.
           </p>
           {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
 

@@ -61,23 +61,42 @@ export async function GET(req: NextRequest) {
 
   const porIngrediente = ingredientesDelCatalogo(catalogo);
 
-  // ── Catálogo de ingredientes para el modal de vinculación ──
+  // ── Productos con su receta, para el modal de vinculación ──
   if (new URL(req.url).searchParams.get('ingredientes')) {
     // Qué insumo reclama ya cada ingrediente, para no duplicar descuentos
     const dueño = new Map<string, string>();
     for (const b of vivos(biblioteca)) {
-      for (const clave of clavesDeInsumo(b)) {
-        if (leerIngredientes(b.Ingredientes).length > 0) dueño.set(clave, b.Nombre || '');
-      }
+      if (leerIngredientes(b.Ingredientes).length === 0) continue;
+      for (const clave of clavesDeInsumo(b)) dueño.set(clave, b.Nombre || '');
     }
-    const ingredientes = [...porIngrediente.entries()]
-      .map(([clave, v]) => ({
-        nombre: v.nombre,
-        productos: [...v.productos].sort(),
-        vinculadoA: dueño.get(clave) ?? '',
-      }))
-      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
-    return NextResponse.json({ ingredientes });
+
+    const catalogoProductos = await getSheetData('Productos');
+    // Receta por producto, sin repetir ingredientes dentro del mismo
+    const recetaPorProducto = new Map<string, Map<string, Record<string, string>>>();
+    for (const c of catalogo) {
+      const idProd = (c.ID_Producto || '').trim();
+      const nombre = (c.Ingrediente || '').trim();
+      if (!idProd || !nombre) continue;
+      if (!recetaPorProducto.has(idProd)) recetaPorProducto.set(idProd, new Map());
+      recetaPorProducto.get(idProd)!.set(normalizarNombre(nombre), c);
+    }
+
+    const productos = catalogoProductos
+      .filter((p) => (p.Eliminado || '').toLowerCase() !== 'si' && p.ID_Producto)
+      .map((p) => ({
+        id: p.ID_Producto,
+        nombre: p.Nombre || '',
+        categoria: p['Categoría'] || p.Categoria || '',
+        disponible: (p.Disponible || '').toString().toUpperCase() !== 'FALSE',
+        ingredientes: [...(recetaPorProducto.get(p.ID_Producto)?.values() ?? [])].map((c) => ({
+          nombre: (c.Ingrediente || '').trim(),
+          cantidad: c.Cantidad_Receta || '',
+          unidad: c.Unidad || '',
+          vinculadoA: dueño.get(normalizarNombre(c.Ingrediente)) ?? '',
+        })),
+      }));
+
+    return NextResponse.json({ productos });
   }
 
   // Relación 1:1 — para saber si el insumo se está usando hoy

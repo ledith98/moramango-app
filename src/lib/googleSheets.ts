@@ -38,10 +38,14 @@ export async function getSheetData(tabName: string, opciones?: { crudo?: boolean
   const headers = rows[0] as string[];
   return rows.slice(1).map((row) =>
     headers.reduce((obj, header, index) => {
-      // En modo crudo llegan numbers/booleans; String() los normaliza con
-      // punto decimal, independiente del locale de la hoja.
+      // En modo crudo llegan numbers y booleans en vez de texto. String()
+      // normaliza los números con punto decimal (independiente del locale),
+      // y los booleanos se devuelven como 'TRUE'/'FALSE' — igual que los
+      // escribe la app y que los muestra el modo formateado.
       const celda = row[index];
-      obj[header] = celda === undefined || celda === null ? '' : String(celda);
+      if (celda === undefined || celda === null) obj[header] = '';
+      else if (typeof celda === 'boolean') obj[header] = celda ? 'TRUE' : 'FALSE';
+      else obj[header] = String(celda);
       return obj;
     }, {} as Record<string, string>)
   );

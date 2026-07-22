@@ -32,7 +32,9 @@ export async function GET() {
   }
 
   await ensureColumn('Productos', 'Emoji');
-  const productos = await getSheetData('Productos');
+  // crudo: la hoja tiene locale es_ES y devolvía el precio como "50,00",
+  // que un <input type="number"> no puede mostrar y deja el campo vacío
+  const productos = await getSheetData('Productos', { crudo: true });
   const visibles = productos.filter((p) => (p.Eliminado || '').toUpperCase() !== 'TRUE');
   return NextResponse.json({ productos: visibles });
 }

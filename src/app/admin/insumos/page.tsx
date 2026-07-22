@@ -12,7 +12,7 @@
  * unidad de compra y el backend la convierte con la equivalencia.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { CATEGORIAS_INSUMOS } from '@/lib/insumos';
 
 interface ItemBiblioteca {
@@ -159,6 +159,9 @@ export default function InsumosPage() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroGrupo, setFiltroGrupo] = useState('Todos');
   const [listaCopiada, setListaCopiada] = useState(false);
+  // Lista de compras: se abre a mano, no depende de que haya alertas
+  const [listaAbierta, setListaAbierta] = useState(false);
+  const [seleccionCompra, setSeleccionCompra] = useState<string[]>([]);
 
   // Modales
   const [form, setForm] = useState({ ...FORM_VACIO });
@@ -423,15 +426,53 @@ export default function InsumosPage() {
   const activosFiltrados = activos.filter((a) => coincide(a.nombre, a.categoria));
   const bibliotecaFiltrada = biblioteca.filter((b) => coincide(b.nombre, b.categoria));
 
+  /** Activos agrupados por categoría, para recorrerlos por pasillo. */
+  const gruposActivos = [...new Set(activosFiltrados.map((a) => a.categoria || SIN_CATEGORIA))]
+    .sort((a, b) => a.localeCompare(b, 'es'))
+    .map((categoria) => ({
+      categoria,
+      items: activosFiltrados.filter((a) => (a.categoria || SIN_CATEGORIA) === categoria),
+    }));
+
   const alertas = activos
     .filter((a) => a.nivel === 'rojo' || a.nivel === 'amarillo')
     .sort((a, b) => (a.alcanzaParaDias ?? 99) - (b.alcanzaParaDias ?? 99));
 
+  /**
+   * Qué sugerir comprar. Las alertas por consumo necesitan historial de
+   * ventas, así que antes de abrir no marcaban nada; el stock en cero
+   * también cuenta para que la lista sirva desde el primer día.
+   */
+  const sugeridos = activos.filter(
+    (a) => a.nivel === 'rojo' || a.nivel === 'amarillo' || a.stockActual <= 0
+  );
+
+  function abrirLista() {
+    setSeleccionCompra(sugeridos.map((a) => a.id));
+    setListaAbierta(true);
+  }
+
+  /** Agrupado por categoría: así se recorre la tienda por pasillos. */
+  function textoLista(): string {
+    const elegidos = activos.filter((a) => seleccionCompra.includes(a.id));
+    const porCategoria = new Map<string, ItemActivo[]>();
+    for (const a of elegidos) {
+      const cat = a.categoria || SIN_CATEGORIA;
+      if (!porCategoria.has(cat)) porCategoria.set(cat, []);
+      porCategoria.get(cat)!.push(a);
+    }
+    const bloques = [...porCategoria.entries()].map(([cat, items]) => {
+      const lineas = items.map((a) => {
+        const cuanto = a.sugerenciaCompra > 0 ? `${a.sugerenciaCompra} ${a.unidadCompra || ''}`.trim() : '';
+        return `  • ${a.nombre}${cuanto ? ` — ${cuanto}` : ''}`;
+      });
+      return `${ICONO_GRUPO[cat] ?? '·'} ${cat.toUpperCase()}\n${lineas.join('\n')}`;
+    });
+    return `🛒 LISTA DE COMPRAS — MORAMANGO\n\n${bloques.join('\n\n')}`;
+  }
+
   function copiarLista() {
-    const texto = alertas
-      .map((a) => `• ${a.nombre}: ${a.sugerenciaCompra} ${a.unidadCompra || 'u'}`)
-      .join('\n');
-    navigator.clipboard.writeText(`🛒 Lista de compras Moramango\n\n${texto}`);
+    navigator.clipboard.writeText(textoLista());
     setListaCopiada(true);
     setTimeout(() => setListaCopiada(false), 2000);
   }
@@ -444,12 +485,25 @@ export default function InsumosPage() {
     <div className="p-4 sm:p-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between gap-3 mb-4">
         <h1 className="text-2xl font-bold text-neutral-900">📦 Insumos</h1>
-        <button
-          onClick={abrirNuevo}
-          className="bg-marron text-white text-sm font-semibold px-4 py-2 rounded-xl active:scale-95"
-        >
-          + Nuevo insumo
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={abrirLista}
+            className="bg-white border border-neutral-200 text-black text-sm font-semibold px-4 py-2 rounded-xl active:scale-95 whitespace-nowrap"
+          >
+            🛒 Lista de compras
+            {sugeridos.length > 0 && (
+              <span className="ml-1.5 text-[10px] font-bold bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full">
+                {sugeridos.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={abrirNuevo}
+            className="bg-marron text-white text-sm font-semibold px-4 py-2 rounded-xl active:scale-95 whitespace-nowrap"
+          >
+            + Nuevo
+          </button>
+        </div>
       </div>
 
       {/* Pestañas */}
@@ -556,7 +610,17 @@ export default function InsumosPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
-                {activosFiltrados.map((a) => (
+                {gruposActivos.map((grupo) => (
+                  <Fragment key={grupo.categoria}>
+                    <tr className="bg-neutral-50">
+                      <td colSpan={8} className="px-3 py-2 font-bold text-neutral-700 text-xs uppercase tracking-wide">
+                        {ICONO_GRUPO[grupo.categoria] ?? '·'} {grupo.categoria}
+                        <span className="font-normal text-neutral-400 ml-1.5 normal-case tracking-normal">
+                          ({grupo.items.length})
+                        </span>
+                      </td>
+                    </tr>
+                    {grupo.items.map((a) => (
                   <tr key={a.id} className="hover:bg-neutral-50">
                     <td className="p-3">
                       <p className="font-semibold text-neutral-900">{a.nombre}</p>
@@ -691,6 +755,8 @@ export default function InsumosPage() {
                       </div>
                     </td>
                   </tr>
+                    ))}
+                  </Fragment>
                 ))}
                 {activosFiltrados.length === 0 && (
                   <tr>
@@ -1023,6 +1089,77 @@ export default function InsumosPage() {
             className="w-full bg-marron text-white font-semibold py-3 rounded-xl mt-4 active:scale-95 disabled:opacity-50"
           >
             {ocupado ? 'Guardando…' : 'Registrar compra'}
+          </button>
+        </Modal>
+      )}
+
+      {/* ── Modal: lista de compras ── */}
+      {listaAbierta && (
+        <Modal titulo="🛒 Lista de compras" onCerrar={() => setListaAbierta(false)}>
+          <p className="text-xs text-neutral-500 mb-3">
+            Vienen marcados los que se están acabando o están en cero. Marca o desmarca lo que
+            quieras y cópiala para llevarla al mercado.
+          </p>
+
+          <div className="flex gap-2 mb-3">
+            <button
+              onClick={() => setSeleccionCompra(activos.map((a) => a.id))}
+              className="flex-1 text-xs font-semibold text-black bg-neutral-200 py-2 rounded-xl active:scale-95"
+            >
+              Marcar todo
+            </button>
+            <button
+              onClick={() => setSeleccionCompra([])}
+              className="flex-1 text-xs font-semibold text-black bg-neutral-200 py-2 rounded-xl active:scale-95"
+            >
+              Quitar todo
+            </button>
+          </div>
+
+          <div className="max-h-72 overflow-y-auto -mx-1 px-1">
+            {[...new Set(activos.map((a) => a.categoria || SIN_CATEGORIA))]
+              .sort((a, b) => a.localeCompare(b, 'es'))
+              .map((cat) => {
+                const items = activos.filter((a) => (a.categoria || SIN_CATEGORIA) === cat);
+                return (
+                  <div key={cat} className="mb-3">
+                    <p className="text-[11px] font-bold text-neutral-500 uppercase tracking-wide mb-1">
+                      {ICONO_GRUPO[cat] ?? '·'} {cat}
+                    </p>
+                    {items.map((a) => (
+                      <label key={a.id} className="flex gap-2 py-1 cursor-pointer items-start">
+                        <input
+                          type="checkbox"
+                          checked={seleccionCompra.includes(a.id)}
+                          onChange={() =>
+                            setSeleccionCompra((s) =>
+                              s.includes(a.id) ? s.filter((x) => x !== a.id) : [...s, a.id]
+                            )
+                          }
+                          className="mt-1 accent-[var(--marca-marron)]"
+                        />
+                        <span className="flex-1 min-w-0">
+                          <span className="text-sm text-neutral-900">{a.nombre}</span>
+                          <span className="block text-[11px] text-neutral-400">
+                            quedan {a.stockActual} {a.unidadReceta}
+                            {a.sugerenciaCompra > 0 &&
+                              ` · comprar ${a.sugerenciaCompra} ${a.unidadCompra || ''}`}
+                            {a.stockActual <= 0 && ' · ⚠️ en cero'}
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                );
+              })}
+          </div>
+
+          <button
+            onClick={copiarLista}
+            disabled={seleccionCompra.length === 0}
+            className="w-full bg-marron text-white font-semibold py-3 rounded-xl mt-3 active:scale-95 disabled:opacity-50"
+          >
+            {listaCopiada ? '✅ Copiada' : `Copiar lista (${seleccionCompra.length})`}
           </button>
         </Modal>
       )}

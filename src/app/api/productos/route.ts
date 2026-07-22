@@ -24,11 +24,14 @@ export async function GET() {
     // crudo: con el locale es_ES un precio de 52.50 se leía "52,50" y
     // parseFloat lo truncaba a 52. Hoy todos son enteros y nadie lo notó,
     // pero el primer precio con centavos habría cobrado de menos.
-    const todos = await getSheetData('Productos', { crudo: true });
-
+    // En paralelo: eran dos esperas seguidas y cada lectura al Sheet
+    // cuesta ~150 ms, así que se duplicaba el tiempo de la tienda.
     // El inventario puede no existir todavía: si falla, la tienda sigue
     // funcionando sin límites de stock (que es como estaba antes).
-    const disponibilidad = await calcularDisponibilidad();
+    const [todos, disponibilidad] = await Promise.all([
+      getSheetData('Productos', { crudo: true }),
+      calcularDisponibilidad(),
+    ]);
 
     const publicos = todos
       // Tres estados, no dos:

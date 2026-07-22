@@ -28,12 +28,17 @@ const FORM_VACIO: FormProducto = {
   emoji: '',
 };
 
-// Atajos para no tener que abrir el teclado de emojis en la tablet
+// Atajos para no tener que abrir el teclado de emojis en la tablet.
+// El campo de texto acepta cualquier otro que quieras pegar.
 const EMOJIS_SUGERIDOS = [
-  '🥪', '🥐', '🍞', '🥗', '🍳',
-  '🥤', '🥛', '🧃', '☕', '🍫',
-  '💧', '🥫', '🍓', '🥭', '🍌',
-  '🍍', '🍊', '🍈', '🍪', '🧁',
+  // Comida
+  '🥪', '🥐', '🍞', '🥗', '🍳', '🧀', '🥓', '🌯', '🍗', '🥑',
+  // Bebidas
+  '🥤', '🥛', '🧃', '☕', '💧', '🧋', '🍵', '🧊', '🥥', '🍶',
+  // Frutas
+  '🍓', '🥭', '🍌', '🍍', '🍊', '🍈', '🍉', '🍇', '🍑', '🥝',
+  // Dulces
+  '🍫', '🍪', '🧁', '🌰', '🍩', '🥮', '🍯', '🍨', '🎂', '🥜',
 ];
 
 export default function ProductosPage() {

@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { Providers } from './providers';
@@ -14,13 +14,30 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Moramango",
-  description: "Blend to Go — Pedidos en línea",
-  manifest: "/manifest.json",
+  title: 'Moramango — Blend to Go',
+  description: 'Pide en línea y recoge sin filas. San Nicolás de los Garza.',
+  manifest: '/manifest.json',
+  // El ícono de la pestaña lo resuelve Next con src/app/icon.png; aquí van
+  // los que el sistema operativo necesita al "Instalar aplicación".
   icons: {
-    icon: "/icon-192x192.png",
-    apple: "/apple-touch-icon.png",
+    icon: [
+      { url: '/icon-192x192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512x512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    // iOS ignora el manifest: sin esta etiqueta pone una captura de la
+    // pantalla en vez del logo.
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
   },
+  appleWebApp: {
+    capable: true,
+    title: 'Moramango',
+    statusBarStyle: 'default',
+  },
+};
+
+export const viewport: Viewport = {
+  // Pinta la barra del navegador con el café de la marca
+  themeColor: '#5c3a21',
 };
 
 export default function RootLayout({

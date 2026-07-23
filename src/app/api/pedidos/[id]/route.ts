@@ -152,6 +152,14 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     await updateCell('PEDIDOS', pedidoRow.rowIndex, 5, 'Cancelado');
     // Lo apartado vuelve al inventario y el producto se puede volver a vender
     await moverStockDePedido(id, 'devolver');
+    // Avisar a quien atiende: el pedido pudo entrar hace segundos
+    const monto = parseFloat(pedidoRow.data.Total_Final) || 0;
+    await enviarTelegram(
+      `❌ <b>Pedido cancelado por el cliente</b> — ${id}\n` +
+        `${pedidoRow.data.Nombre_Cliente_Snap || pedidoRow.data.Nombre_Cliente || 'Cliente'}` +
+        (pedidoRow.data.Telefono ? ` · ${pedidoRow.data.Telefono}` : '') +
+        (monto > 0 ? `\nEran $${monto.toFixed(2)}` : '')
+    );
     return NextResponse.json({ success: true });
   }
 

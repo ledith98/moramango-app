@@ -30,6 +30,22 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 
 export const CAMBIOS: Cambio[] = [
   {
+    fecha: '2026-07-23',
+    tipo: 'nuevo',
+    titulo: 'Aviso cuando el cliente cancela',
+    detalle:
+      'Si un cliente cancela su pedido desde la app, ahora llega un aviso a Telegram (útil porque el pedido pudo entrar hace segundos), el pedido se marca como Cancelado en el panel y lo que se había apartado del inventario se devuelve solo.',
+    donde: 'Telegram y Pedidos',
+  },
+  {
+    fecha: '2026-07-23',
+    tipo: 'arreglo',
+    titulo: 'El logo al instalar la app',
+    detalle:
+      'Al instalar la app en el celular salía el triángulo de Vercel en vez del logo de Moramango. Ya aparece el logo correcto en Android y iPhone. Si ya la tenías instalada, desinstálala y vuelve a instalarla para que tome el ícono nuevo.',
+    donde: 'Instalar aplicación',
+  },
+  {
     fecha: '2026-07-22',
     tipo: 'mejora',
     titulo: 'Todo el texto más oscuro y legible',

@@ -32,6 +32,14 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-07-24',
     tipo: 'nuevo',
+    titulo: 'Jugo del día',
+    detalle:
+      'Un solo lugar donde fijas el jugo del día: aparece como banner arriba en la tienda para que nadie tenga que preguntar, se avisa al grupo de Telegram, y desde ahí descargas la imagen 1080×1920 lista para tus historias. Eliges de la lista de jugos o escribes uno nuevo, con una nota opcional. El banner se quita solo al día siguiente si no pones otro.',
+    donde: 'Panel → Jugo del día',
+  },
+  {
+    fecha: '2026-07-24',
+    tipo: 'nuevo',
     titulo: 'Ver pedidos de varios días',
     detalle:
       'En Pedidos ya puedes elegir un rango "del … al …" en vez de un solo día, con atajos de Hoy, Ayer, Últimos 7 días y Este mes. Cuando el rango abarca varios días, cada pedido muestra su fecha y arriba sale el total del periodo.',

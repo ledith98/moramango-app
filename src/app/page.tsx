@@ -89,6 +89,7 @@ const CARRITO_KEY = 'moramango_carrito';
 export default function Home() {
   const { data: session } = useSession();
   const [productos, setProductos] = useState<any[]>([]);
+  const [jugoDelDia, setJugoDelDia] = useState<{ jugo: string; nota: string } | null>(null);
   const [cargando, setCargando] = useState(true);
   const [enviando, setEnviando] = useState(false);
   const [categoriaActiva, setCategoriaActiva] = useState<string>('Todos');
@@ -144,6 +145,7 @@ export default function Home() {
       .then((res) => res.json())
       .then((data) => {
         if (data.productos) setProductos(data.productos);
+        setJugoDelDia(data.jugoDelDia ?? null);
         setCargando(false);
       })
       .catch(() => setCargando(false));
@@ -908,6 +910,21 @@ export default function Home() {
               backgroundRepeat: 'no-repeat, repeat',
             }}
           >
+            {/* Jugo del día: lo primero que ve el cliente, para que no pregunte */}
+            {jugoDelDia && (
+              <div className="mb-4 rounded-2xl p-4 flex items-center gap-3 shadow-sm bg-gradient-to-r from-marron to-[#7a5230] text-white">
+                <span className="text-3xl leading-none">🥤</span>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-white/80">
+                    Jugo del día
+                  </p>
+                  <p className="font-bold text-lg leading-tight truncate">{jugoDelDia.jugo}</p>
+                  {jugoDelDia.nota && (
+                    <p className="text-xs text-white/85 leading-snug">{jugoDelDia.nota}</p>
+                  )}
+                </div>
+              </div>
+            )}
             {avisoPago && (
               <div className="mb-4 bg-amber-50 border border-amber-200 rounded-2xl p-3.5 flex gap-3 items-start">
                 <span className="text-base leading-none mt-0.5">⚠️</span>

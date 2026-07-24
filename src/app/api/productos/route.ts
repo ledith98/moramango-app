@@ -3,6 +3,7 @@ import { getSheetData } from '@/lib/googleSheets';
 import { disponibilidadPorProducto, type DisponibilidadProducto } from '@/lib/disponibilidad';
 import { normalizarUrlImagen } from '@/lib/imagenes';
 import { HOJA_ACTIVOS, HOJA_BIBLIOTECA } from '@/lib/inventario';
+import { leerJugoDelDia } from '@/lib/jugoDelDia';
 import { leerRecetas } from '@/lib/recetario';
 
 /** Vacío si el inventario aún no está armado: la tienda no debe caerse. */
@@ -28,9 +29,10 @@ export async function GET() {
     // cuesta ~150 ms, así que se duplicaba el tiempo de la tienda.
     // El inventario puede no existir todavía: si falla, la tienda sigue
     // funcionando sin límites de stock (que es como estaba antes).
-    const [todos, disponibilidad] = await Promise.all([
+    const [todos, disponibilidad, jugoDelDia] = await Promise.all([
       getSheetData('Productos', { crudo: true }),
       calcularDisponibilidad(),
+      leerJugoDelDia().catch(() => null),
     ]);
 
     const publicos = todos
@@ -59,7 +61,12 @@ export async function GET() {
       }))
       .sort((a, b) => a.orden - b.orden);
 
-    return NextResponse.json({ productos: publicos });
+    // Solo se manda si se fijó HOY; si no, la tienda no muestra banner
+    const jugo = jugoDelDia?.vigente
+      ? { jugo: jugoDelDia.jugo, nota: jugoDelDia.nota }
+      : null;
+
+    return NextResponse.json({ productos: publicos, jugoDelDia: jugo });
   } catch (error) {
     console.error('Error en /api/productos:', error);
     return NextResponse.json(

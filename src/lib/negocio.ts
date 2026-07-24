@@ -13,6 +13,12 @@
 // es "Pago en línea"; el valor viejo se sigue reconociendo.
 export const METODO_PAGO_EN_LINEA = 'Pago en línea';
 
+// Dominio visible del sitio (sin https://), para textos e imágenes. Se
+// centraliza aquí: cuando cambie el nombre de Vercel o se compre el
+// dominio propio, se toca en un solo lugar. La variable de entorno lo
+// sobreescribe sin tocar código.
+export const SITIO_WEB = process.env.NEXT_PUBLIC_SITIO_WEB || 'moramango.vercel.app';
+
 export const normalizarMetodoPago = (m: string | undefined | null): string =>
   m === 'Mercado Pago' ? METODO_PAGO_EN_LINEA : (m || '');
 

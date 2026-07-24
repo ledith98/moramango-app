@@ -6,6 +6,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { SITIO_WEB } from '@/lib/negocio';
 
 interface Estado {
   actual: { jugo: string; nota: string; fecha: string; vigente: boolean } | null;
@@ -228,7 +229,7 @@ export default function JugoDelDiaPage() {
               </g>
               <text x="540" y="1576" textAnchor="middle" fill="#5c3a21"
                 fontFamily="'Trebuchet MS',sans-serif" fontSize="39" fontWeight="700">
-                moramango-app.vercel.app</text>
+                {SITIO_WEB}</text>
             </svg>
           </div>
           <button

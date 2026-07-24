@@ -33,7 +33,13 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url);
-  const fechaISO = searchParams.get('fecha') || fechaHoyMTY();
+  // Rango [desde, hasta]. Compatibilidad: ?fecha= sigue sirviendo para un
+  // solo día. Sin nada, hoy. hasta >= desde siempre (se ordenan si vienen
+  // al revés) y se incluyen ambos extremos.
+  const fechaUnica = searchParams.get('fecha');
+  let desde = searchParams.get('desde') || fechaUnica || fechaHoyMTY();
+  let hasta = searchParams.get('hasta') || fechaUnica || desde;
+  if (hasta < desde) [desde, hasta] = [hasta, desde];
   const estado = searchParams.get('estado');
 
   const [pedidos, usuarios] = await Promise.all([
@@ -45,7 +51,7 @@ export async function GET(req: NextRequest) {
 
   const delDia = pedidos
     .map((p) => ({ pedido: p, info: parsearFechaHora(p.Fecha_Hora) }))
-    .filter(({ info }) => info?.fechaISO === fechaISO)
+    .filter(({ info }) => info && info.fechaISO >= desde && info.fechaISO <= hasta)
     .filter(({ pedido }) => !estado || pedido.Estado === estado)
     .sort((a, b) => (b.info!.timestamp - a.info!.timestamp))
     .map(({ pedido, info }) => ({

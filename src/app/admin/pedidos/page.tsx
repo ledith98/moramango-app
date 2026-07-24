@@ -51,6 +51,25 @@ interface Detalle {
 const FLUJO = ['Recibido', 'En preparación', 'Listo para recoger', 'Entregado'];
 const ESTADOS_FILTRO = ['Todos', ...FLUJO, 'Cancelado'];
 
+/** YYYY-MM-DD de hoy en Monterrey, desplazado N días hacia atrás. */
+function fechaMTY(diasAtras = 0): string {
+  const hoy = fechaHoyMTY();
+  if (diasAtras === 0) return hoy;
+  const [y, m, d] = hoy.split('-').map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d - diasAtras));
+  return t.toISOString().slice(0, 10);
+}
+
+/** Primer día del mes actual (en Monterrey). */
+const primerDiaDelMes = () => fechaHoyMTY().slice(0, 8) + '01';
+
+const ATAJOS_FECHA: { etiqueta: string; rango: () => { desde: string; hasta: string } }[] = [
+  { etiqueta: 'Hoy', rango: () => ({ desde: fechaMTY(0), hasta: fechaMTY(0) }) },
+  { etiqueta: 'Ayer', rango: () => ({ desde: fechaMTY(1), hasta: fechaMTY(1) }) },
+  { etiqueta: 'Últimos 7 días', rango: () => ({ desde: fechaMTY(6), hasta: fechaMTY(0) }) },
+  { etiqueta: 'Este mes', rango: () => ({ desde: primerDiaDelMes(), hasta: fechaMTY(0) }) },
+];
+
 const colorEstado = (estado: string) => {
   switch (estado) {
     case 'Recibido':
@@ -112,7 +131,9 @@ const ticketDelPedido = (d: Detalle): DatosTicket => {
 };
 
 export default function PedidosPage() {
-  const [fecha, setFecha] = useState(fechaHoyMTY());
+  // Rango de fechas. Al inicio ambos = hoy, así se comporta como antes.
+  const [desde, setDesde] = useState(fechaHoyMTY());
+  const [hasta, setHasta] = useState(fechaHoyMTY());
   const [estadoFiltro, setEstadoFiltro] = useState('Todos');
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [cargando, setCargando] = useState(true);
@@ -122,17 +143,22 @@ export default function PedidosPage() {
 
   const cargarPedidos = useCallback(() => {
     setCargando(true);
-    const params = new URLSearchParams({ fecha });
+    const params = new URLSearchParams({ desde, hasta });
     if (estadoFiltro !== 'Todos') params.set('estado', estadoFiltro);
     fetch(`/api/admin/pedidos?${params}`)
       .then((res) => res.json())
       .then((data) => setPedidos(data.pedidos || []))
       .finally(() => setCargando(false));
-  }, [fecha, estadoFiltro]);
+  }, [desde, hasta, estadoFiltro]);
 
   useEffect(() => {
     cargarPedidos();
   }, [cargarPedidos]);
+
+  // Total del periodo, sin contar cancelados
+  const totalRango = pedidos
+    .filter((p) => p.Estado !== 'Cancelado')
+    .reduce((s, p) => s + (parseFloat(p.Total_Final) || 0), 0);
 
   const abrirDetalle = (idPedido: string) => {
     setCargandoDetalle(true);
@@ -222,27 +248,62 @@ export default function PedidosPage() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 flex flex-wrap items-center gap-3">
-        <label className="text-sm font-semibold text-neutral-700">Fecha</label>
-        <input
-          type="date"
-          value={fecha}
-          onChange={(e) => setFecha(e.target.value)}
-          className="bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-black"
-        />
-        <label className="text-sm font-semibold text-neutral-700 ml-2 text-neutral-900">Estado</label>
-        <select
-          value={estadoFiltro}
-          onChange={(e) => setEstadoFiltro(e.target.value)}
-          className="bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-black"
-        >
-          {ESTADOS_FILTRO.map((e) => (
-            <option key={e} value={e}>
-              {e}
-            </option>
-          ))}
-        </select>
-        <span className="text-xs text-neutral-700 ml-auto">{pedidos.length} pedido{pedidos.length === 1 ? '' : 's'}</span>
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {ATAJOS_FECHA.map((a) => {
+            const r = a.rango();
+            const activo = desde === r.desde && hasta === r.hasta;
+            return (
+              <button
+                key={a.etiqueta}
+                onClick={() => {
+                  setDesde(r.desde);
+                  setHasta(r.hasta);
+                }}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
+                  activo ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-700'
+                }`}
+              >
+                {a.etiqueta}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="text-sm font-semibold text-neutral-700">Del</label>
+          <input
+            type="date"
+            value={desde}
+            max={hasta}
+            onChange={(e) => setDesde(e.target.value)}
+            className="bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-black"
+          />
+          <label className="text-sm font-semibold text-neutral-700">al</label>
+          <input
+            type="date"
+            value={hasta}
+            min={desde}
+            onChange={(e) => setHasta(e.target.value)}
+            className="bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-black"
+          />
+          <label className="text-sm font-semibold text-neutral-700 ml-2">Estado</label>
+          <select
+            value={estadoFiltro}
+            onChange={(e) => setEstadoFiltro(e.target.value)}
+            className="bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-black"
+          >
+            {ESTADOS_FILTRO.map((e) => (
+              <option key={e} value={e}>
+                {e}
+              </option>
+            ))}
+          </select>
+          <span className="text-xs text-neutral-700 ml-auto">
+            {pedidos.length} pedido{pedidos.length === 1 ? '' : 's'}
+            {desde !== hasta && ` · $${totalRango.toFixed(2)} en total`}
+          </span>
+        </div>
       </div>
 
       {cargando ? (
@@ -257,7 +318,15 @@ export default function PedidosPage() {
               onClick={() => abrirDetalle(p.ID_Pedido)}
               className="w-full flex items-center gap-4 p-4 text-left hover:bg-neutral-50 transition-colors"
             >
-              <span className="font-mono text-sm text-neutral-700 w-14 shrink-0">{p.HoraLegible}</span>
+              <span className="font-mono text-sm text-neutral-700 w-14 shrink-0">
+                {p.HoraLegible}
+                {/* Con rango de varios días, la hora sola no ubica el pedido */}
+                {desde !== hasta && (
+                  <span className="block text-[10px] text-neutral-500">
+                    {parsearFechaHora(p.Fecha_Hora)?.fechaISO.slice(5) ?? ''}
+                  </span>
+                )}
+              </span>
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-neutral-900 truncate">
                   {p.Origen_Venta === 'Local' && <span title="Venta en local">🏪 </span>}

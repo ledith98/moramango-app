@@ -30,6 +30,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 
 export const CAMBIOS: Cambio[] = [
   {
+    fecha: '2026-07-24',
+    tipo: 'nuevo',
+    titulo: 'Ver pedidos de varios días',
+    detalle:
+      'En Pedidos ya puedes elegir un rango "del … al …" en vez de un solo día, con atajos de Hoy, Ayer, Últimos 7 días y Este mes. Cuando el rango abarca varios días, cada pedido muestra su fecha y arriba sale el total del periodo.',
+    donde: 'Pedidos',
+  },
+  {
     fecha: '2026-07-23',
     tipo: 'nuevo',
     titulo: 'Aviso cuando el cliente cancela',

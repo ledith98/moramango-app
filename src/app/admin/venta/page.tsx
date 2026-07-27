@@ -550,6 +550,7 @@ export default function VentaPage() {
         </div>
 
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 space-y-4">
+          <h3 className="font-bold text-neutral-900">👤 Datos del cliente</h3>
           <div className="space-y-1.5">
             <label className="text-sm font-semibold text-neutral-700">Nombre del cliente</label>
             <input
@@ -574,6 +575,10 @@ export default function VentaPage() {
             />
           </div>
 
+        </div>
+
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 space-y-4">
+          <h3 className="font-bold text-neutral-900">💵 Cobro</h3>
           <div className="space-y-1.5">
             <label className="text-sm font-semibold text-neutral-700">Método de pago</label>
             <div className="flex gap-2">
@@ -642,6 +647,10 @@ export default function VentaPage() {
             </div>
           )}
 
+        </div>
+
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 space-y-4">
+          <h3 className="font-bold text-neutral-900">📝 Preparación</h3>
           <div className="space-y-1.5">
             <label className="text-sm font-semibold text-neutral-700">Estado inicial</label>
             <div className="flex flex-wrap gap-2">

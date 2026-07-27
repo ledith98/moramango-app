@@ -30,6 +30,30 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 
 export const CAMBIOS: Cambio[] = [
   {
+    fecha: '2026-07-26',
+    tipo: 'nuevo',
+    titulo: 'El cliente puede cancelar y contactarte',
+    detalle:
+      'En "Mis pedidos" el cliente ahora tiene un botón para cancelar su pedido si se equivocó, pero solo mientras siga en "Recibido" y sin pagar; si ya pagó o ya entró a preparación, se le pide contactarte. También hay un botón "Contáctanos por WhatsApp" en cada pedido para dudas.',
+    donde: 'Tienda → Mis pedidos',
+  },
+  {
+    fecha: '2026-07-26',
+    tipo: 'mejora',
+    titulo: 'Punto de venta ordenado por secciones',
+    detalle:
+      'La pantalla de Venta ahora separa los datos en tarjetas: Datos del cliente, Cobro y Preparación, para que no se pierda todo junto.',
+    donde: 'Punto de venta',
+  },
+  {
+    fecha: '2026-07-26',
+    tipo: 'mejora',
+    titulo: 'Productos sin selector de emojis',
+    detalle:
+      'Se quitó el selector de emojis del editor de productos. Ahora se usa la foto del producto; si no tiene, se muestra el icono de su categoría.',
+    donde: 'Productos → editar',
+  },
+  {
     fecha: '2026-07-25',
     tipo: 'nuevo',
     titulo: 'Corte de caja',

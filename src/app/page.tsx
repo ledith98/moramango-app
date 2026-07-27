@@ -1533,30 +1533,47 @@ export default function Home() {
                         </div>
                       )}
 
-                      {/* Pago pendiente: liquidarlo o cancelar */}
+                      {/* Pago pendiente: liquidarlo */}
                       {p.estadoPago === 'Pendiente' && p.estado !== 'Cancelado' && (
                         <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl p-3">
                           <p className="text-xs text-amber-800 mb-2">
-                            Este pedido quedó <b>sin pagar</b>. Puedes completarlo ahora o cancelarlo.
+                            Este pedido quedó <b>sin pagar</b>. Puedes completarlo ahora.
                           </p>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => pagarPendiente(p.idPedido)}
-                              disabled={accionPedido === p.idPedido}
-                              className="flex-1 bg-marron text-white text-sm font-bold py-2.5 rounded-xl active:scale-95 transition-transform disabled:opacity-50"
-                            >
-                              {accionPedido === p.idPedido ? 'Abriendo...' : '💳 Pagar ahora'}
-                            </button>
-                            {p.estado === 'Recibido' && (
-                              <button
-                                onClick={() => cancelarMiPedido(p.idPedido)}
-                                disabled={accionPedido === p.idPedido}
-                                className="flex-1 border border-red-200 text-red-600 text-sm font-semibold py-2.5 rounded-xl active:scale-95 transition-transform disabled:opacity-50"
-                              >
-                                Cancelar
-                              </button>
+                          <button
+                            onClick={() => pagarPendiente(p.idPedido)}
+                            disabled={accionPedido === p.idPedido}
+                            className="w-full bg-marron text-white text-sm font-bold py-2.5 rounded-xl active:scale-95 transition-transform disabled:opacity-50"
+                          >
+                            {accionPedido === p.idPedido ? 'Abriendo...' : '💳 Pagar ahora'}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Acciones generales del pedido */}
+                      {p.estado !== 'Cancelado' && (
+                        <div className="mt-3 flex flex-col gap-2">
+                          <a
+                            href={linkWhatsApp(
+                              TELEFONO_NEGOCIO,
+                              `¡Hola Moramango! 🥭 Tengo una duda sobre mi pedido ${p.idPedido}.`
                             )}
-                          </div>
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-full text-center border border-green-600 text-green-700 text-sm font-semibold py-2.5 rounded-xl active:scale-95 transition-transform"
+                          >
+                            💬 Contáctanos por WhatsApp
+                          </a>
+                          {/* Solo se puede cancelar si sigue en Recibido y sin pagar:
+                              ya pagado o en preparación, se contacta al negocio */}
+                          {p.estado === 'Recibido' && p.estadoPago !== 'Pagado' && (
+                            <button
+                              onClick={() => cancelarMiPedido(p.idPedido)}
+                              disabled={accionPedido === p.idPedido}
+                              className="w-full border border-red-200 text-red-600 text-sm font-semibold py-2.5 rounded-xl active:scale-95 transition-transform disabled:opacity-50"
+                            >
+                              {accionPedido === p.idPedido ? 'Cancelando…' : 'Cancelar pedido'}
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>

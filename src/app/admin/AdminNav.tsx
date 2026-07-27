@@ -7,6 +7,7 @@ const TABS = [
   { href: '/admin/venta', label: 'Venta', icon: '💵' },
   { href: '/admin/pedidos', label: 'Pedidos', icon: '🧾' },
   { href: '/admin/metricas', label: 'Métricas', icon: '📊' },
+  { href: '/admin/caja', label: 'Caja', icon: '💰' },
   { href: '/admin/productos', label: 'Productos', icon: '🥤' },
   { href: '/admin/jugo', label: 'Jugo del día', icon: '🍊' },
   { href: '/admin/insumos', label: 'Insumos', icon: '📦' },

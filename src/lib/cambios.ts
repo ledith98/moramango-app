@@ -32,6 +32,14 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-07-25',
     tipo: 'nuevo',
+    titulo: 'Corte de caja',
+    detalle:
+      'Nuevo apartado Caja: abres el día con tu fondo (con cuánto empiezas el cajón) y al cerrar cuentas el efectivo. La app suma sola las ventas en efectivo del día y te dice cuánto debería haber, cuánto contaste y si falta o sobra dinero. Queda el registro de cada corte.',
+    donde: 'Panel → Caja',
+  },
+  {
+    fecha: '2026-07-25',
+    tipo: 'nuevo',
     titulo: 'Cambio en pagos en efectivo',
     detalle:
       'Al cobrar en efectivo puedes poner con cuánto paga el cliente (botones de $50, $100, $200, $500 o "Justo") y la app calcula solo el cambio a devolver. Queda de registro en el pedido y sale impreso en el ticket (Recibido y Cambio).',

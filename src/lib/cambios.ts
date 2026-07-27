@@ -32,6 +32,14 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-07-26',
     tipo: 'nuevo',
+    titulo: 'Botón de WhatsApp siempre a la vista',
+    detalle:
+      'En la tienda hay un icono verde de WhatsApp arriba a la derecha, siempre visible, para que cualquiera pueda escribirte por un pedido, una duda o información. Aparte, cada pedido sigue teniendo su propio botón de contacto.',
+    donde: 'Tienda',
+  },
+  {
+    fecha: '2026-07-26',
+    tipo: 'nuevo',
     titulo: 'El cliente puede cancelar y contactarte',
     detalle:
       'En "Mis pedidos" el cliente ahora tiene un botón para cancelar su pedido si se equivocó, pero solo mientras siga en "Recibido" y sin pagar; si ya pagó o ya entró a preparación, se le pide contactarte. También hay un botón "Contáctanos por WhatsApp" en cada pedido para dudas.',
@@ -68,14 +76,6 @@ export const CAMBIOS: Cambio[] = [
     detalle:
       'Al cobrar en efectivo puedes poner con cuánto paga el cliente (botones de $50, $100, $200, $500 o "Justo") y la app calcula solo el cambio a devolver. Queda de registro en el pedido y sale impreso en el ticket (Recibido y Cambio).',
     donde: 'Punto de venta',
-  },
-  {
-    fecha: '2026-07-24',
-    tipo: 'nuevo',
-    titulo: 'Jugo del día',
-    detalle:
-      'Un solo lugar donde fijas el jugo del día: aparece como banner arriba en la tienda para que nadie tenga que preguntar, se avisa al grupo de Telegram, y desde ahí descargas la imagen 1080×1920 lista para tus historias. Eliges de la lista de jugos o escribes uno nuevo, con una nota opcional. El banner se quita solo al día siguiente si no pones otro.',
-    donde: 'Panel → Jugo del día',
   },
   {
     fecha: '2026-07-24',

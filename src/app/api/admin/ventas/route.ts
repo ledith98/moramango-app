@@ -47,6 +47,14 @@ export async function POST(req: NextRequest) {
   if (!METODOS_PAGO.includes(metodoPago)) {
     return NextResponse.json({ error: 'Método de pago inválido' }, { status: 400 });
   }
+  // En efectivo, el monto recibido es obligatorio (para el corte de caja).
+  // La cobertura del total se revalida más abajo, ya calculado el total.
+  if (metodoPago === 'Efectivo' && (efectivoRecibido === undefined || isNaN(parseFloat(efectivoRecibido)))) {
+    return NextResponse.json(
+      { error: 'Falta registrar con cuánto pagó el cliente en efectivo' },
+      { status: 400 }
+    );
+  }
   const estadoInicial = estado || 'Recibido';
   if (!ESTADOS_VALIDOS.includes(estadoInicial)) {
     return NextResponse.json({ error: 'Estado inválido' }, { status: 400 });
@@ -83,6 +91,13 @@ export async function POST(req: NextRequest) {
     : 'Ninguno';
   const descuento = descuentoPorBeneficio(canjea, totalBruto);
   const total = totalBruto - descuento;
+
+  if (metodoPago === 'Efectivo' && parseFloat(efectivoRecibido) + 0.001 < total) {
+    return NextResponse.json(
+      { error: 'El efectivo recibido no cubre el total' },
+      { status: 400 }
+    );
+  }
 
   // Fila en PEDIDOS — venta de mostrador
   const filaPedido = await appendRow('PEDIDOS', [

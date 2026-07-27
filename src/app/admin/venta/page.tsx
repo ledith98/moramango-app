@@ -351,6 +351,18 @@ export default function VentaPage() {
       setError('Escribe el nombre del cliente');
       return;
     }
+    // En efectivo es obligatorio capturar con cuánto pagó (o "Justo"), para
+    // que el corte de caja cuadre y quede el registro del cambio.
+    if (metodoPago === 'Efectivo') {
+      if (efectivoRecibido.trim() === '') {
+        setError('Registra con cuánto paga el cliente (o toca "Justo" si dio el monto exacto).');
+        return;
+      }
+      if (recibidoNum < total) {
+        setError(`El efectivo recibido no cubre el total de $${total.toFixed(2)}.`);
+        return;
+      }
+    }
 
     // Terminal: primero se cobra en la Point; la venta se registra solo si
     // el pago se aprueba (dentro del polling).
@@ -583,7 +595,7 @@ export default function VentaPage() {
           {metodoPago === 'Efectivo' && (
             <div className="space-y-1.5">
               <label className="text-sm font-semibold text-neutral-700">
-                ¿Con cuánto paga? <span className="font-normal text-neutral-500">(opcional)</span>
+                ¿Con cuánto paga? <span className="font-normal text-red-600">(obligatorio)</span>
               </label>
               <div className="flex flex-wrap gap-2">
                 {[50, 100, 200, 500].map((b) => (

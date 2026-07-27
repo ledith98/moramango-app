@@ -32,6 +32,14 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-07-26',
     tipo: 'nuevo',
+    titulo: 'Copiar el número del cliente al terminar la venta',
+    detalle:
+      'Si registras una venta con el teléfono del cliente, al terminar aparece un botón para copiar ese número, y así pegarlo en WhatsApp y mandarle su ticket digital.',
+    donde: 'Punto de venta',
+  },
+  {
+    fecha: '2026-07-26',
+    tipo: 'nuevo',
     titulo: 'Botón de WhatsApp siempre a la vista',
     detalle:
       'En la tienda hay un icono verde de WhatsApp arriba a la derecha, siempre visible, para que cualquiera pueda escribirte por un pedido, una duda o información. Aparte, cada pedido sigue teniendo su propio botón de contacto.',

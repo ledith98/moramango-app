@@ -69,6 +69,10 @@ export default function VentaPage() {
   const [error, setError] = useState('');
   const [ventaOk, setVentaOk] = useState<string | null>(null);
   const [ultimoTicket, setUltimoTicket] = useState<DatosTicket | null>(null);
+  // Teléfono capturado en la venta recién registrada, para copiarlo y
+  // pegarlo en WhatsApp al mandar el ticket
+  const [ultimoTelefono, setUltimoTelefono] = useState('');
+  const [telCopiado, setTelCopiado] = useState(false);
   // Cobro en terminal Point
   const [esperandoTerminal, setEsperandoTerminal] = useState(false);
   const [mensajeTerminal, setMensajeTerminal] = useState('');
@@ -230,6 +234,8 @@ export default function VentaPage() {
     });
 
     setVentaOk(data.idPedido);
+    setUltimoTelefono(telefono.trim());
+    setTelCopiado(false);
     setItems([]);
     setNombre('');
     setTelefono('');
@@ -687,6 +693,20 @@ export default function VentaPage() {
               <p className="text-green-700 font-semibold">✅ Venta registrada</p>
               <p className="font-mono text-sm text-green-800 mt-1">{ventaOk}</p>
             </div>
+            {/* Copiar el número del cliente para pegarlo en WhatsApp y
+                mandarle el ticket */}
+            {ultimoTelefono && (
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(ultimoTelefono);
+                  setTelCopiado(true);
+                  setTimeout(() => setTelCopiado(false), 2000);
+                }}
+                className="w-full flex items-center justify-center gap-2 bg-white border border-green-300 text-green-800 text-sm font-semibold py-2.5 rounded-xl active:scale-95 transition-transform"
+              >
+                {telCopiado ? '✅ Número copiado' : `📋 Copiar número · ${ultimoTelefono}`}
+              </button>
+            )}
             {ultimoTicket && <TicketBotones datos={ultimoTicket} />}
           </div>
         )}

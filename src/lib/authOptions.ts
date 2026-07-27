@@ -29,6 +29,10 @@ import type { NextAuthOptions } from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 import { getSheetData, appendRow, findRow, updateCell } from './googleSheets';
 
+// Cada cuánto se relee el rol/beneficio desde la hoja USUARIOS. Entre
+// refrescos, el dato viaja en la cookie de sesión sin tocar el Sheet.
+const REFRESCO_ROL_MS = 3 * 60 * 1000;
+
 export const authOptions: NextAuthOptions = {
   providers: [
     GoogleProvider({
@@ -88,18 +92,33 @@ export const authOptions: NextAuthOptions = {
     },
 
     async jwt({ token }) {
-      // Se ejecuta en cada request que valida sesión (incluyendo el
-      // middleware vía getToken()). Sin esto, token.rol nunca existe y
-      // el middleware bloquea a todos los admins sin importar el Sheet.
+      // El token (cookie firmada) es la ÚNICA fuente que lee la hoja
+      // USUARIOS; session() solo lo copia. Antes ambos leían la hoja en
+      // cada request = 2 lecturas por petición, y bajo uso intenso se
+      // topaba la cuota de Google (429) → el rol quedaba vacío → se
+      // expulsaba al admin al inicio.
+      //
+      // El rol se refresca a lo más cada REFRESCO_ROL_MS, no en cada
+      // request: un cambio de rol/beneficio aplica en minutos, sin
+      // martillar el Sheet.
       if (!token.email) return token;
+
+      const t = token as any;
+      const ahora = Date.now();
+      const vencido = !t.rolLeidoEn || ahora - t.rolLeidoEn > REFRESCO_ROL_MS;
+      if (t.rol && !vencido) return token;
 
       try {
         const usuarios = await getSheetData('USUARIOS');
         const usuario = usuarios.find((u) => u.Email === token.email);
         if (usuario) {
-          (token as any).rol = usuario.Rol || 'cliente';
-          (token as any).id_usuario = usuario.ID_Usuario;
-          (token as any).activo = usuario.Activo || 'si';
+          t.rol = usuario.Rol || 'cliente';
+          t.id_usuario = usuario.ID_Usuario;
+          t.activo = usuario.Activo || 'si';
+          t.beneficio = usuario.Beneficio_Disponible || '';
+          t.ciclo_actual = parseInt(usuario.Ciclo_Actual) || 0;
+          t.telefono = usuario.Telefono || '';
+          t.rolLeidoEn = ahora;
         }
       } catch (error) {
         console.error('Error en jwt callback:', error);
@@ -108,25 +127,17 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
 
-    async session({ session }) {
-      if (!session.user?.email) return session;
-
-      try {
-        const usuarios = await getSheetData('USUARIOS');
-        const usuario = usuarios.find((u) => u.Email === session.user!.email);
-
-        if (usuario) {
-          (session.user as any).id_usuario = usuario.ID_Usuario;
-          (session.user as any).rol = usuario.Rol || 'cliente';
-          (session.user as any).beneficio = usuario.Beneficio_Disponible;
-          (session.user as any).ciclo_actual = parseInt(usuario.Ciclo_Actual) || 0;
-          (session.user as any).telefono = usuario.Telefono || '';
-          (session.user as any).activo = usuario.Activo || 'si';
-        }
-      } catch (error) {
-        console.error('Error leyendo sesión:', error);
+    async session({ session, token }) {
+      // Copia desde el token; NO lee la hoja (ver jwt callback arriba)
+      const t = token as any;
+      if (session.user) {
+        (session.user as any).id_usuario = t.id_usuario;
+        (session.user as any).rol = t.rol;
+        (session.user as any).beneficio = t.beneficio;
+        (session.user as any).ciclo_actual = t.ciclo_actual ?? 0;
+        (session.user as any).telefono = t.telefono || '';
+        (session.user as any).activo = t.activo || 'si';
       }
-
       return session;
     },
   },

@@ -1,5 +1,31 @@
 import { google } from 'googleapis';
 
+/**
+ * Google limita las peticiones a ~60 lecturas/minuto por cuenta de
+ * servicio. Bajo uso intenso (guardar insumos seguido, que recarga varias
+ * hojas) se topa el límite y Google responde 429; sin manejo, la lectura
+ * falla y el panel se vacía o expulsa al usuario.
+ *
+ * Este envoltorio reintenta con espera creciente (300ms, 900ms, 2.7s)
+ * cuando el error es de cuota o temporal (429/503). Otros errores se
+ * propagan de inmediato.
+ */
+async function conReintento<T>(fn: () => Promise<T>, intentos = 4): Promise<T> {
+  let espera = 300;
+  for (let i = 0; ; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const code = (error as { code?: number; status?: number })?.code
+        ?? (error as { response?: { status?: number } })?.response?.status;
+      const temporal = code === 429 || code === 503 || code === 500;
+      if (!temporal || i >= intentos - 1) throw error;
+      await new Promise((r) => setTimeout(r, espera));
+      espera *= 3;
+    }
+  }
+}
+
 function getAuthClient() {
   const privateKey = process.env.GOOGLE_PRIVATE_KEY;
   if (!privateKey) throw new Error('Falta GOOGLE_PRIVATE_KEY');
@@ -26,11 +52,13 @@ export async function getSheetData(tabName: string, opciones?: { crudo?: boolean
   const auth = getAuthClient();
   const sheets = google.sheets({ version: 'v4', auth });
 
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: process.env.GOOGLE_SHEETS_ID,
-    range: tabName,
-    valueRenderOption: opciones?.crudo ? 'UNFORMATTED_VALUE' : 'FORMATTED_VALUE',
-  });
+  const response = await conReintento(() =>
+    sheets.spreadsheets.values.get({
+      spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+      range: tabName,
+      valueRenderOption: opciones?.crudo ? 'UNFORMATTED_VALUE' : 'FORMATTED_VALUE',
+    })
+  );
 
   const rows = response.data.values;
   if (!rows || rows.length < 2) return [];
@@ -62,10 +90,12 @@ export async function appendRow(tabName: string, values: (string | number | bool
   const sheets = google.sheets({ version: 'v4', auth });
 
   // 1. Leer datos actuales para saber en qué fila escribir
-  const currentData = await sheets.spreadsheets.values.get({
-    spreadsheetId: process.env.GOOGLE_SHEETS_ID,
-    range: tabName,
-  });
+  const currentData = await conReintento(() =>
+    sheets.spreadsheets.values.get({
+      spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+      range: tabName,
+    })
+  );
 
   const currentRows = currentData.data.values || [];
   const nextRow = currentRows.length + 1; // primera fila vacía después del último dato
@@ -78,12 +108,14 @@ export async function appendRow(tabName: string, values: (string | number | bool
   const endCol = String.fromCharCode(64 + numCols);
 
   // 3. Escribir con rango explícito — sin depender de detección automática
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: process.env.GOOGLE_SHEETS_ID,
-    range: `${tabName}!A${nextRow}:${endCol}${nextRow}`,
-    valueInputOption: 'USER_ENTERED',
-    requestBody: { values: [values] },
-  });
+  await conReintento(() =>
+    sheets.spreadsheets.values.update({
+      spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+      range: `${tabName}!A${nextRow}:${endCol}${nextRow}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [values] },
+    })
+  );
 
   return nextRow;
 }
@@ -98,12 +130,14 @@ export async function updateCell(
   const sheets = google.sheets({ version: 'v4', auth });
 
   const colLetter = String.fromCharCode(64 + colIndex);
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: process.env.GOOGLE_SHEETS_ID,
-    range: `${tabName}!${colLetter}${rowIndex}`,
-    valueInputOption: 'USER_ENTERED',
-    requestBody: { values: [[value]] },
-  });
+  await conReintento(() =>
+    sheets.spreadsheets.values.update({
+      spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+      range: `${tabName}!${colLetter}${rowIndex}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [[value]] },
+    })
+  );
 }
 
 /**
@@ -133,10 +167,12 @@ export async function updateCells(
     };
   });
 
-  await sheets.spreadsheets.values.batchUpdate({
-    spreadsheetId: process.env.GOOGLE_SHEETS_ID,
-    requestBody: { valueInputOption: 'USER_ENTERED', data },
-  });
+  await conReintento(() =>
+    sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+      requestBody: { valueInputOption: 'USER_ENTERED', data },
+    })
+  );
 }
 
 export async function findRow(tabName: string, columnName: string, value: string) {
@@ -155,25 +191,31 @@ export async function ensureSheet(tabName: string, headers: string[]): Promise<v
   const auth = getAuthClient();
   const sheets = google.sheets({ version: 'v4', auth });
 
-  const meta = await sheets.spreadsheets.get({
-    spreadsheetId: process.env.GOOGLE_SHEETS_ID,
-    fields: 'sheets.properties.title',
-  });
+  const meta = await conReintento(() =>
+    sheets.spreadsheets.get({
+      spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+      fields: 'sheets.properties.title',
+    })
+  );
   const existe = (meta.data.sheets || []).some((s) => s.properties?.title === tabName);
   if (existe) return;
 
-  await sheets.spreadsheets.batchUpdate({
-    spreadsheetId: process.env.GOOGLE_SHEETS_ID,
-    requestBody: { requests: [{ addSheet: { properties: { title: tabName } } }] },
-  });
+  await conReintento(() =>
+    sheets.spreadsheets.batchUpdate({
+      spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+      requestBody: { requests: [{ addSheet: { properties: { title: tabName } } }] },
+    })
+  );
 
   const endCol = String.fromCharCode(64 + headers.length);
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: process.env.GOOGLE_SHEETS_ID,
-    range: `${tabName}!A1:${endCol}1`,
-    valueInputOption: 'USER_ENTERED',
-    requestBody: { values: [headers] },
-  });
+  await conReintento(() =>
+    sheets.spreadsheets.values.update({
+      spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+      range: `${tabName}!A1:${endCol}1`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [headers] },
+    })
+  );
 }
 
 /**
@@ -188,10 +230,12 @@ export async function ensureColumn(tabName: string, columnName: string): Promise
   const auth = getAuthClient();
   const sheets = google.sheets({ version: 'v4', auth });
 
-  const headerRes = await sheets.spreadsheets.values.get({
-    spreadsheetId: process.env.GOOGLE_SHEETS_ID,
-    range: `${tabName}!1:1`,
-  });
+  const headerRes = await conReintento(() =>
+    sheets.spreadsheets.values.get({
+      spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+      range: `${tabName}!1:1`,
+    })
+  );
 
   const headers = (headerRes.data.values?.[0] as string[]) ?? [];
   const existente = headers.indexOf(columnName);
@@ -199,12 +243,14 @@ export async function ensureColumn(tabName: string, columnName: string): Promise
 
   const nuevoIndice = headers.length + 1;
   const colLetter = String.fromCharCode(64 + nuevoIndice);
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: process.env.GOOGLE_SHEETS_ID,
-    range: `${tabName}!${colLetter}1`,
-    valueInputOption: 'USER_ENTERED',
-    requestBody: { values: [[columnName]] },
-  });
+  await conReintento(() =>
+    sheets.spreadsheets.values.update({
+      spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+      range: `${tabName}!${colLetter}1`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [[columnName]] },
+    })
+  );
 
   return nuevoIndice;
 }

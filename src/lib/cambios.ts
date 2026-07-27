@@ -32,6 +32,14 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-07-27',
     tipo: 'arreglo',
+    titulo: 'Insumos ya no se vacían ni te sacan al inicio',
+    detalle:
+      'Al guardar insumos seguido, Google limitaba las lecturas y el panel se veía vacío (0 insumos) y a veces te regresaba al inicio de la app. Se arregló de dos formas: cuando Google limita, la app reintenta sola en vez de fallar; y el rol de administrador se lee mucho menos seguido (una vez cada pocos minutos en vez de dos veces por cada clic).',
+    donde: 'Insumos y panel',
+  },
+  {
+    fecha: '2026-07-27',
+    tipo: 'arreglo',
     titulo: 'Guardar insumos ya no tarda ni se cuelga',
     detalle:
       'Al guardar un insumo, ingrediente o compra, la app hacía una escritura por cada dato (unas 8 seguidas), y cada una tardaba lo suyo; a veces se atoraba. Ahora manda todo en un solo envío, así que guarda mucho más rápido y estable.',

@@ -15,12 +15,49 @@
  * conteo de insumos desfasado.
  */
 
-import { getSheetData, updateCell } from '@/lib/googleSheets';
+import { ensureColumn, getSheetData, updateCell } from '@/lib/googleSheets';
 import { consumoPorInsumo } from '@/lib/insumos';
 import { clavesDeInsumo, COL_ACT, estaEnUso, HOJA_ACTIVOS, HOJA_BIBLIOTECA } from '@/lib/inventario';
 import { leerRecetas } from '@/lib/recetario';
 
 type Direccion = 'apartar' | 'devolver';
+
+/**
+ * Ajusta las Existencias por producto (los de reventa, que llevan un
+ * conteo directo de piezas en la hoja Productos). Los elaborados dejan la
+ * columna vacía y no se tocan.
+ */
+async function moverExistenciasDeProducto(
+  itemsPedido: Record<string, string>[],
+  signo: number
+): Promise<void> {
+  try {
+    const productos = await getSheetData('Productos', { crudo: true });
+    const conControl = productos.some((p) => (p.Existencias ?? '').toString().trim() !== '');
+    if (!conControl) return; // nadie lleva existencias: nada que hacer
+
+    const colExistencias = await ensureColumn('Productos', 'Existencias');
+
+    // Cuánto se vendió de cada producto en este pedido
+    const vendido = new Map<string, number>();
+    for (const it of itemsPedido) {
+      if (!it.ID_Producto) continue;
+      vendido.set(it.ID_Producto, (vendido.get(it.ID_Producto) || 0) + (parseInt(it.Cantidad) || 1));
+    }
+
+    for (const [idProducto, cantidad] of vendido) {
+      const idx = productos.findIndex((p) => p.ID_Producto === idProducto);
+      if (idx === -1) continue;
+      const actual = (productos[idx].Existencias ?? '').toString().trim();
+      if (actual === '') continue; // producto sin control de existencias
+
+      const nuevo = Math.max(0, (parseFloat(actual) || 0) + signo * cantidad);
+      await updateCell('Productos', idx + 2, colExistencias, nuevo);
+    }
+  } catch (error) {
+    console.error('Error al ajustar existencias de producto:', error);
+  }
+}
 
 /**
  * Ajusta el stock de todos los insumos que consume un pedido.
@@ -37,6 +74,13 @@ export async function moverStockDePedido(
     const itemsPedido = detalles.filter((d) => d.ID_Pedido === idPedido);
     if (itemsPedido.length === 0) return;
 
+    const signo = direccion === 'apartar' ? -1 : 1;
+
+    // 1) Existencias por producto (reventa) — corre siempre, aunque el
+    //    producto no tenga receta de insumos.
+    await moverExistenciasDeProducto(itemsPedido, signo);
+
+    // 2) Insumos por receta (elaborados)
     const [catalogo, biblioteca, activos] = await Promise.all([
       leerRecetas(),
       getSheetData(HOJA_BIBLIOTECA, { crudo: true }),
@@ -51,8 +95,6 @@ export async function moverStockDePedido(
       catalogo
     );
     if (consumo.size === 0) return;
-
-    const signo = direccion === 'apartar' ? -1 : 1;
 
     // Cada insumo declara qué ingredientes de las recetas cubre (o se une
     // por nombre si no hay vínculo manual). El stock vive en el insumo

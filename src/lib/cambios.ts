@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-07-26',
+    tipo: 'mejora',
+    titulo: 'Existencias solo para productos de reventa',
+    detalle:
+      'El aviso de "últimas piezas / agotado" ya no sale en los productos elaborados (sándwiches, jugos, licuados), donde no tiene sentido. Ahora se maneja con un campo Existencias por producto: en Productos → editar pones cuántas piezas hay de conchas, galletas, bites, etc., y la tienda muestra el aviso y descuenta con cada venta. Los elaborados se dejan sin existencias.',
+    donde: 'Productos → editar',
+  },
+  {
+    fecha: '2026-07-26',
     tipo: 'nuevo',
     titulo: 'Copiar el número del cliente al terminar la venta',
     detalle:

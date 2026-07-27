@@ -13,6 +13,7 @@ interface Producto {
   Emoji?: string;
   Imagen_URL?: string;
   Oculto?: string;
+  Existencias?: string;
 }
 
 type EstadoProducto = 'vendiendo' | 'pausado' | 'oculto';
@@ -49,6 +50,7 @@ interface FormProducto {
   descripcion: string;
   precio: string;
   emoji: string;
+  existencias: string;
 }
 
 const FORM_VACIO: FormProducto = {
@@ -57,6 +59,7 @@ const FORM_VACIO: FormProducto = {
   descripcion: '',
   precio: '',
   emoji: '',
+  existencias: '',
 };
 
 
@@ -129,6 +132,7 @@ export default function ProductosPage() {
       descripcion: p.Descripcion,
       precio: p.Precio_Venta,
       emoji: p.Emoji || '',
+      existencias: p.Existencias ?? '',
     });
     setImagenUrl(p.Imagen_URL || '');
     setPegarUrl(false);
@@ -213,6 +217,7 @@ export default function ProductosPage() {
             precio: precioNum,
             emoji: form.emoji,
             imagenUrl,
+            existencias: form.existencias,
           }),
         });
       } else {
@@ -474,6 +479,31 @@ export default function ProductosPage() {
                 required
               />
             </div>
+
+            {editando && (
+              <div className="space-y-1.5 text-neutral-900">
+                <label className="text-sm font-semibold text-neutral-700">
+                  Existencias{' '}
+                  <span className="font-normal text-neutral-600">(solo productos de reventa)</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="numeric"
+                  value={form.existencias}
+                  onChange={(e) => setForm({ ...form, existencias: e.target.value })}
+                  placeholder="Déjalo vacío si no llevas conteo"
+                  className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-black"
+                />
+                <p className="text-xs text-neutral-600">
+                  Para conchas, galletas, bites y demás de reventa: pon cuántas piezas hay y la
+                  tienda mostrará &ldquo;últimas piezas&rdquo; y &ldquo;agotado&rdquo;, descontando
+                  con cada venta. Los productos elaborados (sándwiches, jugos, licuados) déjalo
+                  vacío.
+                </p>
+              </div>
+            )}
 
             {error && <p className="text-sm text-red-600">{error}</p>}
 

@@ -87,7 +87,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
-  const { idProducto, nombre, categoria, descripcion, precio, disponible, oculto, emoji, imagenUrl } =
+  const { idProducto, nombre, categoria, descripcion, precio, disponible, oculto, emoji, imagenUrl, existencias } =
     await req.json();
 
   if (!idProducto) {
@@ -142,6 +142,21 @@ export async function PATCH(req: NextRequest) {
     // al archivo: se traduce para que el <img> reciba la imagen
     const colImagen = await ensureColumn('Productos', 'Imagen_URL');
     await updateCell('Productos', fila.rowIndex, colImagen, normalizarUrlImagen(limpia));
+  }
+  // Existencias: solo para productos de reventa (conchas, galletas…). Vacío
+  // = sin control, no muestra "últimas piezas" ni se descuenta.
+  if (existencias !== undefined) {
+    const colExistencias = await ensureColumn('Productos', 'Existencias');
+    const limpio = (existencias ?? '').toString().trim();
+    if (limpio === '') {
+      await updateCell('Productos', fila.rowIndex, colExistencias, '');
+    } else {
+      const n = parseInt(limpio, 10);
+      if (isNaN(n) || n < 0) {
+        return NextResponse.json({ error: 'Existencias inválidas' }, { status: 400 });
+      }
+      await updateCell('Productos', fila.rowIndex, colExistencias, n);
+    }
   }
 
   return NextResponse.json({ success: true });

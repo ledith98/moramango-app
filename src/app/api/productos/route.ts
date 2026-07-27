@@ -1,37 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getSheetData } from '@/lib/googleSheets';
-import { disponibilidadPorProducto, type DisponibilidadProducto } from '@/lib/disponibilidad';
 import { normalizarUrlImagen } from '@/lib/imagenes';
-import { HOJA_ACTIVOS, HOJA_BIBLIOTECA } from '@/lib/inventario';
-import { leerRecetas } from '@/lib/recetario';
-
-/** Vacío si el inventario aún no está armado: la tienda no debe caerse. */
-async function calcularDisponibilidad(): Promise<Map<string, DisponibilidadProducto>> {
-  try {
-    const [catalogo, biblioteca, activos] = await Promise.all([
-      leerRecetas(),
-      getSheetData(HOJA_BIBLIOTECA, { crudo: true }),
-      getSheetData(HOJA_ACTIVOS, { crudo: true }),
-    ]);
-    return disponibilidadPorProducto(catalogo, biblioteca, activos);
-  } catch {
-    return new Map();
-  }
-}
 
 export async function GET() {
   try {
     // crudo: con el locale es_ES un precio de 52.50 se leía "52,50" y
     // parseFloat lo truncaba a 52. Hoy todos son enteros y nadie lo notó,
     // pero el primer precio con centavos habría cobrado de menos.
-    // En paralelo: eran dos esperas seguidas y cada lectura al Sheet
-    // cuesta ~150 ms, así que se duplicaba el tiempo de la tienda.
-    // El inventario puede no existir todavía: si falla, la tienda sigue
-    // funcionando sin límites de stock (que es como estaba antes).
-    const [todos, disponibilidad] = await Promise.all([
-      getSheetData('Productos', { crudo: true }),
-      calcularDisponibilidad(),
-    ]);
+    const todos = await getSheetData('Productos', { crudo: true });
 
     const publicos = todos
       // Tres estados, no dos:
@@ -52,7 +28,12 @@ export async function GET() {
         // guardadas antes de que existiera la traducción
         imagen: normalizarUrlImagen(p.Imagen_URL ?? ''),
         emoji: (p.Emoji ?? '').trim(),
-        disponibles: disponibilidad.get(p.ID_Producto)?.disponibles ?? null,
+        // Existencias por producto: solo se usa en los de reventa (conchas,
+        // galletas…). Los elaborados la dejan vacía y NO muestran "últimas
+        // piezas". Vacío = sin control de existencias, sin límite.
+        disponibles: (p.Existencias ?? '').toString().trim() === ''
+          ? null
+          : Math.max(0, Math.floor(parseFloat(p.Existencias) || 0)),
         /** false = pausado a mano desde el panel, se ve pero no se vende */
         disponible: (p.Disponible ?? '').toString().toUpperCase() !== 'FALSE',
         orden: parseInt(p.Orden_Menu) || 999,

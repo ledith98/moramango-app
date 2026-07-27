@@ -106,6 +106,39 @@ export async function updateCell(
   });
 }
 
+/**
+ * Escribe varias celdas de la MISMA fila (misma pestaña) en una sola
+ * petición. Cada updateCell suelto es un viaje a Google (~150 ms); al
+ * editar un insumo eran ~10 viajes en fila = >1.5 s y a veces se atoraba.
+ * Con esto es UN viaje.
+ *
+ * @param celdas  { colIndex (1-based) → valor }
+ */
+export async function updateCells(
+  tabName: string,
+  rowIndex: number,
+  celdas: Record<number, string | number | boolean>
+) {
+  const entradas = Object.entries(celdas);
+  if (entradas.length === 0) return;
+
+  const auth = getAuthClient();
+  const sheets = google.sheets({ version: 'v4', auth });
+
+  const data = entradas.map(([col, value]) => {
+    const colLetter = String.fromCharCode(64 + Number(col));
+    return {
+      range: `${tabName}!${colLetter}${rowIndex}`,
+      values: [[value]],
+    };
+  });
+
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+    requestBody: { valueInputOption: 'USER_ENTERED', data },
+  });
+}
+
 export async function findRow(tabName: string, columnName: string, value: string) {
   const rows = await getSheetData(tabName);
   const index = rows.findIndex((row) => row[columnName] === value);

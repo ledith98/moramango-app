@@ -840,15 +840,6 @@ export default function Home() {
                 >
                   💬
                 </a>
-                {session && (
-                  <button
-                    onClick={() => setVerMisPedidos(true)}
-                    className="w-10 h-10 rounded-full bg-neutral-100 text-black flex items-center justify-center text-lg active:scale-90 transition-transform"
-                    title="Mis pedidos"
-                  >
-                    🧾
-                  </button>
-                )}
                 {(session?.user as any)?.rol === 'admin' && (
                   <Link
                     href="/admin"
@@ -1597,6 +1588,26 @@ export default function Home() {
                     <p className="text-xs text-neutral-700">{session.user?.email}</p>
                   </div>
                 </div>
+              )}
+
+              {/* Historial de pedidos, ahora desde el perfil (antes era un
+                  icono en el encabezado) */}
+              {session && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVerPerfil(false);
+                    setVerMisPedidos(true);
+                  }}
+                  className="w-full flex items-center gap-3 bg-white p-4 rounded-2xl border border-neutral-100 active:scale-95 transition-transform text-left"
+                >
+                  <span className="text-2xl">🧾</span>
+                  <div className="flex-1">
+                    <p className="font-semibold text-neutral-900">Mis pedidos</p>
+                    <p className="text-xs text-neutral-700">Ve el historial y estado de tus pedidos</p>
+                  </div>
+                  <span className="text-neutral-400 text-xl">›</span>
+                </button>
               )}
 
               {/* Tarjeta de cliente: su código para acumular lealtad al

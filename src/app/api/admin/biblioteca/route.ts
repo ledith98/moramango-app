@@ -12,7 +12,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { appendRow, getSheetData, updateCell } from '@/lib/googleSheets';
+import { appendRow, getSheetData, updateCell, updateCells } from '@/lib/googleSheets';
 import { normalizarNombre } from '@/lib/insumos';
 import {
   clavesDeInsumo,
@@ -243,13 +243,17 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Ya existe otro insumo con ese nombre' }, { status: 400 });
   }
 
-  await updateCell(HOJA_BIBLIOTECA, fila, COL_BIB.nombre, nombreNuevo);
-  await updateCell(HOJA_BIBLIOTECA, fila, COL_BIB.unidadCompra, (datos?.unidadCompra || '').toString().trim());
-  await updateCell(HOJA_BIBLIOTECA, fila, COL_BIB.unidadReceta, (datos?.unidadReceta || '').toString().trim());
-  await updateCell(HOJA_BIBLIOTECA, fila, COL_BIB.equivalencia, equiv);
-  await updateCell(HOJA_BIBLIOTECA, fila, COL_BIB.categoria, (datos?.categoria || '').toString().trim().slice(0, 40));
-  await updateCell(HOJA_BIBLIOTECA, fila, COL_BIB.proveedor, (datos?.proveedor || '').toString().trim());
-  await updateCell(HOJA_BIBLIOTECA, fila, COL_BIB.contacto, (datos?.contacto || '').toString().trim());
+  // Todas las celdas del insumo en UN solo viaje a Google (antes eran
+  // ~8 seguidos y por eso tardaba/se colgaba al guardar)
+  const cambios: Record<number, string | number> = {
+    [COL_BIB.nombre]: nombreNuevo,
+    [COL_BIB.unidadCompra]: (datos?.unidadCompra || '').toString().trim(),
+    [COL_BIB.unidadReceta]: (datos?.unidadReceta || '').toString().trim(),
+    [COL_BIB.equivalencia]: equiv,
+    [COL_BIB.categoria]: (datos?.categoria || '').toString().trim().slice(0, 40),
+    [COL_BIB.proveedor]: (datos?.proveedor || '').toString().trim(),
+    [COL_BIB.contacto]: (datos?.contacto || '').toString().trim(),
+  };
 
   // Corregir un precio mal capturado sin tener que inventar una compra
   if (datos?.ultimoPrecioCompra !== undefined && datos.ultimoPrecioCompra !== '') {
@@ -257,8 +261,10 @@ export async function PATCH(req: NextRequest) {
     if (isNaN(precio) || precio < 0) {
       return NextResponse.json({ error: 'Precio inválido' }, { status: 400 });
     }
-    await updateCell(HOJA_BIBLIOTECA, fila, COL_BIB.ultimoPrecio, precio);
+    cambios[COL_BIB.ultimoPrecio] = precio;
   }
+
+  await updateCells(HOJA_BIBLIOTECA, fila, cambios);
 
   // Cascada del nombre a las recetas (Ingrediente = columna C en Catalogo)
   const nombreViejo = (actual.Nombre || '').toString().trim();

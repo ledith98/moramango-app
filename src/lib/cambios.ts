@@ -30,6 +30,22 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 
 export const CAMBIOS: Cambio[] = [
   {
+    fecha: '2026-07-27',
+    tipo: 'arreglo',
+    titulo: 'Guardar insumos ya no tarda ni se cuelga',
+    detalle:
+      'Al guardar un insumo, ingrediente o compra, la app hacía una escritura por cada dato (unas 8 seguidas), y cada una tardaba lo suyo; a veces se atoraba. Ahora manda todo en un solo envío, así que guarda mucho más rápido y estable.',
+    donde: 'Insumos y Recetario',
+  },
+  {
+    fecha: '2026-07-27',
+    tipo: 'mejora',
+    titulo: 'Inicio más limpio y "Mis pedidos" en tu perfil',
+    detalle:
+      'Se quitó el icono de pedidos del inicio para que se vea más despejado. Ahora el historial de pedidos está dentro de tu perfil: entras con tu cuenta (👤) y ahí ves "Mis pedidos".',
+    donde: 'Tienda',
+  },
+  {
     fecha: '2026-07-26',
     tipo: 'mejora',
     titulo: 'Existencias solo para productos de reventa',

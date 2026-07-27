@@ -19,7 +19,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { appendRow, getSheetData, updateCell } from '@/lib/googleSheets';
+import { appendRow, getSheetData, updateCell, updateCells } from '@/lib/googleSheets';
 import { consumoPorInsumo } from '@/lib/insumos';
 import {
   aUnidadesReceta,
@@ -216,13 +216,15 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Cantidad inválida' }, { status: 400 });
     }
 
-    // a) Sumar al stock, convirtiendo compra → receta
+    // a) Sumar al stock, convirtiendo compra → receta. Las 3 celdas del
+    // activo en un solo viaje a Google.
     const enReceta = aUnidadesReceta(cant, equivalencia);
     const nuevoStock = redondear(stockActual + enReceta, 3);
-    await updateCell(HOJA_ACTIVOS, filaAct, COL_ACT.stock, nuevoStock);
-    await updateCell(HOJA_ACTIVOS, filaAct, COL_ACT.ultimaCompra, fecha);
-    // Una compra fresca reinicia el status
-    await updateCell(HOJA_ACTIVOS, filaAct, COL_ACT.status, 'Fresco');
+    await updateCells(HOJA_ACTIVOS, filaAct, {
+      [COL_ACT.stock]: nuevoStock,
+      [COL_ACT.ultimaCompra]: fecha,
+      [COL_ACT.status]: 'Fresco', // una compra fresca reinicia el status
+    });
 
     // b) Actualizar el último precio en la biblioteca (el padre)
     const precio = parseFloat(precioTotal);
@@ -268,8 +270,10 @@ export async function PATCH(req: NextRequest) {
     if (isNaN(num) || num < 0) {
       return NextResponse.json({ error: 'Cantidad inválida' }, { status: 400 });
     }
-    await updateCell(HOJA_ACTIVOS, filaAct, COL_ACT.conteoFisico, redondear(num, 3));
-    await updateCell(HOJA_ACTIVOS, filaAct, COL_ACT.fechaConteo, fecha);
+    await updateCells(HOJA_ACTIVOS, filaAct, {
+      [COL_ACT.conteoFisico]: redondear(num, 3),
+      [COL_ACT.fechaConteo]: fecha,
+    });
     return NextResponse.json({ success: true });
   }
 

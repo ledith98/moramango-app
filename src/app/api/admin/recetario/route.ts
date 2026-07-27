@@ -11,7 +11,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { appendRow, getSheetData, updateCell } from '@/lib/googleSheets';
+import { appendRow, getSheetData, updateCells } from '@/lib/googleSheets';
 import { factorMerma } from '@/lib/insumos';
 import {
   costoPorUnidadReceta,
@@ -149,18 +149,20 @@ export async function PATCH(req: NextRequest) {
   }
   const fila = idx + 2;
 
+  const cambios: Record<number, string | number> = {};
   if (cantidad !== undefined) {
     const cant = parseFloat(cantidad);
     if (isNaN(cant) || cant <= 0) {
       return NextResponse.json({ error: 'La cantidad debe ser mayor a 0' }, { status: 400 });
     }
-    await updateCell(HOJA_RECETARIO, fila, COL_REC.cantidad, cant);
+    cambios[COL_REC.cantidad] = cant;
     // Al corregir la cantidad, el aviso de la migración ya no aplica
-    await updateCell(HOJA_RECETARIO, fila, COL_REC.notas, '');
+    cambios[COL_REC.notas] = '';
   }
   if (merma !== undefined) {
-    await updateCell(HOJA_RECETARIO, fila, COL_REC.merma, (merma || '').toString().trim());
+    cambios[COL_REC.merma] = (merma || '').toString().trim();
   }
+  await updateCells(HOJA_RECETARIO, fila, cambios);
 
   return NextResponse.json({ success: true });
 }
@@ -183,10 +185,12 @@ export async function DELETE(req: NextRequest) {
   // Se vacía la fila en vez de borrarla: eliminar filas recorrería todas
   // las de abajo y los índices que ya se leyeron dejarían de servir.
   const fila = idx + 2;
-  await updateCell(HOJA_RECETARIO, fila, COL_REC.idProducto, '');
-  await updateCell(HOJA_RECETARIO, fila, COL_REC.idBiblioteca, '');
-  await updateCell(HOJA_RECETARIO, fila, COL_REC.cantidad, '');
-  await updateCell(HOJA_RECETARIO, fila, COL_REC.notas, 'eliminado');
+  await updateCells(HOJA_RECETARIO, fila, {
+    [COL_REC.idProducto]: '',
+    [COL_REC.idBiblioteca]: '',
+    [COL_REC.cantidad]: '',
+    [COL_REC.notas]: 'eliminado',
+  });
 
   return NextResponse.json({ success: true });
 }

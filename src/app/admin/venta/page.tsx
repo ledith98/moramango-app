@@ -61,6 +61,8 @@ export default function VentaPage() {
   const [nombre, setNombre] = useState('');
   const [telefono, setTelefono] = useState('');
   const [metodoPago, setMetodoPago] = useState('Efectivo');
+  // Con cuánto pagó el cliente en efectivo, para calcular el cambio
+  const [efectivoRecibido, setEfectivoRecibido] = useState('');
   const [estado, setEstado] = useState('Recibido');
   const [notas, setNotas] = useState('');
   const [registrando, setRegistrando] = useState(false);
@@ -176,6 +178,9 @@ export default function VentaPage() {
       ? Math.min(montoReactivacion(beneficioCanjeado), totalBruto)
       : 0;
   const total = totalBruto - descuento;
+  // Cambio en efectivo: solo tiene sentido si el cliente da de más
+  const recibidoNum = parseFloat(efectivoRecibido.replace(',', '.')) || 0;
+  const cambio = metodoPago === 'Efectivo' && recibidoNum > total ? recibidoNum - total : 0;
 
   // Registra la venta en el sheet. estadoPago='Pagado' cuando el cobro ya
   // se aprobó (ej. terminal). Limpia el formulario al terminar.
@@ -193,6 +198,9 @@ export default function VentaPage() {
         estadoPago,
         idUsuario: cliente?.id,
         beneficioCanjeado,
+        // Solo para efectivo con cambio; queda de registro en el pedido
+        efectivoRecibido: metodoPago === 'Efectivo' && recibidoNum > 0 ? recibidoNum : undefined,
+        cambio: cambio > 0 ? cambio : undefined,
       }),
     });
     const data = await res.json();
@@ -213,6 +221,8 @@ export default function VentaPage() {
       descuento,
       total,
       metodoPago,
+      efectivoRecibido: cambio > 0 ? recibidoNum : undefined,
+      cambio: cambio > 0 ? cambio : undefined,
       lealtad:
         cliente && faltan > 0
           ? `Llevas ${cliente.ciclo + 1} de 5 pedidos para tu 15% de descuento`
@@ -224,6 +234,7 @@ export default function VentaPage() {
     setNombre('');
     setTelefono('');
     setMetodoPago('Efectivo');
+    setEfectivoRecibido('');
     setEstado('Recibido');
     setNotas('');
     setCliente(null);
@@ -567,6 +578,57 @@ export default function VentaPage() {
               ))}
             </div>
           </div>
+
+          {/* Cambio en efectivo: con cuánto pagó → cuánto se le regresa */}
+          {metodoPago === 'Efectivo' && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-semibold text-neutral-700">
+                ¿Con cuánto paga? <span className="font-normal text-neutral-500">(opcional)</span>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {[50, 100, 200, 500].map((b) => (
+                  <button
+                    key={b}
+                    type="button"
+                    onClick={() => setEfectivoRecibido(String(b))}
+                    className="px-3 py-2 rounded-lg text-sm font-semibold bg-neutral-100 text-neutral-700 active:scale-95"
+                  >
+                    ${b}
+                  </button>
+                ))}
+                {total > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setEfectivoRecibido(total.toFixed(2))}
+                    className="px-3 py-2 rounded-lg text-sm font-semibold bg-neutral-100 text-neutral-700 active:scale-95"
+                  >
+                    Justo
+                  </button>
+                )}
+              </div>
+              <input
+                type="number"
+                inputMode="decimal"
+                value={efectivoRecibido}
+                onChange={(e) => setEfectivoRecibido(e.target.value)}
+                placeholder="Cantidad recibida"
+                className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-sm text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-black"
+              />
+              {recibidoNum > 0 && recibidoNum < total && (
+                <p className="text-xs text-amber-700 font-semibold">
+                  Faltan ${(total - recibidoNum).toFixed(2)} para cubrir el total.
+                </p>
+              )}
+              {cambio > 0 && (
+                <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+                  <span className="text-sm font-semibold text-green-800">Cambio a devolver</span>
+                  <span className="text-2xl font-bold text-green-700 tabular-nums">
+                    ${cambio.toFixed(2)}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <label className="text-sm font-semibold text-neutral-700">Estado inicial</label>

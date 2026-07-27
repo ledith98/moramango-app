@@ -40,6 +40,9 @@ export interface DatosTicket {
   descuento: number;
   total: number;
   metodoPago?: string;
+  /** Efectivo con el que pagó el cliente (para mostrar el cambio) */
+  efectivoRecibido?: number;
+  cambio?: number;
   /** Ej: "Llevas 4 de 5 pedidos para tu 15% de descuento" */
   lealtad?: string;
 }
@@ -100,7 +103,8 @@ export async function generarTicket(datos: DatosTicket): Promise<HTMLCanvasEleme
   // del contenido: así el ticket nunca sale con papel en blanco de sobra,
   // sin depender de una estimación frágil.
   const altoMax =
-    1050 + datos.items.length * 80 + lineasDir.length * 30 + (datos.lealtad ? 140 : 0);
+    1050 + datos.items.length * 80 + lineasDir.length * 30 + (datos.lealtad ? 140 : 0) +
+    (datos.efectivoRecibido ? 64 : 0);
 
   const escala = 2; // nitidez al imprimir
   const lienzo = document.createElement('canvas');
@@ -242,6 +246,15 @@ export async function generarTicket(datos: DatosTicket): Promise<HTMLCanvasEleme
     ctx.textAlign = 'left';
     ctx.fillText(`FORMA PAGO: ${datos.metodoPago.toUpperCase()}`, MARGEN, y);
     y += 32;
+    // Efectivo recibido y cambio, cuando se capturaron
+    if (datos.efectivoRecibido && datos.efectivoRecibido > 0) {
+      ctx.fillText(`RECIBIDO: ${dinero(datos.efectivoRecibido)}`, MARGEN, y);
+      y += 32;
+      if (datos.cambio && datos.cambio > 0) {
+        ctx.fillText(`CAMBIO: ${dinero(datos.cambio)}`, MARGEN, y);
+        y += 32;
+      }
+    }
     punteado();
   }
 

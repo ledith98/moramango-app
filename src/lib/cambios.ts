@@ -30,6 +30,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 
 export const CAMBIOS: Cambio[] = [
   {
+    fecha: '2026-07-25',
+    tipo: 'nuevo',
+    titulo: 'Cambio en pagos en efectivo',
+    detalle:
+      'Al cobrar en efectivo puedes poner con cuánto paga el cliente (botones de $50, $100, $200, $500 o "Justo") y la app calcula solo el cambio a devolver. Queda de registro en el pedido y sale impreso en el ticket (Recibido y Cambio).',
+    donde: 'Punto de venta',
+  },
+  {
     fecha: '2026-07-24',
     tipo: 'nuevo',
     titulo: 'Jugo del día',

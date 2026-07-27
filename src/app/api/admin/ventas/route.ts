@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
-  const { nombre, telefono, metodoPago, estado, notas, items, estadoPago, idUsuario, beneficioCanjeado } =
+  const { nombre, telefono, metodoPago, estado, notas, items, estadoPago, idUsuario, beneficioCanjeado, efectivoRecibido, cambio } =
     await req.json();
 
   if (!nombre || typeof nombre !== 'string' || !nombre.trim()) {
@@ -108,6 +108,15 @@ export async function POST(req: NextRequest) {
   if (typeof telefono === 'string' && telefono.trim()) {
     const colTelefono = await ensureColumn('PEDIDOS', 'Telefono_Cliente');
     await updateCell('PEDIDOS', filaPedido, colTelefono, telefono.trim());
+  }
+
+  // Efectivo: con cuánto pagó y cuánto se le regresó, de registro
+  const recibido = parseFloat(efectivoRecibido);
+  if (metodoPago === 'Efectivo' && !isNaN(recibido) && recibido > 0) {
+    const colRecibido = await ensureColumn('PEDIDOS', 'Efectivo_Recibido');
+    await updateCell('PEDIDOS', filaPedido, colRecibido, Math.round(recibido * 100) / 100);
+    const colCambio = await ensureColumn('PEDIDOS', 'Cambio');
+    await updateCell('PEDIDOS', filaPedido, colCambio, Math.round((parseFloat(cambio) || 0) * 100) / 100);
   }
 
   // Cobro ya aprobado (ej. terminal Point): marcar el pago como confirmado

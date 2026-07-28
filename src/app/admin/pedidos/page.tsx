@@ -140,6 +140,7 @@ export default function PedidosPage() {
   const [detalle, setDetalle] = useState<Detalle | null>(null);
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [actualizando, setActualizando] = useState(false);
+  const [telCopiado, setTelCopiado] = useState(false);
 
   const cargarPedidos = useCallback(() => {
     setCargando(true);
@@ -163,6 +164,7 @@ export default function PedidosPage() {
   const abrirDetalle = (idPedido: string) => {
     setCargandoDetalle(true);
     setDetalle(null);
+    setTelCopiado(false);
     fetch(`/api/admin/pedidos/${idPedido}`)
       .then((res) => res.json())
       .then((data) => setDetalle(data))
@@ -381,7 +383,21 @@ export default function PedidosPage() {
                       <p className="font-mono text-sm text-neutral-700">{detalle.pedido.ID_Pedido}</p>
                       <h2 className="text-lg font-bold text-black">{detalle.cliente?.nombre || detalle.pedido.Nombre_Cliente_Snap}</h2>
                       {detalle.cliente?.telefono && (
-                        <p className="text-sm text-neutral-700">📞 {detalle.cliente.telefono}</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(detalle.cliente!.telefono);
+                            setTelCopiado(true);
+                            setTimeout(() => setTelCopiado(false), 2000);
+                          }}
+                          className="mt-0.5 inline-flex items-center gap-1.5 text-sm text-neutral-700 active:scale-95 transition-transform"
+                          title="Copiar número para mandar el comprobante por WhatsApp"
+                        >
+                          📞 {detalle.cliente.telefono}
+                          <span className="text-[11px] font-semibold text-marron bg-marron/10 px-1.5 py-0.5 rounded-md">
+                            {telCopiado ? '✅ copiado' : '📋 copiar'}
+                          </span>
+                        </button>
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-1.5 shrink-0">

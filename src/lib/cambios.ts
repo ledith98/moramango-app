@@ -30,6 +30,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 
 export const CAMBIOS: Cambio[] = [
   {
+    fecha: '2026-07-28',
+    tipo: 'nuevo',
+    titulo: 'Copiar el número del cliente desde Pedidos',
+    detalle:
+      'En el detalle de un pedido puedes tocar el teléfono del cliente para copiarlo, y así pegarlo en WhatsApp y mandarle su comprobante o ticket. Útil cuando no se hizo al momento de la venta. Ya existía en el punto de venta; ahora también en Pedidos.',
+    donde: 'Pedidos → abrir un pedido',
+  },
+  {
     fecha: '2026-07-27',
     tipo: 'arreglo',
     titulo: 'Insumos ya no se vacían ni te sacan al inicio',

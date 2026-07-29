@@ -66,6 +66,7 @@ interface ItemActivo {
   nivel: 'rojo' | 'amarillo' | 'verde' | 'gris';
   sugerenciaCompra: number;
   ultimaCompra: string;
+  ultimaCompraISO: string;
   diasDesdeCompra: number | null;
   status: string;
   conteoFisico: number | null;
@@ -74,6 +75,7 @@ interface ItemActivo {
 }
 
 interface CompraHistorial {
+  fila: number;
   fecha: string;
   cantidad: number;
   unidadCompra: string;
@@ -172,6 +174,7 @@ export default function InsumosPage() {
   const [compraPrecio, setCompraPrecio] = useState('');
   const [historial, setHistorial] = useState<CompraHistorial[] | null>(null);
   const [historialDe, setHistorialDe] = useState('');
+  const [historialId, setHistorialId] = useState('');
   const [recetasDe, setRecetasDe] = useState<{ id: string; nombre: string } | null>(null);
   const [productosCat, setProductosCat] = useState<ProductoConReceta[]>([]);
   const [seleccion, setSeleccion] = useState<string[]>([]);
@@ -398,10 +401,27 @@ export default function InsumosPage() {
 
   async function verHistorial(idBiblioteca: string, nombre: string) {
     setHistorialDe(nombre);
+    setHistorialId(idBiblioteca);
     setHistorial([]);
     const res = await fetch(`/api/admin/insumos?historial=${encodeURIComponent(idBiblioteca)}`);
     const data = await res.json();
     setHistorial(data.historial ?? []);
+  }
+
+  /** Borra una compra del historial. No devuelve el stock ni el precio;
+   *  es solo para limpiar un registro capturado por error. */
+  async function borrarCompra(h: CompraHistorial) {
+    if (!confirm(`¿Borrar la compra de ${h.cantidad} ${h.unidadCompra} ($${h.precioTotal})?`)) return;
+    setOcupado(true);
+    await fetch('/api/admin/insumos', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accion: 'borrarCompra', fila: h.fila }),
+    });
+    setOcupado(false);
+    // Recargar el historial abierto y la tabla (precios/costos pudieron cambiar)
+    if (historialId) await verHistorial(historialId, historialDe);
+    await cargar();
   }
 
   // ── Derivados ─────────────────────────────────────────────────────────────
@@ -603,7 +623,7 @@ export default function InsumosPage() {
                   <th className="p-3 font-semibold">Stock</th>
                   <th className="p-3 font-semibold">Consumo/día</th>
                   <th className="p-3 font-semibold">Alcanza para</th>
-                  <th className="p-3 font-semibold">Última compra</th>
+                  <th className="p-3 font-semibold">Fecha de compra</th>
                   <th className="p-3 font-semibold">Status</th>
                   <th className="p-3 font-semibold">Conteo físico</th>
                   <th className="p-3 font-semibold"></th>
@@ -645,21 +665,26 @@ export default function InsumosPage() {
                       </span>
                     </td>
                     <td className="p-3 whitespace-nowrap text-neutral-600">
-                      {a.diasDesdeCompra !== null ? (
-                        <>
-                          <span className="text-xs">
+                      <input
+                        type="date"
+                        value={a.ultimaCompraISO || ''}
+                        disabled={ocupado}
+                        onChange={(e) => accionActivo(a.id, { accion: 'fechaCompra', fechaISO: e.target.value })}
+                        className="bg-neutral-50 border border-neutral-200 rounded-lg px-2 py-1 text-xs text-neutral-900 focus:outline-none focus:border-marron disabled:opacity-50"
+                      />
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {a.diasDesdeCompra !== null && (
+                          <span className="text-[11px] text-neutral-600">
                             {a.diasDesdeCompra === 0 ? 'Hoy' : `Hace ${a.diasDesdeCompra} d`}
                           </span>
-                          <button
-                            onClick={() => verHistorial(a.idBiblioteca, a.nombre)}
-                            className="block text-[11px] text-marron font-semibold mt-0.5"
-                          >
-                            Ver precios
-                          </button>
-                        </>
-                      ) : (
-                        <span className="text-neutral-600 text-xs">Sin registrar</span>
-                      )}
+                        )}
+                        <button
+                          onClick={() => verHistorial(a.idBiblioteca, a.nombre)}
+                          className="text-[11px] text-marron font-semibold"
+                        >
+                          Ver compras
+                        </button>
+                      </div>
                     </td>
                     <td className="p-3">
                       <select
@@ -1288,17 +1313,27 @@ export default function InsumosPage() {
           ) : (
             <ul className="divide-y divide-neutral-100 text-sm">
               {historial.map((h, k) => (
-                <li key={k} className="py-2 flex justify-between gap-3">
-                  <div>
+                <li key={k} className="py-2 flex justify-between gap-3 items-center">
+                  <div className="min-w-0">
                     <p className="text-neutral-900 font-semibold">
                       {h.cantidad} {h.unidadCompra} · ${h.precioTotal}
                     </p>
                     <p className="text-xs text-neutral-600">{h.fecha}</p>
                   </div>
-                  <p className="text-neutral-600 text-right whitespace-nowrap">
-                    ${h.precioUnidadCompra}
-                    <span className="text-neutral-600 text-xs"> / {h.unidadCompra}</span>
-                  </p>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <p className="text-neutral-600 text-right whitespace-nowrap">
+                      ${h.precioUnidadCompra}
+                      <span className="text-neutral-600 text-xs"> / {h.unidadCompra}</span>
+                    </p>
+                    <button
+                      onClick={() => borrarCompra(h)}
+                      disabled={ocupado}
+                      className="text-xs font-semibold text-red-600 bg-red-50 px-2 py-1 rounded-lg active:scale-95 disabled:opacity-50"
+                      title="Borrar esta compra"
+                    >
+                      🗑️
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>

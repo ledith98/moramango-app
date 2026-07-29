@@ -32,6 +32,14 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-07-28',
     tipo: 'nuevo',
+    titulo: 'Fecha de compra editable y borrar compras',
+    detalle:
+      'En Insumos, la columna "Última compra" ahora es "Fecha de compra" y puedes ponerla o cambiarla a mano con un calendario (útil para registrar cuándo compraste algo). Y en "Ver compras" puedes borrar una compra registrada por error con el bote de basura.',
+    donde: 'Insumos activos',
+  },
+  {
+    fecha: '2026-07-28',
+    tipo: 'nuevo',
     titulo: 'Copiar el número del cliente desde Pedidos',
     detalle:
       'En el detalle de un pedido puedes tocar el teléfono del cliente para copiarlo, y así pegarlo en WhatsApp y mandarle su comprobante o ticket. Útil cuando no se hizo al momento de la venta. Ya existía en el punto de venta; ahora también en Pedidos.',

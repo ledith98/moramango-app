@@ -20,12 +20,13 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { appendRow, getSheetData, updateCell, updateCells } from '@/lib/googleSheets';
-import { consumoPorInsumo } from '@/lib/insumos';
+import { consumoPorInsumo, fechaCompraDesdeISO } from '@/lib/insumos';
 import {
   aUnidadesReceta,
   clavesDeInsumo,
   COL_ACT,
   COL_BIB,
+  COLS_COMPRAS,
   columnaEnUso,
   costoPorUnidadReceta,
   estaEnUso,
@@ -51,10 +52,14 @@ export async function GET(req: NextRequest) {
   // ── Historial de precios de un insumo ──
   const historialId = new URL(req.url).searchParams.get('historial');
   if (historialId) {
-    const compras = await getSheetData(HOJA_COMPRAS);
+    const compras = await getSheetData(HOJA_COMPRAS, { crudo: true });
     const historial = compras
-      .filter((c) => c.ID_Biblioteca === historialId)
-      .map((c) => ({
+      // Se guarda la fila real (índice + 2) ANTES de filtrar, para poder
+      // borrar esa compra puntual desde el modal de historial.
+      .map((c, i) => ({ c, fila: i + 2 }))
+      .filter(({ c }) => c.ID_Biblioteca === historialId)
+      .map(({ c, fila }) => ({
+        fila,
         fecha: c.Fecha || '',
         fechaISO: parsearFechaHora(c.Fecha)?.fechaISO || '',
         cantidad: parseFloat(c.Cantidad_Compra) || 0,
@@ -181,8 +186,29 @@ export async function PATCH(req: NextRequest) {
   }
   await prepararInventario();
 
-  const { id, accion, cantidadCompra, precioTotal, cantidad, valor } = await req.json();
-  if (!id || !['compra', 'conteo', 'ajustar', 'status', 'uso', 'stock'].includes(accion)) {
+  const { id, accion, cantidadCompra, precioTotal, cantidad, valor, fechaISO, fila } =
+    await req.json();
+  const ACCIONES = ['compra', 'conteo', 'ajustar', 'status', 'uso', 'stock', 'fechaCompra', 'borrarCompra'];
+  if (!accion || !ACCIONES.includes(accion)) {
+    return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 });
+  }
+
+  // ── Borrar una compra del historial ──
+  // No depende de un insumo activo: opera directo sobre la fila de
+  // Compras_Insumos. Se vacía la fila (no se borra) para no correr los
+  // índices de las demás; el historial ignora las filas vacías.
+  if (accion === 'borrarCompra') {
+    const nFila = parseInt(fila, 10);
+    if (isNaN(nFila) || nFila < 2) {
+      return NextResponse.json({ error: 'Compra inválida' }, { status: 400 });
+    }
+    const vacias: Record<number, string> = {};
+    for (let c = 1; c <= COLS_COMPRAS.length; c++) vacias[c] = '';
+    await updateCells(HOJA_COMPRAS, nFila, vacias);
+    return NextResponse.json({ success: true });
+  }
+
+  if (!id) {
     return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 });
   }
 
@@ -253,6 +279,22 @@ export async function PATCH(req: NextRequest) {
       agregadoEnReceta: enReceta,
       costoPorUnidadReceta: costoReceta,
     });
+  }
+
+  // ── Fecha de compra a mano (sin tocar stock ni precios) ──
+  if (accion === 'fechaCompra') {
+    const iso = (fechaISO || '').toString().trim();
+    if (iso === '') {
+      // Vacío = quitar la fecha de compra registrada
+      await updateCell(HOJA_ACTIVOS, filaAct, COL_ACT.ultimaCompra, '');
+      return NextResponse.json({ success: true });
+    }
+    const fechaMx = fechaCompraDesdeISO(iso);
+    if (!fechaMx) {
+      return NextResponse.json({ error: 'Fecha inválida' }, { status: 400 });
+    }
+    await updateCell(HOJA_ACTIVOS, filaAct, COL_ACT.ultimaCompra, fechaMx);
+    return NextResponse.json({ success: true });
   }
 
   // ── Corregir el stock a mano, sin tocar precios ni historial ──

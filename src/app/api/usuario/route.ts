@@ -64,14 +64,18 @@ export async function PATCH(req: NextRequest) {
   }
   if (typeof telefono === 'string') {
     const nuevoTel = telefono.trim();
-    // Un teléfono no puede quedar registrado en dos cuentas distintas.
-    const soloDigitos = (t: string) => (t || '').replace(/\D/g, '');
-    if (soloDigitos(nuevoTel).length >= 8) {
+    // Un teléfono no puede quedar registrado en dos cuentas distintas. Se
+    // compara por los últimos 10 dígitos (el número local): con
+    // comparación exacta, "8117850462" y "+52 8117850462" pasaban como
+    // distintos y el mismo número acababa en dos cuentas.
+    const clave = (t: string) => {
+      const d = (t || '').replace(/\D/g, '');
+      return d.length >= 10 ? d.slice(-10) : d;
+    };
+    if (clave(nuevoTel).length >= 8) {
       const usuarios = await getSheetData('USUARIOS');
       const enOtraCuenta = usuarios.some(
-        (u) =>
-          u.ID_Usuario !== usuario.id_usuario &&
-          soloDigitos(u.Telefono) === soloDigitos(nuevoTel)
+        (u) => u.ID_Usuario !== usuario.id_usuario && clave(u.Telefono) === clave(nuevoTel)
       );
       if (enOtraCuenta) {
         return NextResponse.json(

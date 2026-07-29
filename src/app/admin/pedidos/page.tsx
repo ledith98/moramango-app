@@ -60,6 +60,13 @@ function fechaMTY(diasAtras = 0): string {
   return t.toISOString().slice(0, 10);
 }
 
+/** "2026-07-29" → "29 jul 2026" */
+const fechaBonita = (iso: string) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  return `${d} ${meses[m - 1] ?? ''} ${y}`;
+};
+
 /** Primer día del mes actual (en Monterrey). */
 const primerDiaDelMes = () => fechaHoyMTY().slice(0, 8) + '01';
 
@@ -141,6 +148,9 @@ export default function PedidosPage() {
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [actualizando, setActualizando] = useState(false);
   const [telCopiado, setTelCopiado] = useState(false);
+  // Historial de compras del cliente del pedido abierto
+  const [historial, setHistorial] = useState<Pedido[] | null>(null);
+  const [historialDe, setHistorialDe] = useState('');
 
   const cargarPedidos = useCallback(() => {
     setCargando(true);
@@ -160,6 +170,22 @@ export default function PedidosPage() {
   const totalRango = pedidos
     .filter((p) => p.Estado !== 'Cancelado')
     .reduce((s, p) => s + (parseFloat(p.Total_Final) || 0), 0);
+
+  // Historial del cliente: las canceladas no cuentan para el total
+  const historialValidos = (historial ?? []).filter((p) => p.Estado !== 'Cancelado');
+  const totalHistorial = historialValidos.reduce(
+    (s, p) => s + (parseFloat(p.Total_Final) || 0),
+    0
+  );
+
+  /** Todas las compras de ese cliente, para ver cuándo y qué ha pedido. */
+  const verHistorialCliente = async (idUsuario: string, nombre: string) => {
+    setHistorialDe(nombre);
+    setHistorial([]);
+    const res = await fetch(`/api/admin/usuarios/${encodeURIComponent(idUsuario)}/pedidos`);
+    const data = await res.json();
+    setHistorial(data.pedidos ?? []);
+  };
 
   const abrirDetalle = (idPedido: string) => {
     setCargandoDetalle(true);
@@ -427,6 +453,20 @@ export default function PedidosPage() {
                       )}
                     </div>
                   </div>
+                  {/* Todas las compras de este cliente */}
+                  {detalle.pedido.ID_Usuario && (
+                    <button
+                      onClick={() =>
+                        verHistorialCliente(
+                          detalle.pedido.ID_Usuario,
+                          detalle.cliente?.nombre || detalle.pedido.Nombre_Cliente_Snap
+                        )
+                      }
+                      className="mt-3 w-full flex items-center justify-center gap-2 bg-neutral-100 text-neutral-900 font-semibold py-2.5 rounded-xl active:scale-95 transition-transform"
+                    >
+                      🧾 Ver sus compras anteriores
+                    </button>
+                  )}
                   {detalle.cliente?.telefono && (
                     <a
                       href={linkWhatsApp(
@@ -580,6 +620,73 @@ export default function PedidosPage() {
                 </div>
               </>
             ) : null}
+          </div>
+        </div>
+      )}
+
+      {/* Historial de compras de un cliente */}
+      {historial !== null && (
+        <div
+          className="fixed inset-0 bg-black/40 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => setHistorial(null)}
+        >
+          <div
+            className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[85vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 border-b border-neutral-100 flex items-start justify-between gap-3 shrink-0">
+              <div className="min-w-0">
+                <h2 className="text-lg font-bold text-black truncate">{historialDe}</h2>
+                <p className="text-sm text-neutral-700">
+                  {historialValidos.length} compra{historialValidos.length === 1 ? '' : 's'}
+                  {historialValidos.length > 0 && ` · $${totalHistorial.toFixed(2)} en total`}
+                </p>
+              </div>
+              <button
+                onClick={() => setHistorial(null)}
+                className="text-neutral-600 text-xl leading-none px-2 shrink-0"
+                aria-label="Cerrar"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 pt-3">
+              {historial.length === 0 ? (
+                <p className="text-sm text-neutral-700 text-center py-6">
+                  Este cliente todavía no tiene compras registradas.
+                </p>
+              ) : (
+                <ul className="divide-y divide-neutral-100">
+                  {historial.map((p) => {
+                    const info = parsearFechaHora(p.Fecha_Hora);
+                    const cancelado = p.Estado === 'Cancelado';
+                    return (
+                      <li key={p.ID_Pedido} className="py-2.5 flex items-center gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-sm font-semibold ${cancelado ? 'text-neutral-600 line-through' : 'text-neutral-900'}`}>
+                            {info ? fechaBonita(info.fechaISO) : p.Fecha_Hora}
+                            {info && <span className="font-normal text-neutral-700"> · {info.horaLegible}</span>}
+                          </p>
+                          <p className="text-[11px] text-neutral-600 font-mono">
+                            {p.ID_Pedido}
+                            {p.Origen_Venta === 'Local' ? ' · 🏪 Local' : ' · 📱 App'}
+                          </p>
+                        </div>
+                        <span
+                          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${colorEstado(p.Estado)}`}
+                        >
+                          {p.Estado}
+                        </span>
+                        <span className="font-bold text-neutral-900 tabular-nums shrink-0">
+                          ${(parseFloat(p.Total_Final) || 0).toFixed(2)}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
           </div>
         </div>
       )}

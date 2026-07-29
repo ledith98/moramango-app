@@ -85,6 +85,9 @@ export default function VentaPage() {
   const [resultados, setResultados] = useState<Cliente[]>([]);
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [aplicarBeneficio, setAplicarBeneficio] = useState(false);
+  // Artículo gratis de la décima compra: cuál del carrito se regala
+  const [articuloGratisId, setArticuloGratisId] = useState('');
+  const [topeArticulo, setTopeArticulo] = useState(35);
 
   useEffect(() => {
     fetch('/api/admin/productos')
@@ -96,6 +99,14 @@ export default function VentaPage() {
         setProductos(disponibles);
       })
       .finally(() => setCargando(false));
+
+    // Tope del artículo gratis, configurable desde Ajustes
+    fetch('/api/admin/ajustes')
+      .then((res) => res.json())
+      .then((d) => {
+        if (d?.topeArticuloGratis) setTopeArticulo(d.topeArticuloGratis);
+      })
+      .catch(() => {});
   }, []);
 
   // Detener el polling si se sale de la página con un cobro en curso
@@ -129,11 +140,13 @@ export default function VentaPage() {
     setResultados([]);
     setBusquedaCliente('');
     setAplicarBeneficio(false);
+    setArticuloGratisId('');
   };
 
   const quitarCliente = () => {
     setCliente(null);
     setAplicarBeneficio(false);
+    setArticuloGratisId('');
   };
 
   const cantidadDe = (idProducto: string) =>
@@ -172,16 +185,25 @@ export default function VentaPage() {
   };
 
   const totalBruto = items.reduce((sum, i) => sum + i.precio * i.cantidad, 0);
-  // Solo 15% y reactivación se descuentan automático; el artículo gratis se elige a mano
   const beneficioCanjeado =
     aplicarBeneficio && cliente ? cliente.beneficio : 'Ninguno';
+
+  // Productos del carrito que pueden regalarse (dentro del tope)
+  const candidatosGratis = items.filter((i) => i.precio <= topeArticulo);
+  const articuloGratis =
+    beneficioCanjeado === 'Articulo Gratis'
+      ? candidatosGratis.find((i) => i.id === articuloGratisId)
+      : undefined;
+
   const descuento =
     beneficioCanjeado === '15% Descuento'
       ? totalBruto * 0.15
       : esBeneficioReactivacion(beneficioCanjeado)
       ? Math.min(montoReactivacion(beneficioCanjeado), totalBruto)
+      : articuloGratis
+      ? articuloGratis.precio // solo una pieza, aunque lleve varias
       : 0;
-  const total = totalBruto - descuento;
+  const total = Math.max(0, totalBruto - descuento);
   // Cambio en efectivo: solo tiene sentido si el cliente da de más
   const recibidoNum = parseFloat(efectivoRecibido.replace(',', '.')) || 0;
   const cambio = metodoPago === 'Efectivo' && recibidoNum > total ? recibidoNum - total : 0;
@@ -202,6 +224,7 @@ export default function VentaPage() {
         estadoPago,
         idUsuario: cliente?.id,
         beneficioCanjeado,
+        articuloGratisId: articuloGratis?.id,
         // Solo para efectivo con cambio; queda de registro en el pedido
         efectivoRecibido: metodoPago === 'Efectivo' && recibidoNum > 0 ? recibidoNum : undefined,
         cambio: cambio > 0 ? cambio : undefined,
@@ -245,6 +268,7 @@ export default function VentaPage() {
     setNotas('');
     setCliente(null);
     setAplicarBeneficio(false);
+    setArticuloGratisId('');
     setBusquedaCliente('');
   };
 
@@ -460,7 +484,13 @@ export default function VentaPage() {
                   <span className="text-neutral-700">${totalBruto.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm text-green-600 font-medium">
-                  <span>🎁 Descuento 15% (lealtad)</span>
+                  <span>
+                    {articuloGratis
+                      ? `🎁 Gratis: ${articuloGratis.nombre}`
+                      : beneficioCanjeado === '15% Descuento'
+                      ? '🎁 Descuento 15% (lealtad)'
+                      : '🎁 Descuento (lealtad)'}
+                  </span>
                   <span>−${descuento.toFixed(2)}</span>
                 </div>
               </>
@@ -547,9 +577,42 @@ export default function VentaPage() {
                 </p>
               )}
               {aplicarBeneficio && cliente.beneficio === 'Articulo Gratis' && (
-                <p className="text-xs text-amber-700 mt-2">
-                  ⚠️ El artículo gratis (≤$35) no se descuenta solo: quítalo del total tú al cobrar.
-                </p>
+                <div className="mt-2 space-y-1.5">
+                  <label className="block text-xs font-semibold text-neutral-700">
+                    ¿Cuál se lleva gratis? (hasta ${topeArticulo})
+                  </label>
+                  {candidatosGratis.length === 0 ? (
+                    <p className="text-xs text-amber-700">
+                      {items.length === 0
+                        ? 'Agrega productos a la venta para elegir cuál va gratis.'
+                        : `Ningún producto de esta venta cuesta $${topeArticulo} o menos.`}
+                    </p>
+                  ) : (
+                    <>
+                      <select
+                        value={articuloGratisId}
+                        onChange={(e) => setArticuloGratisId(e.target.value)}
+                        className="w-full bg-white border border-neutral-200 rounded-xl p-2.5 text-sm text-neutral-900 focus:outline-none focus:border-black"
+                      >
+                        <option value="">Elige el producto…</option>
+                        {candidatosGratis.map((i) => (
+                          <option key={i.id} value={i.id}>
+                            {i.nombre} — ${i.precio.toFixed(2)}
+                          </option>
+                        ))}
+                      </select>
+                      {articuloGratis ? (
+                        <p className="text-xs font-semibold text-green-700">
+                          ✓ Se descuenta ${articuloGratis.precio.toFixed(2)} del total
+                        </p>
+                      ) : (
+                        <p className="text-xs text-amber-700">
+                          Elige cuál va gratis para que se descuente.
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
               )}
             </div>
           )}

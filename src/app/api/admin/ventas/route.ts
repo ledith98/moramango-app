@@ -14,6 +14,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { leerAjustes } from '@/lib/ajustes';
 import { appendRow, ensureColumn, getSheetData, updateCell } from '@/lib/googleSheets';
 import { actualizarLealtad, descuentoPorBeneficio } from '@/lib/lealtad';
 import { getAdminSession } from '@/lib/roles';
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
-  const { nombre, telefono, metodoPago, estado, notas, items, estadoPago, idUsuario, beneficioCanjeado, efectivoRecibido, cambio } =
+  const { nombre, telefono, metodoPago, estado, notas, items, estadoPago, idUsuario, beneficioCanjeado, efectivoRecibido, cambio, articuloGratisId } =
     await req.json();
 
   if (!nombre || typeof nombre !== 'string' || !nombre.trim()) {
@@ -89,8 +90,32 @@ export async function POST(req: NextRequest) {
   const canjea = idUsuario && beneficioCanjeado && beneficioCanjeado !== 'Ninguno'
     ? beneficioCanjeado
     : 'Ninguno';
-  const descuento = descuentoPorBeneficio(canjea, totalBruto);
-  const total = totalBruto - descuento;
+
+  // El artículo gratis se descuenta solo: el cajero elige cuál de los
+  // productos del carrito se regala y aquí se resta su precio. El tope se
+  // valida contra el ajuste guardado, no contra lo que mande el navegador.
+  let descuento = descuentoPorBeneficio(canjea, totalBruto);
+  let nombreArticuloGratis = '';
+  if (canjea === 'Articulo Gratis' && articuloGratisId) {
+    const { topeArticuloGratis } = await leerAjustes();
+    const elegido = items.find((i: any) => i.id === articuloGratisId);
+    if (!elegido) {
+      return NextResponse.json(
+        { error: 'El artículo gratis elegido no está en la venta' },
+        { status: 400 }
+      );
+    }
+    const precio = parseFloat(elegido.precio) || 0;
+    if (precio > topeArticuloGratis) {
+      return NextResponse.json(
+        { error: `El artículo gratis no puede costar más de $${topeArticuloGratis}` },
+        { status: 400 }
+      );
+    }
+    descuento += precio; // solo una pieza, aunque lleve varias
+    nombreArticuloGratis = elegido.nombre ?? '';
+  }
+  const total = Math.max(0, totalBruto - descuento);
 
   if (metodoPago === 'Efectivo' && parseFloat(efectivoRecibido) + 0.001 < total) {
     return NextResponse.json(
@@ -158,7 +183,10 @@ export async function POST(req: NextRequest) {
     canjea,                                   // Beneficio_Canjeado
     descuento,                                // Descuento_Monto
     total,                                    // Total_Final
-    notas?.trim() || '',
+    // Queda anotado qué se regaló, para poder revisarlo después
+    [notas?.trim(), nombreArticuloGratis ? `🎁 Gratis: ${nombreArticuloGratis}` : '']
+      .filter(Boolean)
+      .join(' · '),
     'Local',                                  // Origen_Venta
     (session.user as any).id_usuario ?? '',   // ID_Empleado — quién registró
   ]);

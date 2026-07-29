@@ -31,6 +31,30 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-07-29',
+    tipo: 'nuevo',
+    titulo: 'El artículo gratis se descuenta solo',
+    detalle:
+      'Cuando un cliente llega a sus 10 compras y aplicas su artículo gratis, ahora eliges de una lista cuál de los productos de la venta se lleva (solo aparecen los que están dentro del tope) y se descuenta solo del total. Ya no hay que restarlo a mano. Queda anotado en el pedido qué se regaló.',
+    donde: 'Punto de venta',
+  },
+  {
+    fecha: '2026-07-29',
+    tipo: 'nuevo',
+    titulo: 'Ajustes: el tope del artículo gratis lo decides tú',
+    detalle:
+      'Nuevo apartado Ajustes donde cambias el precio máximo del artículo gratis (antes estaba fijo en $35). Al escribir el monto te muestra en el momento qué productos entrarían con ese tope.',
+    donde: 'Panel → Ajustes',
+  },
+  {
+    fecha: '2026-07-29',
+    tipo: 'nuevo',
+    titulo: 'Ver las compras anteriores de un cliente',
+    detalle:
+      'Al abrir un pedido de un cliente registrado, el botón "Ver sus compras anteriores" muestra todo su historial: qué día y a qué hora compró, si fue en local o por la app, y cuánto ha gastado en total.',
+    donde: 'Pedidos → abrir un pedido',
+  },
+  {
+    fecha: '2026-07-29',
     tipo: 'arreglo',
     titulo: 'El cliente de mostrador ya queda registrado',
     detalle:

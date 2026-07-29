@@ -30,6 +30,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 
 export const CAMBIOS: Cambio[] = [
   {
+    fecha: '2026-07-29',
+    tipo: 'arreglo',
+    titulo: 'El cliente de mostrador ya queda registrado',
+    detalle:
+      'Antes, si vendías en el local escribiendo el nombre y teléfono de un cliente, no quedaba guardado: la próxima vez no lo encontrabas y su lealtad no acumulaba. Ahora, al registrar una venta con teléfono, el cliente se da de alta solo (o se liga al que ya existía con ese número), y empieza a acumular desde su primera compra. Reconoce el número aunque se escriba con o sin +52.',
+    donde: 'Punto de venta',
+  },
+  {
     fecha: '2026-07-28',
     tipo: 'nuevo',
     titulo: 'Fecha de compra editable y borrar compras',

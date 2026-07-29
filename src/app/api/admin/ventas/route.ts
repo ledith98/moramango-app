@@ -99,10 +99,57 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Resolver el cliente. Antes, una venta de mostrador con nombre+teléfono
+  // NO quedaba registrada: la próxima vez no se encontraba al cliente y su
+  // lealtad nunca acumulaba. Ahora, si no se ligó a un cliente existente
+  // pero hay teléfono, se busca por teléfono o se da de alta uno nuevo.
+  let idCliente = (idUsuario || '').toString().trim();
+  const telLimpio = typeof telefono === 'string' ? telefono.trim() : '';
+  if (!idCliente && telLimpio) {
+    const usuarios = await getSheetData('USUARIOS');
+    // Compara por los últimos 10 dígitos (el número local) para que el
+    // mismo cliente no se duplique aunque un día se escriba con lada (+52)
+    // y otro sin ella.
+    const clave = (t: string) => {
+      const d = (t || '').replace(/\D/g, '');
+      return d.length >= 10 ? d.slice(-10) : d;
+    };
+    const claveTel = clave(telLimpio);
+    const existente =
+      claveTel.length >= 7
+        ? usuarios.find((u) => clave(u.Telefono) === claveTel)
+        : undefined;
+    if (existente) {
+      idCliente = existente.ID_Usuario; // ya existía (app o mostrador previo)
+    } else {
+      // ID por el máximo existente, no por el conteo (evita choques si se
+      // borró alguna fila)
+      const maxN = usuarios.reduce((m, u) => {
+        const n = parseInt((u.ID_Usuario || '').replace(/\D/g, ''), 10);
+        return isNaN(n) ? m : Math.max(m, n);
+      }, 0);
+      idCliente = `USR-${String(maxN + 1).padStart(3, '0')}`;
+      await appendRow('USUARIOS', [
+        idCliente,          // A ID_Usuario
+        nombre.trim(),      // B Nombre
+        telLimpio,          // C Telefono
+        'cliente',          // D Rol
+        '',                 // E Email (mostrador, sin cuenta de Google)
+        fechaStr,           // F Fecha_Registro
+        0,                  // G Ciclo_Actual
+        0,                  // H Total_Articulos_Historico
+        'Ninguno',          // I Beneficio_Disponible
+        'Alta desde mostrador', // J Notas_Admin
+        'si',               // K Activo
+        fechaStr,           // L Ultimo_Acceso
+      ]);
+    }
+  }
+
   // Fila en PEDIDOS — venta de mostrador
   const filaPedido = await appendRow('PEDIDOS', [
     idPedido,
-    idUsuario || '',                          // ID_Usuario — si se identificó al cliente
+    idCliente,                                // ID_Usuario — cliente ligado o recién creado
     nombre.trim(),                            // Nombre_Cliente_Snap
     fechaStr,
     estadoInicial,
@@ -163,9 +210,9 @@ export async function POST(req: NextRequest) {
   // La venta en mostrador consume igual que un pedido de la app
   await moverStockDePedido(idPedido, 'apartar');
 
-  // Lealtad del cliente identificado (si la venta se ligó a alguien)
-  if (idUsuario) {
-    await actualizarLealtad(idUsuario, canjea);
+  // Lealtad del cliente (ligado, o recién creado desde el mostrador)
+  if (idCliente) {
+    await actualizarLealtad(idCliente, canjea);
   }
 
   return NextResponse.json({ success: true, idPedido, total, descuento });

@@ -34,7 +34,7 @@ export const CAMBIOS: Cambio[] = [
     tipo: 'arreglo',
     titulo: 'El cliente de mostrador ya queda registrado',
     detalle:
-      'Antes, si vendías en el local escribiendo el nombre y teléfono de un cliente, no quedaba guardado: la próxima vez no lo encontrabas y su lealtad no acumulaba. Ahora, al registrar una venta con teléfono, el cliente se da de alta solo (o se liga al que ya existía con ese número), y empieza a acumular desde su primera compra. Reconoce el número aunque se escriba con o sin +52.',
+      'Antes, si vendías en el local escribiendo el nombre y teléfono de un cliente, no quedaba guardado: la próxima vez no lo encontrabas y su lealtad no acumulaba. Ahora, al registrar una venta con teléfono, el cliente se da de alta solo (o se liga al que ya existía con ese número), y empieza a acumular desde su primera compra. Reconoce el número aunque se escriba con o sin +52. Además se recuperaron las ventas que ya estaban registradas: 11 ventas quedaron ligadas a sus clientes y se dieron de alta 7 clientes con su avance de lealtad.',
     donde: 'Punto de venta',
   },
   {

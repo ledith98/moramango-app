@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-07-29',
+    tipo: 'arreglo',
+    titulo: 'Un teléfono, una sola cuenta',
+    detalle:
+      'El sistema comparaba los números tal cual, así que "8117850462" y "+52 8117850462" le parecían distintos y el mismo número podía quedar en dos cuentas. Ahora los reconoce como el mismo en cualquier formato. También se limpió el número que estaba repetido: se quedó en la cuenta que tiene las compras.',
+    donde: 'Usuarios',
+  },
+  {
+    fecha: '2026-07-29',
     tipo: 'nuevo',
     titulo: 'El artículo gratis se descuenta solo',
     detalle:

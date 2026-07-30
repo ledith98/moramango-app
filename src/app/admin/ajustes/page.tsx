@@ -9,12 +9,21 @@ import { useCallback, useEffect, useState } from 'react';
 interface Producto {
   nombre: string;
   precio: number;
+  categoria: string;
 }
+
+/** Igual que en el servidor: comparar sin acentos ni mayúsculas. */
+const clave = (c: string) =>
+  (c || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
 export default function AjustesPage() {
   const [tope, setTope] = useState('');
   const [topeGuardado, setTopeGuardado] = useState(35);
   const [productos, setProductos] = useState<Producto[]>([]);
+  const [orden, setOrden] = useState<string[]>([]);
+  const [ordenGuardado, setOrdenGuardado] = useState<string[]>([]);
+  const [guardandoOrden, setGuardandoOrden] = useState(false);
+  const [okOrden, setOkOrden] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [ok, setOk] = useState(false);
@@ -31,14 +40,26 @@ export default function AjustesPage() {
       setTope(String(a.topeArticuloGratis));
       setTopeGuardado(a.topeArticuloGratis);
     }
-    setProductos(
-      (p.productos || [])
-        .filter((x: Record<string, string>) => (x.Eliminado || '').toUpperCase() !== 'TRUE')
-        .map((x: Record<string, string>) => ({
-          nombre: x.Nombre || '',
-          precio: parseFloat(x.Precio_Venta) || 0,
-        }))
-    );
+    const lista: Producto[] = (p.productos || [])
+      .filter((x: Record<string, string>) => (x.Eliminado || '').toUpperCase() !== 'TRUE')
+      .map((x: Record<string, string>) => ({
+        nombre: x.Nombre || '',
+        precio: parseFloat(x.Precio_Venta) || 0,
+        categoria: (x['Categoría'] || x.Categoria || 'Otros').trim() || 'Otros',
+      }));
+    setProductos(lista);
+
+    // El orden guardado manda, pero la lista que se ve son los grupos que
+    // de verdad existen hoy: si se crea uno nuevo aparece al final, y si se
+    // deja de usar uno deja de estorbar.
+    const existentes = Array.from(new Set(lista.map((x) => x.categoria)));
+    const guardado: string[] = a?.ordenCategorias || [];
+    const final = [
+      ...guardado.filter((c) => existentes.some((e) => clave(e) === clave(c))),
+      ...existentes.filter((e) => !guardado.some((c) => clave(c) === clave(e))),
+    ];
+    setOrden(final);
+    setOrdenGuardado(final);
     setCargando(false);
   }, []);
 
@@ -70,6 +91,37 @@ export default function AjustesPage() {
     setTimeout(() => setOk(false), 2500);
   }
 
+  function mover(i: number, hacia: -1 | 1) {
+    const j = i + hacia;
+    if (j < 0 || j >= orden.length) return;
+    const copia = [...orden];
+    [copia[i], copia[j]] = [copia[j], copia[i]];
+    setOrden(copia);
+  }
+
+  async function guardarOrden() {
+    setGuardandoOrden(true);
+    setError('');
+    const res = await fetch('/api/admin/ajustes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ordenCategorias: orden }),
+    });
+    const data = await res.json();
+    setGuardandoOrden(false);
+    if (!res.ok) {
+      setError(data.error || 'No se pudo guardar el orden');
+      return;
+    }
+    setOrdenGuardado(orden);
+    setOkOrden(true);
+    setTimeout(() => setOkOrden(false), 2500);
+  }
+
+  const ordenCambiado = orden.join('|') !== ordenGuardado.join('|');
+  const cuantos = (cat: string) =>
+    productos.filter((p) => clave(p.categoria) === clave(cat)).length;
+
   // Vista previa con el valor que se está escribiendo, no el guardado
   const topeVista = parseFloat(tope.replace(',', '.')) || 0;
   const entran = productos
@@ -83,6 +135,71 @@ export default function AjustesPage() {
       <p className="text-sm text-neutral-700">
         Reglas del negocio que puedes cambiar tú, sin que nadie toque la aplicación.
       </p>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5 space-y-4">
+        <div>
+          <h2 className="font-bold text-neutral-900">📋 Orden de los grupos en la tienda</h2>
+          <p className="text-sm text-neutral-700 mt-1">
+            Así los ve el cliente al entrar, de arriba hacia abajo. Sube lo que quieras que vean
+            primero.
+          </p>
+        </div>
+
+        <ol className="space-y-2">
+          {orden.map((cat, i) => (
+            <li
+              key={cat}
+              className="flex items-center gap-3 bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2.5"
+            >
+              <span className="w-6 h-6 shrink-0 rounded-full bg-marron text-white text-xs font-bold flex items-center justify-center">
+                {i + 1}
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-neutral-900 truncate">{cat}</p>
+                <p className="text-xs text-neutral-600">
+                  {cuantos(cat)} producto{cuantos(cat) === 1 ? '' : 's'}
+                </p>
+              </div>
+              <div className="flex gap-1 shrink-0">
+                <button
+                  onClick={() => mover(i, -1)}
+                  disabled={i === 0}
+                  aria-label={`Subir ${cat}`}
+                  className="w-9 h-9 rounded-lg bg-white border border-neutral-300 text-neutral-900 font-bold active:scale-95 disabled:opacity-30"
+                >
+                  ↑
+                </button>
+                <button
+                  onClick={() => mover(i, 1)}
+                  disabled={i === orden.length - 1}
+                  aria-label={`Bajar ${cat}`}
+                  className="w-9 h-9 rounded-lg bg-white border border-neutral-300 text-neutral-900 font-bold active:scale-95 disabled:opacity-30"
+                >
+                  ↓
+                </button>
+              </div>
+            </li>
+          ))}
+        </ol>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={guardarOrden}
+            disabled={guardandoOrden || !ordenCambiado}
+            className="bg-marron text-white font-semibold px-5 py-3 rounded-xl active:scale-95 disabled:opacity-50"
+          >
+            {guardandoOrden ? 'Guardando…' : okOrden ? '✅ Guardado' : 'Guardar orden'}
+          </button>
+          {ordenCambiado && (
+            <button
+              onClick={() => setOrden(ordenGuardado)}
+              className="text-sm font-semibold text-neutral-700 px-3 py-3"
+            >
+              Deshacer
+            </button>
+          )}
+        </div>
+      </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5 space-y-4">
         <div>

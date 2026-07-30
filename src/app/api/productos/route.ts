@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getSheetData } from '@/lib/googleSheets';
 import { normalizarUrlImagen } from '@/lib/imagenes';
+import { leerAjustes, posicionCategoria } from '@/lib/ajustes';
 
 export async function GET() {
   try {
+    // En qué orden quiere la dueña que se vean los grupos (Panel → Ajustes)
+    const { ordenCategorias } = await leerAjustes();
     // crudo: con el locale es_ES un precio de 52.50 se leía "52,50" y
     // parseFloat lo truncaba a 52. Hoy todos son enteros y nadie lo notó,
     // pero el primer precio con centavos habría cobrado de menos.
@@ -38,9 +41,16 @@ export async function GET() {
         disponible: (p.Disponible ?? '').toString().toUpperCase() !== 'FALSE',
         orden: parseInt(p.Orden_Menu) || 999,
       }))
-      .sort((a, b) => a.orden - b.orden);
+      // Primero manda el grupo (Combos, Comida salada…) y ya dentro de cada
+      // grupo el orden del producto. La tienda arma las secciones siguiendo
+      // este arreglo, así que ordenar aquí es lo que mueve el menú.
+      .sort(
+        (a, b) =>
+          posicionCategoria(a.categoria, ordenCategorias) -
+            posicionCategoria(b.categoria, ordenCategorias) || a.orden - b.orden
+      );
 
-    return NextResponse.json({ productos: publicos });
+    return NextResponse.json({ productos: publicos, ordenCategorias });
   } catch (error) {
     console.error('Error en /api/productos:', error);
     return NextResponse.json(

@@ -30,6 +30,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 
 export const CAMBIOS: Cambio[] = [
   {
+    fecha: '2026-07-30',
+    tipo: 'nuevo',
+    titulo: 'Tú decides qué grupo va primero en la tienda',
+    detalle:
+      'En Ajustes puedes subir y bajar los grupos de alimentos con las flechas, y así los verá el cliente al entrar. Quedó como Combos, Comida salada, Jugos, Licuados, Comida dulce y Bebidas, pero se cambia cuando quieras. Si más adelante creas un grupo nuevo, aparece al final de la lista para que lo acomodes.',
+    donde: 'Ajustes',
+  },
+  {
     fecha: '2026-07-29',
     tipo: 'arreglo',
     titulo: 'Un teléfono, una sola cuenta',

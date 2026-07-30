@@ -18,8 +18,44 @@ const COLS = ['Clave', 'Valor', 'Nota', 'Fecha'];
 export const CLAVE_TOPE_ARTICULO = 'TopeArticuloGratis';
 export const TOPE_ARTICULO_DEFAULT = 35;
 
+/**
+ * En qué orden se ven los grupos de alimentos en la tienda.
+ *
+ * Se guarda con "|" y no con coma porque una categoría podría llevar coma
+ * en el nombre y partiría la lista en dos.
+ */
+export const CLAVE_ORDEN_CATEGORIAS = 'OrdenCategorias';
+export const ORDEN_CATEGORIAS_DEFAULT = [
+  'Combos',
+  'Comida salada',
+  'Jugos',
+  'Licuados',
+  'Comida dulce',
+  'Bebidas',
+];
+const SEPARADOR = '|';
+
 export interface Ajustes {
   topeArticuloGratis: number;
+  ordenCategorias: string[];
+}
+
+/** Para comparar categorías sin que estorben acentos, mayúsculas o espacios. */
+export function claveCategoria(nombre: string): string {
+  return (nombre || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '');
+}
+
+/**
+ * Posición de una categoría según el orden guardado. Las que no estén en la
+ * lista (una nueva que se acabe de crear) se van al final, no desaparecen.
+ */
+export function posicionCategoria(categoria: string, orden: string[]): number {
+  const i = orden.findIndex((c) => claveCategoria(c) === claveCategoria(categoria));
+  return i === -1 ? orden.length : i;
 }
 
 async function preparar() {
@@ -32,13 +68,34 @@ export async function leerAjustes(): Promise<Ajustes> {
     const filas = await getSheetData(HOJA, { crudo: true });
     const valor = filas.find((f) => f.Clave === CLAVE_TOPE_ARTICULO)?.Valor;
     const tope = parseFloat((valor ?? '').toString());
+
+    const crudo = (filas.find((f) => f.Clave === CLAVE_ORDEN_CATEGORIAS)?.Valor ?? '').toString();
+    const orden = crudo
+      .split(SEPARADOR)
+      .map((c) => c.trim())
+      .filter(Boolean);
+
     return {
       topeArticuloGratis: !isNaN(tope) && tope > 0 ? tope : TOPE_ARTICULO_DEFAULT,
+      ordenCategorias: orden.length > 0 ? orden : ORDEN_CATEGORIAS_DEFAULT,
     };
   } catch {
     // Si la hoja falla, el negocio sigue con los valores de siempre
-    return { topeArticuloGratis: TOPE_ARTICULO_DEFAULT };
+    return {
+      topeArticuloGratis: TOPE_ARTICULO_DEFAULT,
+      ordenCategorias: ORDEN_CATEGORIAS_DEFAULT,
+    };
   }
+}
+
+/** Guarda el orden en que se ven los grupos en la tienda. */
+export async function guardarOrdenCategorias(orden: string[]): Promise<void> {
+  const limpio = orden.map((c) => c.trim()).filter(Boolean);
+  await guardarAjuste(
+    CLAVE_ORDEN_CATEGORIAS,
+    limpio.join(SEPARADOR),
+    'Orden de los grupos de alimentos en la tienda'
+  );
 }
 
 /** Guarda (o crea) un ajuste por su clave. */

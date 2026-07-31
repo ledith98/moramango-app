@@ -10,9 +10,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   CLAVE_TOPE_ARTICULO,
   guardarAjuste,
+  guardarHorario,
   guardarOrdenCategorias,
   leerAjustes,
 } from '@/lib/ajustes';
+import { aMinutos, DIAS_NOMBRE } from '@/lib/horario';
 import { getAdminSession } from '@/lib/roles';
 
 export async function GET() {
@@ -27,7 +29,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
-  const { topeArticuloGratis, ordenCategorias } = await req.json();
+  const { topeArticuloGratis, ordenCategorias, horario } = await req.json();
 
   if (topeArticuloGratis !== undefined) {
     const tope = parseFloat(topeArticuloGratis);
@@ -49,6 +51,42 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Orden de grupos inválido' }, { status: 400 });
     }
     await guardarOrdenCategorias(ordenCategorias);
+  }
+
+  if (horario !== undefined) {
+    if (!horario || !Array.isArray(horario.dias) || horario.dias.length !== 7) {
+      return NextResponse.json({ error: 'Horario inválido' }, { status: 400 });
+    }
+    // Un día con la hora de cierre antes de la de apertura dejaría la
+    // tienda cerrada todo el día sin que se note, así que no se guarda.
+    for (let i = 0; i < 7; i++) {
+      const d = horario.dias[i];
+      if (!d?.abierto) continue;
+      const desde = aMinutos(d.desde);
+      const hasta = aMinutos(d.hasta);
+      if (desde === null || hasta === null) {
+        return NextResponse.json(
+          { error: `Revisa las horas del ${DIAS_NOMBRE[i].toLowerCase()}` },
+          { status: 400 }
+        );
+      }
+      if (hasta <= desde) {
+        return NextResponse.json(
+          {
+            error: `El ${DIAS_NOMBRE[i].toLowerCase()} la hora de cierre debe ser después de la de apertura`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+    await guardarHorario({
+      activo: !!horario.activo,
+      dias: horario.dias.map((d: { abierto?: boolean; desde?: string; hasta?: string }) => ({
+        abierto: !!d.abierto,
+        desde: String(d.desde ?? '08:00'),
+        hasta: String(d.hasta ?? '16:00'),
+      })),
+    });
   }
 
   return NextResponse.json({ success: true, ajustes: await leerAjustes() });

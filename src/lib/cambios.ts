@@ -32,6 +32,14 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-07-30',
     tipo: 'nuevo',
+    titulo: 'Horario para recibir pedidos',
+    detalle:
+      'En Ajustes puedes poner de qué hora a qué hora se pueden hacer pedidos, día por día, y marcar los días que no abres. Fuera de ese horario el cliente ve el menú y arma su carrito, pero no puede mandar el pedido: le aparece a qué hora abres. Los pedidos en mostrador no se ven afectados. Viene apagado: mientras no lo actives y guardes, se puede pedir a cualquier hora igual que hasta hoy.',
+    donde: 'Ajustes',
+  },
+  {
+    fecha: '2026-07-30',
+    tipo: 'nuevo',
     titulo: 'Tú decides qué grupo va primero en la tienda',
     detalle:
       'En Ajustes puedes subir y bajar los grupos de alimentos con las flechas, y así los verá el cliente al entrar. Quedó como Combos, Comida salada, Jugos, Licuados, Comida dulce y Bebidas, pero se cambia cuando quieras. Si más adelante creas un grupo nuevo, aparece al final de la lista para que lo acomodes.',

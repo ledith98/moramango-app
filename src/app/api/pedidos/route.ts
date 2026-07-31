@@ -24,6 +24,8 @@ import { parsearFechaHora } from '@/lib/pedidoFecha';
 import { baseUrlDesdeRequest, crearPreferencia, mpConfigurado } from '@/lib/mercadoPago';
 import { enviarTelegram } from '@/lib/telegram';
 import { moverStockDePedido } from '@/lib/stock';
+import { leerAjustes } from '@/lib/ajustes';
+import { estadoTienda } from '@/lib/horario';
 
 /**
  * Devuelve los pedidos del usuario logueado, del más reciente al más
@@ -99,6 +101,18 @@ export async function POST(req: NextRequest) {
 
   if (!items || items.length === 0) {
     return NextResponse.json({ error: 'El carrito está vacío' }, { status: 400 });
+  }
+
+  // Horario de atención. La tienda ya esconde el botón fuera de horario,
+  // pero eso vive en el celular del cliente: quien deje la página abierta
+  // desde antes de cerrar, o llame a la API por su cuenta, se frena aquí.
+  const { horario } = await leerAjustes();
+  const estado = estadoTienda(horario);
+  if (!estado.abierta) {
+    return NextResponse.json(
+      { error: `Ahorita no estamos recibiendo pedidos. ${estado.mensaje}`.trim(), cerrado: true },
+      { status: 409 }
+    );
   }
 
   const usuario = session.user as any;

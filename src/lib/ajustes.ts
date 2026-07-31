@@ -10,6 +10,7 @@
  */
 
 import { appendRow, ensureSheet, getSheetData, updateCell } from './googleSheets';
+import { HORARIO_DEFAULT, Horario, parsearHorario, serializarHorario } from './horario';
 
 const HOJA = 'Ajustes_Tienda';
 const COLS = ['Clave', 'Valor', 'Nota', 'Fecha'];
@@ -35,9 +36,13 @@ export const ORDEN_CATEGORIAS_DEFAULT = [
 ];
 const SEPARADOR = '|';
 
+/** Horario de atención: a qué horas se pueden hacer pedidos. */
+export const CLAVE_HORARIO = 'HorarioTienda';
+
 export interface Ajustes {
   topeArticuloGratis: number;
   ordenCategorias: string[];
+  horario: Horario;
 }
 
 /** Para comparar categorías sin que estorben acentos, mayúsculas o espacios. */
@@ -75,17 +80,32 @@ export async function leerAjustes(): Promise<Ajustes> {
       .map((c) => c.trim())
       .filter(Boolean);
 
+    const horarioCrudo = (filas.find((f) => f.Clave === CLAVE_HORARIO)?.Valor ?? '').toString();
+
     return {
       topeArticuloGratis: !isNaN(tope) && tope > 0 ? tope : TOPE_ARTICULO_DEFAULT,
       ordenCategorias: orden.length > 0 ? orden : ORDEN_CATEGORIAS_DEFAULT,
+      horario: parsearHorario(horarioCrudo),
     };
   } catch {
-    // Si la hoja falla, el negocio sigue con los valores de siempre
+    // Si la hoja falla, el negocio sigue con los valores de siempre. Ojo
+    // con el horario: se cae del lado de dejar pedir, porque rechazar
+    // pedidos buenos por un error de lectura sale más caro.
     return {
       topeArticuloGratis: TOPE_ARTICULO_DEFAULT,
       ordenCategorias: ORDEN_CATEGORIAS_DEFAULT,
+      horario: HORARIO_DEFAULT,
     };
   }
+}
+
+/** Guarda el horario de atención. */
+export async function guardarHorario(horario: Horario): Promise<void> {
+  await guardarAjuste(
+    CLAVE_HORARIO,
+    serializarHorario(horario),
+    'Horario en que se pueden hacer pedidos desde la tienda'
+  );
 }
 
 /** Guarda el orden en que se ven los grupos en la tienda. */

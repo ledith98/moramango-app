@@ -5,6 +5,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { DIAS_NOMBRE, estadoTienda, HORARIO_DEFAULT, type Horario } from '@/lib/horario';
 
 interface Producto {
   nombre: string;
@@ -24,6 +25,11 @@ export default function AjustesPage() {
   const [ordenGuardado, setOrdenGuardado] = useState<string[]>([]);
   const [guardandoOrden, setGuardandoOrden] = useState(false);
   const [okOrden, setOkOrden] = useState(false);
+  const [horario, setHorario] = useState<Horario>(HORARIO_DEFAULT);
+  const [horarioGuardado, setHorarioGuardado] = useState<Horario>(HORARIO_DEFAULT);
+  const [guardandoHorario, setGuardandoHorario] = useState(false);
+  const [okHorario, setOkHorario] = useState(false);
+  const [errorHorario, setErrorHorario] = useState('');
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [ok, setOk] = useState(false);
@@ -60,6 +66,11 @@ export default function AjustesPage() {
     ];
     setOrden(final);
     setOrdenGuardado(final);
+
+    if (a?.horario?.dias?.length === 7) {
+      setHorario(a.horario);
+      setHorarioGuardado(a.horario);
+    }
     setCargando(false);
   }, []);
 
@@ -118,6 +129,36 @@ export default function AjustesPage() {
     setTimeout(() => setOkOrden(false), 2500);
   }
 
+  function cambiarDia(i: number, cambio: Partial<Horario['dias'][number]>) {
+    setHorario((h) => ({
+      ...h,
+      dias: h.dias.map((d, j) => (i === j ? { ...d, ...cambio } : d)),
+    }));
+  }
+
+  async function guardarHorario() {
+    setGuardandoHorario(true);
+    setErrorHorario('');
+    const res = await fetch('/api/admin/ajustes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ horario }),
+    });
+    const data = await res.json();
+    setGuardandoHorario(false);
+    if (!res.ok) {
+      setErrorHorario(data.error || 'No se pudo guardar el horario');
+      return;
+    }
+    setHorarioGuardado(horario);
+    setOkHorario(true);
+    setTimeout(() => setOkHorario(false), 2500);
+  }
+
+  const horarioCambiado = JSON.stringify(horario) !== JSON.stringify(horarioGuardado);
+  // Vista previa con lo que está en pantalla, aunque todavía no se guarde
+  const ahoraMismo = estadoTienda(horario);
+
   const ordenCambiado = orden.join('|') !== ordenGuardado.join('|');
   const cuantos = (cat: string) =>
     productos.filter((p) => clave(p.categoria) === clave(cat)).length;
@@ -135,6 +176,108 @@ export default function AjustesPage() {
       <p className="text-sm text-neutral-700">
         Reglas del negocio que puedes cambiar tú, sin que nadie toque la aplicación.
       </p>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5 space-y-4">
+        <div>
+          <h2 className="font-bold text-neutral-900">🕐 Horario para recibir pedidos</h2>
+          <p className="text-sm text-neutral-700 mt-1">
+            Fuera de este horario el cliente ve el menú pero no puede mandar pedidos. Los pedidos
+            en mostrador no se ven afectados: ahí tú cobras a la hora que sea.
+          </p>
+        </div>
+
+        <label className="flex items-start gap-3 bg-neutral-50 border border-neutral-200 rounded-xl p-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={horario.activo}
+            onChange={(e) => setHorario((h) => ({ ...h, activo: e.target.checked }))}
+            className="mt-0.5 w-5 h-5 accent-[#5c3a21]"
+          />
+          <span>
+            <span className="font-semibold text-neutral-900 block">Aplicar el horario</span>
+            <span className="text-xs text-neutral-700">
+              Si lo apagas, se pueden hacer pedidos a cualquier hora del día.
+            </span>
+          </span>
+        </label>
+
+        {horario.activo && (
+          <>
+            <div
+              className={`rounded-xl px-3 py-2.5 text-sm font-semibold ${
+                ahoraMismo.abierta
+                  ? 'bg-green-50 text-green-900 border border-green-300'
+                  : 'bg-amber-50 text-amber-900 border border-amber-300'
+              }`}
+            >
+              {ahoraMismo.abierta ? '🟢 Con este horario, ahorita estás abierto.' : '🔴 Con este horario, ahorita estás cerrado.'}{' '}
+              {ahoraMismo.mensaje}
+            </div>
+
+            <div className="space-y-2">
+              {horario.dias.map((d, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-2 bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2.5"
+                >
+                  <label className="flex items-center gap-2 w-32 shrink-0 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={d.abierto}
+                      onChange={(e) => cambiarDia(i, { abierto: e.target.checked })}
+                      className="w-5 h-5 accent-[#5c3a21]"
+                    />
+                    <span className="font-semibold text-neutral-900 text-sm">{DIAS_NOMBRE[i]}</span>
+                  </label>
+
+                  {d.abierto ? (
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <input
+                        type="time"
+                        value={d.desde}
+                        onChange={(e) => cambiarDia(i, { desde: e.target.value })}
+                        className="flex-1 min-w-0 bg-white border border-neutral-300 rounded-lg px-2 py-1.5 text-neutral-900 text-sm"
+                      />
+                      <span className="text-neutral-700 text-sm shrink-0">a</span>
+                      <input
+                        type="time"
+                        value={d.hasta}
+                        onChange={(e) => cambiarDia(i, { hasta: e.target.value })}
+                        className="flex-1 min-w-0 bg-white border border-neutral-300 rounded-lg px-2 py-1.5 text-neutral-900 text-sm"
+                      />
+                    </div>
+                  ) : (
+                    <span className="text-sm text-neutral-700 flex-1">Cerrado</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {errorHorario && <p className="text-sm text-red-600">{errorHorario}</p>}
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={guardarHorario}
+            disabled={guardandoHorario || !horarioCambiado}
+            className="bg-marron text-white font-semibold px-5 py-3 rounded-xl active:scale-95 disabled:opacity-50"
+          >
+            {guardandoHorario ? 'Guardando…' : okHorario ? '✅ Guardado' : 'Guardar horario'}
+          </button>
+          {horarioCambiado && (
+            <button
+              onClick={() => {
+                setHorario(horarioGuardado);
+                setErrorHorario('');
+              }}
+              className="text-sm font-semibold text-neutral-700 px-3 py-3"
+            >
+              Deshacer
+            </button>
+          )}
+        </div>
+      </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5 space-y-4">
         <div>

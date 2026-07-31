@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server';
 import { getSheetData } from '@/lib/googleSheets';
 import { normalizarUrlImagen } from '@/lib/imagenes';
 import { leerAjustes, posicionCategoria } from '@/lib/ajustes';
+import { estadoTienda } from '@/lib/horario';
 
 export async function GET() {
   try {
-    // En qué orden quiere la dueña que se vean los grupos (Panel → Ajustes)
-    const { ordenCategorias } = await leerAjustes();
+    // Orden de los grupos y horario de atención (Panel → Ajustes)
+    const { ordenCategorias, horario } = await leerAjustes();
     // crudo: con el locale es_ES un precio de 52.50 se leía "52,50" y
     // parseFloat lo truncaba a 52. Hoy todos son enteros y nadie lo notó,
     // pero el primer precio con centavos habría cobrado de menos.
@@ -50,7 +51,14 @@ export async function GET() {
             posicionCategoria(b.categoria, ordenCategorias) || a.orden - b.orden
       );
 
-    return NextResponse.json({ productos: publicos, ordenCategorias });
+    // El estado se calcula aquí y no en el celular del cliente: si lo tiene
+    // en otra hora o con la fecha mal, vería la tienda abierta a deshoras.
+    return NextResponse.json({
+      productos: publicos,
+      ordenCategorias,
+      tienda: estadoTienda(horario),
+      horario,
+    });
   } catch (error) {
     console.error('Error en /api/productos:', error);
     return NextResponse.json(

@@ -138,12 +138,18 @@ export default function Home() {
   const [cargandoLealtad, setCargandoLealtad] = useState(false);
   const [beneficioAplicado, setBeneficioAplicado] = useState(false);
   const [productoDetalle, setProductoDetalle] = useState<any | null>(null);
+  /** Horario: lo calcula el servidor, no la hora del celular del cliente */
+  const [tienda, setTienda] = useState<{ abierta: boolean; mensaje: string }>({
+    abierta: true,
+    mensaje: '',
+  });
 
   useEffect(() => {
     fetch('/api/productos')
       .then((res) => res.json())
       .then((data) => {
         if (data.productos) setProductos(data.productos);
+        if (data.tienda) setTienda(data.tienda);
         setCargando(false);
       })
       .catch(() => setCargando(false));
@@ -668,7 +674,7 @@ export default function Home() {
   };
 
   const confirmarOrden = async () => {
-    if (carrito.length === 0) return;
+    if (carrito.length === 0 || !tienda.abierta) return;
 
     if (!session) {
       sessionStorage.setItem('moramango_login_redirect', 'confirmar');
@@ -859,6 +865,18 @@ export default function Home() {
                 </button>
               </div>
             </div>
+
+            {!tienda.abierta && (
+              <div className="mx-4 mt-4 bg-amber-50 border border-amber-300 rounded-2xl p-3.5 flex gap-3 items-start">
+                <span className="text-lg leading-none">🕐</span>
+                <div>
+                  <p className="font-bold text-amber-900 text-sm">Ahorita estamos cerrados</p>
+                  <p className="text-xs text-amber-900 mt-0.5 leading-relaxed">
+                    {tienda.mensaje} Puedes ver el menú y dejar listo tu carrito.
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div className="relative">
             <div
@@ -1277,12 +1295,28 @@ export default function Home() {
                 </div>
               )}
 
+              {!tienda.abierta && (
+                <div className="mb-4 bg-amber-50 p-3.5 rounded-xl border border-amber-300 flex gap-3 items-start">
+                  <span className="text-base leading-none mt-0.5">🕐</span>
+                  <p className="text-xs text-amber-900 font-semibold leading-relaxed">
+                    Ahorita estamos cerrados. {tienda.mensaje} Tu carrito se guarda para cuando
+                    abramos.
+                  </p>
+                </div>
+              )}
+
               <button
                 onClick={confirmarOrden}
-                disabled={enviando}
+                disabled={enviando || !tienda.abierta}
                 className="w-full bg-marron text-white font-bold text-lg py-4 rounded-2xl active:scale-95 transition-transform shadow-md flex items-center justify-center gap-2 disabled:opacity-60 disabled:scale-100"
               >
-                {enviando ? 'Enviando...' : session ? 'Confirmar Orden' : 'Iniciar sesión para pedir'}
+                {!tienda.abierta
+                  ? 'Cerrado por ahora'
+                  : enviando
+                    ? 'Enviando...'
+                    : session
+                      ? 'Confirmar Orden'
+                      : 'Iniciar sesión para pedir'}
               </button>
             </div>
           </div>

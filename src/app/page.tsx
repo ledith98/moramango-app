@@ -37,7 +37,7 @@ import { claveLinea, precioDeTamano, precioDesde, type Tamano } from '@/lib/tama
 import {
   claveEleccion,
   type Eleccion,
-  eleccionInicial,
+  enumerar,
   type GrupoOpcion,
   resumenEleccion,
 } from '@/lib/opciones';
@@ -165,6 +165,8 @@ export default function Home() {
   const [opcionesElegidas, setOpcionesElegidas] = useState<Eleccion>({});
   /** Toppings marcados en la ficha */
   const [extrasElegidos, setExtrasElegidos] = useState<Extra[]>([]);
+  /** Grupo que se está reabriendo para cambiar la respuesta */
+  const [grupoAbierto, setGrupoAbierto] = useState<string | null>(null);
   /** Horario: lo calcula el servidor, no la hora del celular del cliente */
   const [tienda, setTienda] = useState<{ abierta: boolean; mensaje: string }>({
     abierta: true,
@@ -382,7 +384,7 @@ export default function Home() {
     const extrasProducto: Extra[] = producto.extras ?? [];
     if (
       (tamanos.length > 0 && !tamano) ||
-      (grupos.length > 0 && !eleccion) ||
+      (grupos.length > 0 && grupos.some((g) => !eleccion?.[g.nombre])) ||
       (extrasProducto.length > 0 && extras === undefined)
     ) {
       abrirDetalle(producto);
@@ -517,7 +519,8 @@ export default function Home() {
       tamanos.length > 0 || grupos.length > 0 || (producto.extras ?? []).length > 0;
     if (!hayQueElegir && !(producto.descripcion && producto.descripcion.trim())) return;
     setTamanoElegido(tamanos[0]?.nombre ?? '');
-    setOpcionesElegidas(eleccionInicial(grupos));
+    setOpcionesElegidas({});
+    setGrupoAbierto(null);
     setExtrasElegidos([]); // los toppings arrancan sin marcar
     setProductoDetalle(producto);
   };
@@ -960,6 +963,10 @@ export default function Home() {
   const tamanosDetalle: Tamano[] = productoDetalle?.tamanos ?? [];
   const gruposDetalle: GrupoOpcion[] = productoDetalle?.opciones ?? [];
   const extrasDetalle: Extra[] = productoDetalle?.extras ?? [];
+  /** Grupos que todavía no contesta. Sin preselección, hay que exigirlo. */
+  const faltanPorElegir = gruposDetalle
+    .filter((g) => !opcionesElegidas[g.nombre])
+    .map((g) => g.nombre.toLowerCase());
   const claveDetalle = productoDetalle
     ? claveLinea(
         productoDetalle.id,
@@ -2072,34 +2079,62 @@ export default function Home() {
                   </p>
                 )}
 
-                {/* Opciones a elegir: queso del combo, sabor de la bebida… */}
-                {gruposDetalle.map((g) => (
-                  <div key={g.nombre} className="mb-4">
-                    <p className="text-sm font-semibold text-neutral-800 mb-2">
-                      Elige {g.nombre.toLowerCase()}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {g.opciones.map((o) => {
-                        const activo = opcionesElegidas[g.nombre] === o;
-                        return (
-                          <button
-                            key={o}
-                            onClick={() =>
-                              setOpcionesElegidas((prev) => ({ ...prev, [g.nombre]: o }))
-                            }
-                            className={`px-3.5 py-2 rounded-xl border-2 text-sm font-semibold transition-colors ${
-                              activo
-                                ? 'border-marron bg-marron/10 text-neutral-900'
-                                : 'border-neutral-200 bg-white text-neutral-800'
-                            }`}
-                          >
-                            {o}
-                          </button>
-                        );
-                      })}
+                {/* Opciones a elegir: queso del combo, sabor de la bebida…
+                    Ya contestada, la lista se recoge en un renglón: el
+                    Combo 1 muestra 8 bebidas y llenaba toda la pantalla. */}
+                {gruposDetalle.map((g) => {
+                  const elegido = opcionesElegidas[g.nombre];
+                  const abierto = !elegido || grupoAbierto === g.nombre;
+
+                  if (!abierto) {
+                    return (
+                      <button
+                        key={g.nombre}
+                        onClick={() => setGrupoAbierto(g.nombre)}
+                        className="w-full mb-3 flex items-center justify-between gap-3 bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-3 text-left active:scale-[0.99]"
+                      >
+                        <span className="min-w-0">
+                          <span className="block text-xs text-neutral-700 font-medium">
+                            {g.nombre}
+                          </span>
+                          <span className="block font-bold text-neutral-900 truncate">
+                            ✓ {elegido}
+                          </span>
+                        </span>
+                        <span className="text-sm font-bold text-marron shrink-0">Cambiar</span>
+                      </button>
+                    );
+                  }
+
+                  return (
+                    <div key={g.nombre} className="mb-4">
+                      <p className="text-sm font-semibold text-neutral-800 mb-2">
+                        Elige {g.nombre.toLowerCase()}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {g.opciones.map((o) => {
+                          const activo = elegido === o;
+                          return (
+                            <button
+                              key={o}
+                              onClick={() => {
+                                setOpcionesElegidas((prev) => ({ ...prev, [g.nombre]: o }));
+                                setGrupoAbierto(null);
+                              }}
+                              className={`px-3.5 py-2 rounded-xl border-2 text-sm font-semibold transition-colors ${
+                                activo
+                                  ? 'border-marron bg-marron/10 text-neutral-900'
+                                  : 'border-neutral-200 bg-white text-neutral-800'
+                              }`}
+                            >
+                              {o}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 {/* Toppings: se pueden marcar varios o ninguno */}
                 {extrasDetalle.length > 0 && (
@@ -2184,17 +2219,19 @@ export default function Home() {
                         extrasElegidos
                       )
                     }
-                    className="w-full bg-marron text-white font-bold text-base py-4 rounded-2xl active:scale-95 transition-transform shadow-md"
+                    disabled={faltanPorElegir.length > 0}
+                    className="w-full bg-marron text-white font-bold text-base py-4 rounded-2xl active:scale-95 transition-transform shadow-md disabled:opacity-50 disabled:active:scale-100"
                   >
-                    Agregar al pedido
-                    {[
-                      tamanoElegido,
-                      resumenEleccion(gruposDetalle, opcionesElegidas),
-                      resumenExtras(extrasElegidos),
-                    ]
-                      .filter(Boolean)
-                      .map((t) => ` · ${t}`)
-                      .join('')}
+                    {faltanPorElegir.length > 0
+                      ? `Elige ${enumerar(faltanPorElegir)} para continuar`
+                      : `Agregar al pedido${[
+                          tamanoElegido,
+                          resumenEleccion(gruposDetalle, opcionesElegidas),
+                          resumenExtras(extrasElegidos),
+                        ]
+                          .filter(Boolean)
+                          .map((t) => ` · ${t}`)
+                          .join('')}`}
                   </button>
                 ) : (
                   <div className="flex items-center justify-between gap-4">
@@ -2217,7 +2254,8 @@ export default function Home() {
                             extrasElegidos
                           )
                         }
-                        className="w-11 h-11 flex items-center justify-center bg-marron text-white rounded-xl font-medium shadow-sm active:scale-90 text-lg"
+                        disabled={faltanPorElegir.length > 0}
+                        className="disabled:opacity-50 w-11 h-11 flex items-center justify-center bg-marron text-white rounded-xl font-medium shadow-sm active:scale-90 text-lg"
                       >
                         +
                       </button>

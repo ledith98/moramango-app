@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-03',
+    tipo: 'mejora',
+    titulo: 'Las opciones se recogen al contestarlas',
+    detalle:
+      'En el Combo 1 se veían al mismo tiempo los 2 quesos, las 8 bebidas y el tostado: no cabía en la pantalla. Ahora, en cuanto el cliente contesta una, esa lista se recoge en un renglón que dice lo que eligió, con un botón de "Cambiar" por si se arrepiente. Igual en el mostrador. De paso, ya no viene nada preseleccionado: antes el sabor salía elegido de fábrica y alguien podía agregar sin fijarse y llevarse el que no era. El botón dice qué falta por elegir y no deja continuar hasta contestar todo.',
+    donde: 'Tienda · Venta',
+  },
+  {
+    fecha: '2026-08-03',
     tipo: 'nuevo',
     titulo: 'Reacomodar los productos con flechas',
     detalle:

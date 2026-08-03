@@ -91,6 +91,12 @@ export function validarEleccion(
   return { ok: true, eleccion };
 }
 
+/** "queso, bebida y tostado" — para enumerar lo que falta sin sonar a robot. */
+export function enumerar(cosas: string[]): string {
+  if (cosas.length <= 1) return cosas[0] ?? '';
+  return `${cosas.slice(0, -1).join(', ')} y ${cosas[cosas.length - 1]}`;
+}
+
 /** Elección de arranque: la primera opción de cada grupo. */
 export function eleccionInicial(grupos: GrupoOpcion[]): Eleccion {
   const e: Eleccion = {};

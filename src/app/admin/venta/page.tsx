@@ -5,7 +5,7 @@ import { claveLinea, parsearTamanos, precioDesde, precioDeTamano } from '@/lib/t
 import {
   claveEleccion,
   type Eleccion,
-  eleccionInicial,
+  enumerar,
   parsearOpciones,
   resumenEleccion,
 } from '@/lib/opciones';
@@ -83,6 +83,8 @@ export default function VentaPage() {
   const [tamanoTemp, setTamanoTemp] = useState('');
   const [opcionesTemp, setOpcionesTemp] = useState<Eleccion>({});
   const [extrasTemp, setExtrasTemp] = useState<Extra[]>([]);
+  /** Grupo que se está reabriendo para cambiar la respuesta */
+  const [grupoAbierto, setGrupoAbierto] = useState<string | null>(null);
   /** Descuento fuera de lo normal, a criterio de quien cobra */
   const [descuentoManual, setDescuentoManual] = useState('');
   const [motivoDescuento, setMotivoDescuento] = useState('');
@@ -218,12 +220,13 @@ export default function VentaPage() {
     // de adivinar el tamaño, el sabor o si quiere algún topping
     if (
       (tamanos.length > 0 && !tamano) ||
-      (grupos.length > 0 && !eleccion) ||
+      (grupos.length > 0 && grupos.some((g) => !eleccion?.[g.nombre])) ||
       (extrasProducto.length > 0 && extras === undefined)
     ) {
       setConfigurando(p);
       setTamanoTemp(tamanos[0]?.nombre ?? '');
-      setOpcionesTemp(eleccionInicial(grupos));
+      setOpcionesTemp({});
+      setGrupoAbierto(null);
       setExtrasTemp([]);
       return;
     }
@@ -529,29 +532,55 @@ export default function VentaPage() {
               </h3>
             </div>
 
-            {parsearOpciones(configurando.Opciones ?? '').map((g) => (
-              <div key={g.nombre}>
-                <p className="text-sm font-semibold text-neutral-800 mb-2">{g.nombre}</p>
-                <div className="flex flex-wrap gap-2">
-                  {g.opciones.map((o) => {
-                    const activo = opcionesTemp[g.nombre] === o;
-                    return (
-                      <button
-                        key={o}
-                        onClick={() => setOpcionesTemp((prev) => ({ ...prev, [g.nombre]: o }))}
-                        className={`px-3 py-2 rounded-xl border-2 text-sm font-semibold active:scale-95 ${
-                          activo
-                            ? 'border-black bg-neutral-100 text-neutral-900'
-                            : 'border-neutral-200 bg-white text-neutral-800'
-                        }`}
-                      >
-                        {o}
-                      </button>
-                    );
-                  })}
+            {parsearOpciones(configurando.Opciones ?? '').map((g) => {
+              const elegido = opcionesTemp[g.nombre];
+              const abierto = !elegido || grupoAbierto === g.nombre;
+
+              // Contestada, la lista se recoge: en el mostrador se cobra
+              // rápido y ocho sabores a la vista estorban más que ayudan.
+              if (!abierto) {
+                return (
+                  <button
+                    key={g.nombre}
+                    onClick={() => setGrupoAbierto(g.nombre)}
+                    className="w-full flex items-center justify-between gap-3 bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2.5 text-left active:scale-[0.99]"
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-xs text-neutral-700 font-medium">{g.nombre}</span>
+                      <span className="block font-bold text-neutral-900 truncate">✓ {elegido}</span>
+                    </span>
+                    <span className="text-sm font-bold text-neutral-700 shrink-0">Cambiar</span>
+                  </button>
+                );
+              }
+
+              return (
+                <div key={g.nombre}>
+                  <p className="text-sm font-semibold text-neutral-800 mb-2">{g.nombre}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {g.opciones.map((o) => {
+                      const activo = elegido === o;
+                      return (
+                        <button
+                          key={o}
+                          onClick={() => {
+                            setOpcionesTemp((prev) => ({ ...prev, [g.nombre]: o }));
+                            setGrupoAbierto(null);
+                          }}
+                          className={`px-3 py-2 rounded-xl border-2 text-sm font-semibold active:scale-95 ${
+                            activo
+                              ? 'border-black bg-neutral-100 text-neutral-900'
+                              : 'border-neutral-200 bg-white text-neutral-800'
+                          }`}
+                        >
+                          {o}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             {parsearExtras(configurando.Extras ?? '').length > 0 && (
               <div>
@@ -609,20 +638,29 @@ export default function VentaPage() {
               </div>
             )}
 
-            <button
-              onClick={() => agregar(configurando, tamanoTemp, opcionesTemp, extrasTemp)}
-              className="w-full py-3.5 rounded-xl bg-black text-white font-bold active:scale-95"
-            >
-              Agregar a la venta
-              {[
-                tamanoTemp,
-                resumenEleccion(parsearOpciones(configurando.Opciones ?? ''), opcionesTemp),
-                resumenExtras(extrasTemp),
-              ]
-                .filter(Boolean)
-                .map((t) => ` · ${t}`)
-                .join('')}
-            </button>
+            {(() => {
+              const faltan = parsearOpciones(configurando.Opciones ?? '')
+                .filter((g) => !opcionesTemp[g.nombre])
+                .map((g) => g.nombre.toLowerCase());
+              return (
+                <button
+                  onClick={() => agregar(configurando, tamanoTemp, opcionesTemp, extrasTemp)}
+                  disabled={faltan.length > 0}
+                  className="w-full py-3.5 rounded-xl bg-black text-white font-bold active:scale-95 disabled:opacity-50 disabled:active:scale-100"
+                >
+                  {faltan.length > 0
+                    ? `Falta elegir ${enumerar(faltan)}`
+                    : `Agregar a la venta${[
+                        tamanoTemp,
+                        resumenEleccion(parsearOpciones(configurando.Opciones ?? ''), opcionesTemp),
+                        resumenExtras(extrasTemp),
+                      ]
+                        .filter(Boolean)
+                        .map((t) => ` · ${t}`)
+                        .join('')}`}
+                </button>
+              );
+            })()}
             <button
               onClick={() => setConfigurando(null)}
               className="w-full py-3 rounded-xl bg-neutral-100 font-semibold text-neutral-800 active:scale-95"

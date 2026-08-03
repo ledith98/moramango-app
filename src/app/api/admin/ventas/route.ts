@@ -20,7 +20,6 @@ import { actualizarLealtad, descuentoPorBeneficio } from '@/lib/lealtad';
 import { getAdminSession } from '@/lib/roles';
 import { moverStockDePedido } from '@/lib/stock';
 import { validarItems } from '@/lib/preciosServidor';
-import { claveLinea } from '@/lib/tamanos';
 
 const ESTADOS_VALIDOS = [
   'Recibido',
@@ -106,7 +105,7 @@ export async function POST(req: NextRequest) {
     const { topeArticuloGratis } = await leerAjustes();
     // Se busca por producto + tamaño: el mismo jugo puede estar en la
     // venta en 500 ml y en 1 litro, a precios distintos.
-    const elegido = itemsValidados.find((i) => claveLinea(i.id, i.tamano) === articuloGratisId);
+    const elegido = itemsValidados.find((i) => i.clave === articuloGratisId);
     if (!elegido) {
       return NextResponse.json(
         { error: 'El artículo gratis elegido no está en la venta' },

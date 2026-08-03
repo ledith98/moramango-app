@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { esEnlaceDeVisorDrive } from '@/lib/imagenes';
 import { parsearTamanos, TAMANOS_SUGERIDOS, type Tamano } from '@/lib/tamanos';
+import { type GrupoOpcion, parsearOpciones } from '@/lib/opciones';
 
 interface Producto {
   ID_Producto: string;
@@ -16,6 +17,7 @@ interface Producto {
   Oculto?: string;
   Existencias?: string;
   Tamanos?: string;
+  Opciones?: string;
 }
 
 type EstadoProducto = 'vendiendo' | 'pausado' | 'oculto';
@@ -55,6 +57,8 @@ interface FormProducto {
   existencias: string;
   /** Vacío = un solo precio. Con renglones = precio por tamaño. */
   tamanos: Tamano[];
+  /** Vacío = no se pregunta nada. Con grupos = el cliente elige. */
+  opciones: GrupoOpcion[];
 }
 
 const FORM_VACIO: FormProducto = {
@@ -65,6 +69,7 @@ const FORM_VACIO: FormProducto = {
   emoji: '',
   existencias: '',
   tamanos: [],
+  opciones: [],
 };
 
 
@@ -139,6 +144,7 @@ export default function ProductosPage() {
       emoji: p.Emoji || '',
       existencias: p.Existencias ?? '',
       tamanos: parsearTamanos(p.Tamanos ?? ''),
+      opciones: parsearOpciones(p.Opciones ?? ''),
     });
     setImagenUrl(p.Imagen_URL || '');
     setPegarUrl(false);
@@ -225,6 +231,7 @@ export default function ProductosPage() {
             imagenUrl,
             existencias: form.existencias,
             tamanos: form.tamanos,
+            opciones: form.opciones,
           }),
         });
       } else {
@@ -602,6 +609,106 @@ export default function ProductosPage() {
                     </div>
                   </>
                 )}
+              </div>
+            )}
+
+            {editando && (
+              <div className="space-y-3 text-neutral-900 border-t border-neutral-100 pt-4">
+                <div>
+                  <label className="text-sm font-semibold text-neutral-700">
+                    Opciones a elegir{' '}
+                    <span className="font-normal text-neutral-600">(combos)</span>
+                  </label>
+                  <p className="text-xs text-neutral-600 mt-0.5">
+                    Preguntas que se le hacen al cliente antes de agregarlo, como el queso o el
+                    sabor de la bebida. No cambian el precio.
+                  </p>
+                </div>
+
+                {form.opciones.map((g, gi) => (
+                  <div key={gi} className="bg-neutral-50 border border-neutral-200 rounded-xl p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={g.nombre}
+                        onChange={(e) => {
+                          const copia = [...form.opciones];
+                          copia[gi] = { ...copia[gi], nombre: e.target.value };
+                          setForm({ ...form, opciones: copia });
+                        }}
+                        placeholder="Queso"
+                        className="flex-1 min-w-0 bg-white border border-neutral-200 rounded-lg p-2.5 font-semibold text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-black"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm({ ...form, opciones: form.opciones.filter((_, j) => j !== gi) })
+                        }
+                        aria-label={`Quitar la pregunta ${g.nombre}`}
+                        className="w-10 h-10 shrink-0 rounded-lg bg-neutral-200 text-neutral-800 font-bold active:scale-90"
+                      >
+                        ×
+                      </button>
+                    </div>
+
+                    {g.opciones.map((o, oi) => (
+                      <div key={oi} className="flex items-center gap-2 pl-3">
+                        <span className="text-neutral-500 shrink-0">·</span>
+                        <input
+                          value={o}
+                          onChange={(e) => {
+                            const copia = [...form.opciones];
+                            const lista = [...copia[gi].opciones];
+                            lista[oi] = e.target.value;
+                            copia[gi] = { ...copia[gi], opciones: lista };
+                            setForm({ ...form, opciones: copia });
+                          }}
+                          placeholder="Queso suizo"
+                          className="flex-1 min-w-0 bg-white border border-neutral-200 rounded-lg p-2 text-sm text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-black"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const copia = [...form.opciones];
+                            copia[gi] = {
+                              ...copia[gi],
+                              opciones: copia[gi].opciones.filter((_, j) => j !== oi),
+                            };
+                            setForm({ ...form, opciones: copia });
+                          }}
+                          aria-label={`Quitar ${o}`}
+                          className="w-9 h-9 shrink-0 rounded-lg bg-neutral-100 text-neutral-700 font-bold active:scale-90"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const copia = [...form.opciones];
+                        copia[gi] = { ...copia[gi], opciones: [...copia[gi].opciones, ''] };
+                        setForm({ ...form, opciones: copia });
+                      }}
+                      className="ml-3 text-xs font-semibold text-neutral-700 px-3 py-1.5 rounded-lg bg-neutral-200 active:scale-95"
+                    >
+                      + Agregar opción
+                    </button>
+                  </div>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setForm({
+                      ...form,
+                      opciones: [...form.opciones, { nombre: '', opciones: ['', ''] }],
+                    })
+                  }
+                  className="w-full border-2 border-dashed border-neutral-300 rounded-xl py-3 text-sm font-semibold text-neutral-700 active:scale-95"
+                >
+                  + Nueva pregunta al cliente
+                </button>
               </div>
             )}
 

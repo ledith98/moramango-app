@@ -19,6 +19,7 @@ import { appendRow, ensureColumn, findRow, getSheetData, updateCell } from '@/li
 import { normalizarUrlImagen } from '@/lib/imagenes';
 import { getAdminSession } from '@/lib/roles';
 import { iguales, serializarTamanos, type Tamano } from '@/lib/tamanos';
+import { type GrupoOpcion, serializarOpciones } from '@/lib/opciones';
 
 /**
  * Deja como mucho dos emojis. Los combos llevan dos (🥪🥤) y más de eso ya
@@ -36,6 +37,7 @@ export async function GET() {
   await Promise.all([
     ensureColumn('Productos', 'Emoji'),
     ensureColumn('Productos', 'Tamanos'),
+    ensureColumn('Productos', 'Opciones'),
   ]);
   // crudo: la hoja tiene locale es_ES y devolvía el precio como "50,00",
   // que un <input type="number"> no puede mostrar y deja el campo vacío
@@ -103,6 +105,7 @@ export async function PATCH(req: NextRequest) {
     imagenUrl,
     existencias,
     tamanos,
+    opciones,
   } = await req.json();
 
   if (!idProducto) {
@@ -207,6 +210,34 @@ export async function PATCH(req: NextRequest) {
     }
     const colTamanos = await ensureColumn('Productos', 'Tamanos');
     await updateCell('Productos', fila.rowIndex, colTamanos, serializarTamanos(limpios));
+  }
+
+  // Opciones a elegir dentro del producto (queso del combo, sabor de la
+  // bebida…). Lista vacía = el producto vuelve a venderse sin preguntar.
+  if (opciones !== undefined) {
+    if (!Array.isArray(opciones)) {
+      return NextResponse.json({ error: 'Opciones inválidas' }, { status: 400 });
+    }
+    const limpios: GrupoOpcion[] = [];
+    for (const g of opciones) {
+      const nom = (g?.nombre ?? '').toString().trim();
+      if (!nom) continue;
+      const lista = Array.isArray(g?.opciones)
+        ? g.opciones.map((o: unknown) => (o ?? '').toString().trim()).filter(Boolean)
+        : [];
+      if (lista.length < 2) {
+        return NextResponse.json(
+          { error: `"${nom}" necesita al menos dos opciones para poder elegir` },
+          { status: 400 }
+        );
+      }
+      if (limpios.some((x) => x.nombre.toLowerCase() === nom.toLowerCase())) {
+        return NextResponse.json({ error: `El grupo "${nom}" está repetido` }, { status: 400 });
+      }
+      limpios.push({ nombre: nom, opciones: lista });
+    }
+    const colOpciones = await ensureColumn('Productos', 'Opciones');
+    await updateCell('Productos', fila.rowIndex, colOpciones, serializarOpciones(limpios));
   }
 
   return NextResponse.json({ success: true });

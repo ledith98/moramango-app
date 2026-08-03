@@ -34,6 +34,13 @@ const parsearTelefono = (telefonoCompleto: string): { lada: string; numero: stri
 };
 
 import { claveLinea, precioDeTamano, precioDesde, type Tamano } from '@/lib/tamanos';
+import {
+  claveEleccion,
+  type Eleccion,
+  eleccionInicial,
+  type GrupoOpcion,
+  resumenEleccion,
+} from '@/lib/opciones';
 
 interface ItemCarrito {
   id: string;
@@ -43,6 +50,13 @@ interface ItemCarrito {
   cantidad: number;
   /** Vacío si el producto se vende con un solo precio */
   tamano: string;
+  /** Lo elegido dentro del producto: { Queso: 'Queso suizo' } */
+  opciones: Eleccion;
+  /**
+   * Identifica el renglón. Dos combos con distinto queso son dos
+   * renglones, no uno con cantidad 2, aunque cuesten lo mismo.
+   */
+  clave: string;
 }
 
 interface DatosLealtad {
@@ -144,6 +158,8 @@ export default function Home() {
   const [productoDetalle, setProductoDetalle] = useState<any | null>(null);
   /** Tamaño elegido en la ficha del producto (vacío = no tiene tamaños) */
   const [tamanoElegido, setTamanoElegido] = useState('');
+  /** Opciones elegidas en la ficha: { Queso: 'Queso suizo' } */
+  const [opcionesElegidas, setOpcionesElegidas] = useState<Eleccion>({});
   /** Horario: lo calcula el servidor, no la hora del celular del cliente */
   const [tienda, setTienda] = useState<{ abierta: boolean; mensaje: string }>({
     abierta: true,
@@ -162,7 +178,20 @@ export default function Home() {
 
     try {
       const carritoGuardado = localStorage.getItem(CARRITO_KEY);
-      if (carritoGuardado) setCarrito(JSON.parse(carritoGuardado));
+      if (carritoGuardado) {
+        // Un carrito guardado antes de que existieran tamaños y opciones no
+        // trae `clave` ni `opciones`. Sin esto, sus botones de + y − dejan
+        // de responder y dos renglones distintos pelean por la misma llave.
+        const guardado = JSON.parse(carritoGuardado) as ItemCarrito[];
+        setCarrito(
+          guardado.map((i) => ({
+            ...i,
+            tamano: i.tamano ?? '',
+            opciones: i.opciones ?? {},
+            clave: i.clave ?? claveLinea(i.id, i.tamano),
+          }))
+        );
+      }
     } catch {}
 
     setNombreUsuario(localStorage.getItem('moramango_nombre') || '');
@@ -299,69 +328,83 @@ export default function Home() {
     return isNaN(num) ? 0 : num;
   };
 
-  const agregarAlCarrito = (producto: any, tamano?: string) => {
+  /** Suma 1 sin pasar de las existencias. Devuelve el carrito ya cambiado. */
+  const sumarSiCabe = (
+    prev: ItemCarrito[],
+    producto: any,
+    clave: string,
+    nuevo: () => ItemCarrito
+  ): ItemCarrito[] => {
+    // disponibles null = sin inventario cargado, sin límite
+    const tope = producto.disponibles;
+    if (tope !== null && tope !== undefined) {
+      // El tope es por producto: se cuentan todos sus renglones juntos
+      const yaEnCarrito = prev
+        .filter(i => i.id === producto.id)
+        .reduce((n, i) => n + i.cantidad, 0);
+      if (yaEnCarrito >= tope) {
+        setAvisoStock(
+          tope <= 0
+            ? `${producto.nombre} se agotó por hoy 😔`
+            : `Solo nos ${tope === 1 ? 'queda 1' : `quedan ${tope}`} de ${producto.nombre}`
+        );
+        return prev;
+      }
+    }
+    if (prev.some(i => i.clave === clave)) {
+      return prev.map(i => (i.clave === clave ? { ...i, cantidad: i.cantidad + 1 } : i));
+    }
+    return [...prev, nuevo()];
+  };
+
+  const agregarAlCarrito = (producto: any, tamano?: string, eleccion?: Eleccion) => {
     if (producto.disponible === false) {
       setAvisoStock(`${producto.nombre} no está disponible por el momento`);
       return;
     }
-    // Con tamaños no se puede agregar a ciegas: hay más de un precio, así
-    // que se abre la ficha para que el cliente elija cuál quiere.
+    // Con tamaños u opciones no se puede agregar a ciegas: hay decisiones
+    // que solo el cliente puede tomar, así que se abre la ficha.
     const tamanos: Tamano[] = producto.tamanos ?? [];
-    if (tamanos.length > 0 && !tamano) {
+    const grupos: GrupoOpcion[] = producto.opciones ?? [];
+    if ((tamanos.length > 0 && !tamano) || (grupos.length > 0 && !eleccion)) {
       abrirDetalle(producto);
       return;
     }
     const precio = tamano
       ? precioDeTamano(tamanos, tamano) ?? limpiarPrecio(producto.precio)
       : limpiarPrecio(producto.precio);
-    const clave = claveLinea(producto.id, tamano);
+    const clave = claveLinea(producto.id, tamano, claveEleccion(grupos, eleccion));
 
-    // disponibles null = sin inventario cargado, sin límite
-    const tope = producto.disponibles;
-    setCarrito(prev => {
-      const existe = prev.find(item => claveLinea(item.id, item.tamano) === clave);
-      if (tope !== null && tope !== undefined) {
-        // El tope es por producto, no por tamaño: se cuentan todos sus renglones
-        const yaEnCarrito = prev
-          .filter(i => i.id === producto.id)
-          .reduce((n, i) => n + i.cantidad, 0);
-        if (yaEnCarrito >= tope) {
-          setAvisoStock(
-            tope <= 0
-              ? `${producto.nombre} se agotó por hoy 😔`
-              : `Solo nos ${tope === 1 ? 'queda 1' : `quedan ${tope}`} de ${producto.nombre}`
-          );
-          return prev;
-        }
-      }
-      if (existe) {
-        return prev.map(item =>
-          claveLinea(item.id, item.tamano) === clave
-            ? { ...item, cantidad: item.cantidad + 1 }
-            : item
-        );
-      }
-      return [...prev, {
+    setCarrito(prev =>
+      sumarSiCabe(prev, producto, clave, () => ({
         id: producto.id,
         nombre: producto.nombre,
         precio,
         categoria: producto.categoria,
         cantidad: 1,
         tamano: tamano ?? '',
-      }];
-    });
+        opciones: eleccion ?? {},
+        clave,
+      }))
+    );
+  };
+
+  /** El "+" del carrito: el renglón ya existe, solo sube la cantidad. */
+  const sumarUnoAlCarrito = (clave: string) => {
+    const item = carrito.find(i => i.clave === clave);
+    if (!item) return;
+    const producto = productos.find(p => p.id === item.id) ?? { id: item.id, nombre: item.nombre };
+    setCarrito(prev => sumarSiCabe(prev, producto, clave, () => item));
   };
 
   const eliminarDelCarrito = (clave: string) => {
     setCarrito(prev => {
-      const item = prev.find(i => claveLinea(i.id, i.tamano) === clave);
+      const item = prev.find(i => i.clave === clave);
       if (!item) return prev;
       if (item.cantidad > 1) {
-        return prev.map(i =>
-          claveLinea(i.id, i.tamano) === clave ? { ...i, cantidad: i.cantidad - 1 } : i
-        );
+        return prev.map(i => (i.clave === clave ? { ...i, cantidad: i.cantidad - 1 } : i));
       }
-      const nuevo = prev.filter(i => claveLinea(i.id, i.tamano) !== clave);
+      const nuevo = prev.filter(i => i.clave !== clave);
       if (nuevo.length === 0) setVerCarrito(false);
       return nuevo;
     });
@@ -422,11 +465,33 @@ export default function Home() {
   };
 
   // Abrir detalle solo si hay descripción — evita modal vacío
+  // Un carrito de antes puede traer un combo sin queso elegido, o un jugo
+  // sin tamaño. Al confirmar el pedido el servidor lo rechazaría y el
+  // cliente se quedaría atorado sin entender por qué, así que se sacan del
+  // carrito en cuanto se sabe qué pide hoy cada producto.
+  useEffect(() => {
+    if (productos.length === 0) return;
+    const limpio = carrito.filter((item) => {
+      const p = productos.find((x) => x.id === item.id);
+      if (!p) return true; // producto desconocido: lo resuelve el servidor
+      const faltaTamano = (p.tamanos ?? []).length > 0 && !item.tamano;
+      const faltaElegir = (p.opciones ?? []).some((g: GrupoOpcion) => !item.opciones?.[g.nombre]);
+      return !faltaTamano && !faltaElegir;
+    });
+    if (limpio.length === carrito.length) return;
+    setCarrito(limpio);
+    setAvisoStock('Quitamos algo de tu carrito porque ahora se pide con opciones. Vuelve a agregarlo.');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productos, carrito]);
+
   const abrirDetalle = (producto: any) => {
     const tamanos: Tamano[] = producto.tamanos ?? [];
-    // Con tamaños la ficha se abre siempre: es donde se elige cuál se lleva
-    if (tamanos.length === 0 && !(producto.descripcion && producto.descripcion.trim())) return;
+    const grupos: GrupoOpcion[] = producto.opciones ?? [];
+    // Con tamaños u opciones la ficha se abre siempre: es donde se elige
+    const hayQueElegir = tamanos.length > 0 || grupos.length > 0;
+    if (!hayQueElegir && !(producto.descripcion && producto.descripcion.trim())) return;
     setTamanoElegido(tamanos[0]?.nombre ?? '');
+    setOpcionesElegidas(eleccionInicial(grupos));
     setProductoDetalle(producto);
   };
 
@@ -647,6 +712,15 @@ export default function Home() {
         noDisponibles.push(item.nombre);
         continue;
       }
+      // Si el producto ahora pide elegir algo (el queso del combo, por
+      // ejemplo), no se puede repetir a ciegas: el pedido viejo no guardó
+      // esa decisión. Se manda a elegirlo en vez de adivinar.
+      const grupos: GrupoOpcion[] = actual.opciones ?? [];
+      if (grupos.length > 0) {
+        noDisponibles.push(item.nombre);
+        continue;
+      }
+
       disponibles.push({
         id: actual.id,
         nombre: actual.nombre,
@@ -656,6 +730,8 @@ export default function Home() {
         categoria: actual.categoria,
         cantidad: item.cantidad,
         tamano: tamano ?? '',
+        opciones: {},
+        clave: claveLinea(actual.id, tamano, ''),
       });
     }
 
@@ -736,6 +812,7 @@ export default function Home() {
             precio: item.precio,
             cantidad: item.cantidad,
             tamano: item.tamano,
+            opciones: item.opciones,
           })),
           notas: notas.trim(),
           horaRecoleccion: '',
@@ -852,10 +929,12 @@ export default function Home() {
 
   // Info del producto en detalle (para el modal)
   const tamanosDetalle: Tamano[] = productoDetalle?.tamanos ?? [];
+  const gruposDetalle: GrupoOpcion[] = productoDetalle?.opciones ?? [];
+  const claveDetalle = productoDetalle
+    ? claveLinea(productoDetalle.id, tamanoElegido, claveEleccion(gruposDetalle, opcionesElegidas))
+    : '';
   const itemEnCarritoDetalle = productoDetalle
-    ? carrito.find(
-        i => claveLinea(i.id, i.tamano) === claveLinea(productoDetalle.id, tamanoElegido)
-      )
+    ? carrito.find(i => i.clave === claveDetalle)
     : null;
   const cantidadEnCarritoDetalle = itemEnCarritoDetalle?.cantidad ?? 0;
   // El precio que se muestra y se cobra es el del tamaño elegido
@@ -1014,7 +1093,11 @@ export default function Home() {
                             .filter(item => item.id === producto.id)
                             .reduce((n, item) => n + item.cantidad, 0);
                           const tamanosProd: Tamano[] = producto.tamanos ?? [];
+                          const gruposProd: GrupoOpcion[] = producto.opciones ?? [];
                           const tieneTamanos = tamanosProd.length > 0;
+                          // Con opciones tampoco se puede sumar/restar desde
+                          // la tarjeta: hay que saber cuál de los renglones
+                          const hayQueElegir = tieneTamanos || gruposProd.length > 0;
                           const tieneDescripcion = producto.descripcion && producto.descripcion.trim();
                           const venta = estadoDeVenta(producto);
 
@@ -1108,7 +1191,7 @@ export default function Home() {
                                   </div>
                                 )}
                                 
-                                {cantidadAgregada > 0 && tieneTamanos && (
+                                {cantidadAgregada > 0 && hayQueElegir && (
                                   <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center bg-white/90 backdrop-blur-sm rounded-b-2xl px-1.5 py-1 shadow-sm">
                                     <span className="text-sm font-bold text-neutral-900 tabular-nums">
                                       {cantidadAgregada} en tu pedido
@@ -1116,7 +1199,7 @@ export default function Home() {
                                   </div>
                                 )}
 
-                                {cantidadAgregada > 0 && !tieneTamanos && (
+                                {cantidadAgregada > 0 && !hayQueElegir && (
                                   <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between bg-white/90 backdrop-blur-sm rounded-b-2xl px-1.5 py-1 shadow-sm">
                                     <button
                                       onClick={() => eliminarDelCarrito(claveLinea(producto.id))}
@@ -1194,18 +1277,22 @@ export default function Home() {
                 </div>
               )}
               {carrito.map((item) => (
-                <div key={claveLinea(item.id, item.tamano)} className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-neutral-100">
+                <div key={item.clave} className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-neutral-100">
                   <div className="pr-4 flex-1">
                     <h3 className="font-semibold text-neutral-900 leading-tight">{item.nombre}</h3>
-                    {item.tamano && (
-                      <p className="text-xs text-neutral-700 font-medium mt-0.5">{item.tamano}</p>
+                    {(item.tamano || Object.keys(item.opciones ?? {}).length > 0) && (
+                      <p className="text-xs text-neutral-700 font-medium mt-0.5">
+                        {[item.tamano, ...Object.values(item.opciones ?? {})]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </p>
                     )}
                     <p className="text-neutral-800 font-semibold text-sm mt-1">${(item.precio * item.cantidad).toFixed(2)}</p>
                   </div>
                   <div className="flex items-center bg-neutral-100 rounded-xl p-1 gap-2 shrink-0">
-                    <button onClick={() => eliminarDelCarrito(claveLinea(item.id, item.tamano))} className="w-8 h-8 flex items-center justify-center bg-white rounded-lg font-bold text-neutral-900 shadow-sm active:scale-90">-</button>
+                    <button onClick={() => eliminarDelCarrito(item.clave)} className="w-8 h-8 flex items-center justify-center bg-white rounded-lg font-bold text-neutral-900 shadow-sm active:scale-90">-</button>
                     <span className="font-bold text-neutral-900 px-1 min-w-[16px] text-center">{item.cantidad}</span>
-                    <button onClick={() => agregarAlCarrito(item, item.tamano)} className="w-8 h-8 flex items-center justify-center bg-white rounded-lg font-bold text-neutral-900 shadow-sm active:scale-90">+</button>
+                    <button onClick={() => sumarUnoAlCarrito(item.clave)} className="w-8 h-8 flex items-center justify-center bg-white rounded-lg font-bold text-neutral-900 shadow-sm active:scale-90">+</button>
                   </div>
                 </div>
               ))}
@@ -1941,6 +2028,35 @@ export default function Home() {
                   </p>
                 )}
 
+                {/* Opciones a elegir: queso del combo, sabor de la bebida… */}
+                {gruposDetalle.map((g) => (
+                  <div key={g.nombre} className="mb-4">
+                    <p className="text-sm font-semibold text-neutral-800 mb-2">
+                      Elige {g.nombre.toLowerCase()}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {g.opciones.map((o) => {
+                        const activo = opcionesElegidas[g.nombre] === o;
+                        return (
+                          <button
+                            key={o}
+                            onClick={() =>
+                              setOpcionesElegidas((prev) => ({ ...prev, [g.nombre]: o }))
+                            }
+                            className={`px-3.5 py-2 rounded-xl border-2 text-sm font-semibold transition-colors ${
+                              activo
+                                ? 'border-marron bg-marron/10 text-neutral-900'
+                                : 'border-neutral-200 bg-white text-neutral-800'
+                            }`}
+                          >
+                            {o}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+
                 {/* Tamaño: solo si el producto se vende en varios */}
                 {tamanosDetalle.length > 0 && (
                   <div className="mb-4">
@@ -1981,18 +2097,22 @@ export default function Home() {
               <div className="border-t border-neutral-100 p-4 shrink-0 bg-white rounded-b-3xl">
                 {cantidadEnCarritoDetalle === 0 ? (
                   <button
-                    onClick={() => agregarAlCarrito(productoDetalle, tamanoElegido)}
+                    onClick={() =>
+                      agregarAlCarrito(productoDetalle, tamanoElegido, opcionesElegidas)
+                    }
                     className="w-full bg-marron text-white font-bold text-base py-4 rounded-2xl active:scale-95 transition-transform shadow-md"
                   >
-                    Agregar al pedido{tamanoElegido ? ` · ${tamanoElegido}` : ''}
+                    Agregar al pedido
+                    {[tamanoElegido, resumenEleccion(gruposDetalle, opcionesElegidas)]
+                      .filter(Boolean)
+                      .map((t) => ` · ${t}`)
+                      .join('')}
                   </button>
                 ) : (
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center bg-neutral-100 rounded-2xl p-1.5 gap-2">
                       <button
-                        onClick={() =>
-                          eliminarDelCarrito(claveLinea(productoDetalle.id, tamanoElegido))
-                        }
+                        onClick={() => eliminarDelCarrito(claveDetalle)}
                         className="w-11 h-11 flex items-center justify-center bg-white rounded-xl font-medium text-neutral-700 shadow-sm active:scale-90 text-lg"
                       >
                         −
@@ -2001,7 +2121,9 @@ export default function Home() {
                         {cantidadEnCarritoDetalle}
                       </span>
                       <button
-                        onClick={() => agregarAlCarrito(productoDetalle, tamanoElegido)}
+                        onClick={() =>
+                          agregarAlCarrito(productoDetalle, tamanoElegido, opcionesElegidas)
+                        }
                         className="w-11 h-11 flex items-center justify-center bg-marron text-white rounded-xl font-medium shadow-sm active:scale-90 text-lg"
                       >
                         +

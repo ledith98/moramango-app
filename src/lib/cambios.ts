@@ -32,6 +32,14 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-03',
     tipo: 'nuevo',
+    titulo: 'Los combos ya se arman a gusto del cliente',
+    detalle:
+      'El Combo 1 pregunta el queso (suizo o panela) y la bebida entre los 4 jugos y los 4 licuados. El Combo 2 pregunta el sabor del jugo. El cliente elige antes de agregarlo, y en el mostrador te aparece la misma pregunta. En el ticket sale completo: "Combo 1 (Queso panela · Jugo de Mango)", para que quien prepara no tenga que preguntar. Las opciones se editan en Productos → editar → Opciones a elegir, y ahí puedes agregar sabores nuevos o usarlo en cualquier otro producto.',
+    donde: 'Productos · Tienda · Venta',
+  },
+  {
+    fecha: '2026-08-03',
+    tipo: 'nuevo',
     titulo: 'Jugos y licuados en 500 ml y 1 litro',
     detalle:
       'Los 8 jugos y licuados ya se venden en dos tamaños con precio propio. El cliente elige el tamaño al tocar el producto, y en el mostrador te pregunta cuál lleva antes de agregarlo. Los precios se editan en Productos → editar → Tamaños, uno por uno. Ojo: el precio de 1 litro quedó puesto al doble solo como punto de partida, revísalo. Cualquier otro producto puede venderse por tamaños igual, no solo los jugos.',

@@ -4,6 +4,7 @@ import { normalizarUrlImagen } from '@/lib/imagenes';
 import { leerAjustes, posicionCategoria } from '@/lib/ajustes';
 import { estadoTienda } from '@/lib/horario';
 import { parsearTamanos } from '@/lib/tamanos';
+import { parsearOpciones } from '@/lib/opciones';
 
 export async function GET() {
   try {
@@ -39,6 +40,8 @@ export async function GET() {
         emoji: (p.Emoji ?? '').trim(),
         // Tamaños con precio propio. Vacío = un solo precio, como siempre.
         tamanos: parsearTamanos(p.Tamanos ?? ''),
+        // Lo que el cliente elige dentro del producto: queso, sabor…
+        opciones: parsearOpciones(p.Opciones ?? ''),
         // Existencias por producto: solo se usa en los de reventa (conchas,
         // galletas…). Los elaborados la dejan vacía y NO muestran "últimas
         // piezas". Vacío = sin control de existencias, sin límite.

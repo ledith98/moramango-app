@@ -2,6 +2,13 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { claveLinea, parsearTamanos, precioDesde, precioDeTamano } from '@/lib/tamanos';
+import {
+  claveEleccion,
+  type Eleccion,
+  eleccionInicial,
+  parsearOpciones,
+  resumenEleccion,
+} from '@/lib/opciones';
 import { TicketBotones } from '../TicketBotones';
 import type { DatosTicket } from '@/lib/ticket';
 import { esBeneficioReactivacion, montoReactivacion } from '@/lib/beneficioCliente';
@@ -25,6 +32,7 @@ interface Producto {
   Disponible: string;
   Emoji?: string;
   Tamanos?: string;
+  Opciones?: string;
 }
 
 interface ItemVenta {
@@ -34,6 +42,10 @@ interface ItemVenta {
   cantidad: number;
   /** Vacío si el producto se vende con un solo precio */
   tamano: string;
+  /** Lo elegido dentro del producto: { Queso: 'Queso suizo' } */
+  opciones: Eleccion;
+  /** Identifica el renglón: mismo combo con distinto queso son dos */
+  clave: string;
 }
 
 interface Cliente {
@@ -60,8 +72,10 @@ const ICONO_METODO: Record<string, string> = {
 
 export default function VentaPage() {
   const [productos, setProductos] = useState<Producto[]>([]);
-  /** Producto al que hay que elegirle tamaño antes de agregarlo */
-  const [eligiendoTamano, setEligiendoTamano] = useState<Producto | null>(null);
+  /** Producto al que hay que elegirle tamaño y/u opciones antes de agregarlo */
+  const [configurando, setConfigurando] = useState<Producto | null>(null);
+  const [tamanoTemp, setTamanoTemp] = useState('');
+  const [opcionesTemp, setOpcionesTemp] = useState<Eleccion>({});
   const [cargando, setCargando] = useState(true);
   const [items, setItems] = useState<ItemVenta[]>([]);
   const [nombre, setNombre] = useState('');
@@ -159,25 +173,26 @@ export default function VentaPage() {
   const cantidadDe = (idProducto: string) =>
     items.filter((i) => i.id === idProducto).reduce((n, i) => n + i.cantidad, 0);
 
-  const agregar = (p: Producto, tamano?: string) => {
+  const agregar = (p: Producto, tamano?: string, eleccion?: Eleccion) => {
     setVentaOk(null);
     const tamanos = parsearTamanos(p.Tamanos ?? '');
-    // Con tamaños hay que decir cuál: se abre el selector en vez de adivinar
-    if (tamanos.length > 0 && !tamano) {
-      setEligiendoTamano(p);
+    const grupos = parsearOpciones(p.Opciones ?? '');
+    // Hay decisiones que las toma el cliente: se abre el selector en vez
+    // de adivinar el tamaño o el sabor
+    if ((tamanos.length > 0 && !tamano) || (grupos.length > 0 && !eleccion)) {
+      setConfigurando(p);
+      setTamanoTemp(tamanos[0]?.nombre ?? '');
+      setOpcionesTemp(eleccionInicial(grupos));
       return;
     }
     const precio = tamano
       ? precioDeTamano(tamanos, tamano) ?? 0
       : parseFloat(p.Precio_Venta) || 0;
-    const clave = claveLinea(p.ID_Producto, tamano);
-    setEligiendoTamano(null);
+    const clave = claveLinea(p.ID_Producto, tamano, claveEleccion(grupos, eleccion));
+    setConfigurando(null);
     setItems((prev) => {
-      const existe = prev.find((i) => claveLinea(i.id, i.tamano) === clave);
-      if (existe) {
-        return prev.map((i) =>
-          claveLinea(i.id, i.tamano) === clave ? { ...i, cantidad: i.cantidad + 1 } : i
-        );
+      if (prev.some((i) => i.clave === clave)) {
+        return prev.map((i) => (i.clave === clave ? { ...i, cantidad: i.cantidad + 1 } : i));
       }
       return [
         ...prev,
@@ -187,6 +202,8 @@ export default function VentaPage() {
           precio,
           cantidad: 1,
           tamano: tamano ?? '',
+          opciones: eleccion ?? {},
+          clave,
         },
       ];
     });
@@ -194,14 +211,12 @@ export default function VentaPage() {
 
   const quitar = (clave: string) => {
     setItems((prev) => {
-      const item = prev.find((i) => claveLinea(i.id, i.tamano) === clave);
+      const item = prev.find((i) => i.clave === clave);
       if (!item) return prev;
       if (item.cantidad > 1) {
-        return prev.map((i) =>
-          claveLinea(i.id, i.tamano) === clave ? { ...i, cantidad: i.cantidad - 1 } : i
-        );
+        return prev.map((i) => (i.clave === clave ? { ...i, cantidad: i.cantidad - 1 } : i));
       }
-      return prev.filter((i) => claveLinea(i.id, i.tamano) !== clave);
+      return prev.filter((i) => i.clave !== clave);
     });
   };
 
@@ -213,7 +228,7 @@ export default function VentaPage() {
   const candidatosGratis = items.filter((i) => i.precio <= topeArticulo);
   const articuloGratis =
     beneficioCanjeado === 'Articulo Gratis'
-      ? candidatosGratis.find((i) => claveLinea(i.id, i.tamano) === articuloGratisId)
+      ? candidatosGratis.find((i) => i.clave === articuloGratisId)
       : undefined;
 
   const descuento =
@@ -245,9 +260,7 @@ export default function VentaPage() {
         estadoPago,
         idUsuario: cliente?.id,
         beneficioCanjeado,
-        articuloGratisId: articuloGratis
-          ? claveLinea(articuloGratis.id, articuloGratis.tamano)
-          : undefined,
+        articuloGratisId: articuloGratis?.clave,
         // Solo para efectivo con cambio; queda de registro en el pedido
         efectivoRecibido: metodoPago === 'Efectivo' && recibidoNum > 0 ? recibidoNum : undefined,
         cambio: cambio > 0 ? cambio : undefined,
@@ -436,41 +449,86 @@ export default function VentaPage() {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* Elegir tamaño antes de agregar */}
-      {eligiendoTamano && (
+      {/* Elegir tamaño y opciones antes de agregar */}
+      {configurando && (
         <div
           className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4"
-          onClick={() => setEligiendoTamano(null)}
+          onClick={() => setConfigurando(null)}
         >
           <div
-            className="bg-white rounded-3xl p-5 w-full max-w-sm space-y-3"
+            className="bg-white rounded-3xl p-5 w-full max-w-sm space-y-4 max-h-[85vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div>
               <p className="text-xs text-neutral-600 uppercase tracking-wide font-semibold">
-                {eligiendoTamano.Categoría}
+                {configurando.Categoría}
               </p>
               <h3 className="font-bold text-lg text-neutral-900 leading-tight">
-                {eligiendoTamano.Nombre}
+                {configurando.Nombre}
               </h3>
-              <p className="text-sm text-neutral-700 mt-0.5">¿Qué tamaño lleva?</p>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              {parsearTamanos(eligiendoTamano.Tamanos ?? '').map((t) => (
-                <button
-                  key={t.nombre}
-                  onClick={() => agregar(eligiendoTamano, t.nombre)}
-                  className="border-2 border-neutral-200 rounded-2xl p-4 text-left active:scale-95 transition-transform"
-                >
-                  <span className="block font-bold text-neutral-900">{t.nombre}</span>
-                  <span className="block text-lg font-bold text-black">
-                    ${t.precio.toFixed(2)}
-                  </span>
-                </button>
-              ))}
-            </div>
+
+            {parsearOpciones(configurando.Opciones ?? '').map((g) => (
+              <div key={g.nombre}>
+                <p className="text-sm font-semibold text-neutral-800 mb-2">{g.nombre}</p>
+                <div className="flex flex-wrap gap-2">
+                  {g.opciones.map((o) => {
+                    const activo = opcionesTemp[g.nombre] === o;
+                    return (
+                      <button
+                        key={o}
+                        onClick={() => setOpcionesTemp((prev) => ({ ...prev, [g.nombre]: o }))}
+                        className={`px-3 py-2 rounded-xl border-2 text-sm font-semibold active:scale-95 ${
+                          activo
+                            ? 'border-black bg-neutral-100 text-neutral-900'
+                            : 'border-neutral-200 bg-white text-neutral-800'
+                        }`}
+                      >
+                        {o}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            {parsearTamanos(configurando.Tamanos ?? '').length > 0 && (
+              <div>
+                <p className="text-sm font-semibold text-neutral-800 mb-2">Tamaño</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {parsearTamanos(configurando.Tamanos ?? '').map((t) => {
+                    const activo = tamanoTemp === t.nombre;
+                    return (
+                      <button
+                        key={t.nombre}
+                        onClick={() => setTamanoTemp(t.nombre)}
+                        className={`border-2 rounded-2xl p-3 text-left active:scale-95 ${
+                          activo ? 'border-black bg-neutral-100' : 'border-neutral-200'
+                        }`}
+                      >
+                        <span className="block font-bold text-neutral-900 text-sm">{t.nombre}</span>
+                        <span className="block text-lg font-bold text-black">
+                          ${t.precio.toFixed(2)}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <button
-              onClick={() => setEligiendoTamano(null)}
+              onClick={() => agregar(configurando, tamanoTemp, opcionesTemp)}
+              className="w-full py-3.5 rounded-xl bg-black text-white font-bold active:scale-95"
+            >
+              Agregar a la venta
+              {[tamanoTemp, resumenEleccion(parsearOpciones(configurando.Opciones ?? ''), opcionesTemp)]
+                .filter(Boolean)
+                .map((t) => ` · ${t}`)
+                .join('')}
+            </button>
+            <button
+              onClick={() => setConfigurando(null)}
               className="w-full py-3 rounded-xl bg-neutral-100 font-semibold text-neutral-800 active:scale-95"
             >
               Cancelar
@@ -489,6 +547,8 @@ export default function VentaPage() {
             {productos.map((p) => {
               const cant = cantidadDe(p.ID_Producto);
               const tamanosP = parsearTamanos(p.Tamanos ?? '');
+              const gruposP = parsearOpciones(p.Opciones ?? '');
+              const hayQueElegir = tamanosP.length > 0 || gruposP.length > 0;
               return (
                 <div
                   key={p.ID_Producto}
@@ -513,15 +573,20 @@ export default function VentaPage() {
                         {tamanosP.map((t) => t.nombre).join(' · ')}
                       </p>
                     )}
+                    {gruposP.length > 0 && (
+                      <p className="text-[10px] font-semibold text-neutral-700 mt-0.5">
+                        a elegir: {gruposP.map((g) => g.nombre.toLowerCase()).join(', ')}
+                      </p>
+                    )}
                   </button>
-                  {cant > 0 && tamanosP.length > 0 && (
+                  {cant > 0 && hayQueElegir && (
                     <div className="mt-2 text-center bg-neutral-100 rounded-lg py-1">
                       <span className="font-bold text-sm text-neutral-900 tabular-nums">
                         {cant} en la venta
                       </span>
                     </div>
                   )}
-                  {cant > 0 && tamanosP.length === 0 && (
+                  {cant > 0 && !hayQueElegir && (
                     <div className="mt-2 flex items-center justify-between bg-neutral-100 rounded-lg p-1">
                       <button
                         onClick={() => quitar(claveLinea(p.ID_Producto))}
@@ -552,18 +617,21 @@ export default function VentaPage() {
         {items.length > 0 && (
           <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 space-y-2">
             {items.map((i) => (
-              <div key={claveLinea(i.id, i.tamano)} className="flex justify-between items-center text-sm gap-2">
+              <div key={i.clave} className="flex justify-between items-center text-sm gap-2">
                 <span className="text-neutral-900 font-medium flex-1 min-w-0">
                   {i.cantidad}× {i.nombre}
-                  {i.tamano && (
-                    <span className="text-neutral-700 font-semibold"> ({i.tamano})</span>
+                  {[i.tamano, ...Object.values(i.opciones ?? {})].filter(Boolean).length > 0 && (
+                    <span className="text-neutral-700 font-semibold">
+                      {' '}
+                      ({[i.tamano, ...Object.values(i.opciones ?? {})].filter(Boolean).join(' · ')})
+                    </span>
                   )}
                 </span>
                 <span className="font-semibold text-neutral-900 shrink-0">
                   ${(i.precio * i.cantidad).toFixed(2)}
                 </span>
                 <button
-                  onClick={() => quitar(claveLinea(i.id, i.tamano))}
+                  onClick={() => quitar(i.clave)}
                   aria-label={`Quitar uno de ${i.nombre}`}
                   className="w-6 h-6 shrink-0 rounded-md bg-neutral-100 text-neutral-700 font-bold active:scale-90"
                 >
@@ -690,12 +758,15 @@ export default function VentaPage() {
                       >
                         <option value="">Elige el producto…</option>
                         {candidatosGratis.map((i) => (
-                          <option
-                            key={claveLinea(i.id, i.tamano)}
-                            value={claveLinea(i.id, i.tamano)}
-                          >
+                          <option key={i.clave} value={i.clave}>
                             {i.nombre}
-                            {i.tamano ? ` (${i.tamano})` : ''} — ${i.precio.toFixed(2)}
+                            {[i.tamano, ...Object.values(i.opciones ?? {})].filter(Boolean).length >
+                            0
+                              ? ` (${[i.tamano, ...Object.values(i.opciones ?? {})]
+                                  .filter(Boolean)
+                                  .join(' · ')})`
+                              : ''}{' '}
+                            — ${i.precio.toFixed(2)}
                           </option>
                         ))}
                       </select>

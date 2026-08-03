@@ -11,7 +11,14 @@
  */
 
 import { getSheetData } from './googleSheets';
-import { nombreConTamano, parsearTamanos, precioDeTamano } from './tamanos';
+import {
+  claveEleccion,
+  type Eleccion,
+  parsearOpciones,
+  resumenEleccion,
+  validarEleccion,
+} from './opciones';
+import { claveLinea, nombreConTamano, parsearTamanos, precioDeTamano } from './tamanos';
 
 export interface ItemEntrante {
   id?: string;
@@ -20,6 +27,8 @@ export interface ItemEntrante {
   cantidad?: number | string;
   /** Nombre del tamaño elegido ("1 litro"); vacío si el producto no tiene */
   tamano?: string;
+  /** Lo elegido en cada grupo: { Queso: 'Queso suizo' } */
+  opciones?: Eleccion;
 }
 
 export interface ItemValidado {
@@ -29,6 +38,9 @@ export interface ItemValidado {
   precio: number;
   cantidad: number;
   tamano: string;
+  opciones: Eleccion;
+  /** Identifica el renglón: mismo producto con distinto queso son dos */
+  clave: string;
   categoria: string;
 }
 
@@ -85,12 +97,27 @@ export async function validarItems(items: ItemEntrante[]): Promise<ResultadoVali
       }
     }
 
+    // Opciones a elegir dentro del producto (queso, sabor de la bebida…).
+    // No cambian el precio, pero sí lo que hay que preparar, así que se
+    // exigen igual que el tamaño.
+    const grupos = parsearOpciones(p.Opciones ?? '');
+    const revision = validarEleccion(grupos, item.opciones);
+    if (!revision.ok) {
+      return { ok: false, error: `${revision.error} en "${p.Nombre}"` };
+    }
+    const eleccion = revision.eleccion;
+
+    // "Combo 1 (Queso suizo · Jugo de Mango)" o "Jugo de Mango (1 litro)"
+    const detalle = [tamano, resumenEleccion(grupos, eleccion)].filter(Boolean).join(' · ');
+
     validados.push({
       id: p.ID_Producto,
-      nombre: nombreConTamano(p.Nombre, tamano),
+      nombre: nombreConTamano(p.Nombre, detalle),
       precio,
       cantidad,
       tamano,
+      opciones: eleccion,
+      clave: claveLinea(p.ID_Producto, tamano, claveEleccion(grupos, eleccion)),
       categoria: (p['Categoría'] ?? p.Categoria ?? '').toString(),
     });
   }

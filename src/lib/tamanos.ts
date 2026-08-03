@@ -74,10 +74,11 @@ export function precioDesde(tamanos: Tamano[], precioBase: number): number {
 /**
  * Identifica un renglón del carrito. No basta el id del producto: el mismo
  * jugo puede ir en 500 ml y en 1 litro, y son dos renglones con precios
- * distintos.
+ * distintos. `extra` sirve para lo que también separa renglones sin
+ * cambiar el precio, como el queso elegido en un combo.
  */
-export function claveLinea(id: string, tamano?: string): string {
-  return `${id}::${(tamano ?? '').trim().toLowerCase()}`;
+export function claveLinea(id: string, tamano?: string, extra?: string): string {
+  return `${id}::${(tamano ?? '').trim().toLowerCase()}::${(extra ?? '').trim().toLowerCase()}`;
 }
 
 /** "Jugo de Mango (1 litro)" para el ticket y la hoja de pedidos. */

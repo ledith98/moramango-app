@@ -9,6 +9,8 @@ interface Usuario {
   Rol: string;
   Email: string;
   Activo: string;
+  Notas_Admin?: string;
+  Total_Articulos_Historico?: string;
 }
 
 interface PedidoHistorial {
@@ -24,6 +26,11 @@ export default function UsuariosPage() {
   const [historialDe, setHistorialDe] = useState<Usuario | null>(null);
   const [pedidos, setPedidos] = useState<PedidoHistorial[]>([]);
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
+  const [editando, setEditando] = useState<Usuario | null>(null);
+  const [form, setForm] = useState({ nombre: '', telefono: '', notas: '' });
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState('');
 
   const cargarUsuarios = useCallback(() => {
     setCargando(true);
@@ -61,6 +68,68 @@ export default function UsuariosPage() {
     });
   };
 
+  const abrirEditar = (u: Usuario) => {
+    setEditando(u);
+    setForm({
+      nombre: u.Nombre || '',
+      telefono: u.Telefono || '',
+      notas: u.Notas_Admin || '',
+    });
+    setError('');
+  };
+
+  const guardar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editando) return;
+    if (!form.nombre.trim()) {
+      setError('El nombre no puede quedar vacío');
+      return;
+    }
+    setGuardando(true);
+    setError('');
+    const res = await fetch('/api/admin/usuarios', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        idUsuario: editando.ID_Usuario,
+        nombre: form.nombre,
+        telefono: form.telefono,
+        notas: form.notas,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setGuardando(false);
+    if (!res.ok) {
+      // El caso típico: el teléfono ya está en otra cuenta
+      setError(data.error || 'No se pudo guardar');
+      return;
+    }
+    setUsuarios((prev) =>
+      prev.map((x) =>
+        x.ID_Usuario === editando.ID_Usuario
+          ? { ...x, Nombre: form.nombre.trim(), Telefono: form.telefono.trim(), Notas_Admin: form.notas.trim() }
+          : x
+      )
+    );
+    setEditando(null);
+  };
+
+  /**
+   * Busca por nombre, teléfono o correo. El teléfono se compara por sus
+   * dígitos: quien lo tiene guardado como "+52 811..." lo teclea sin lada
+   * y con comparación de texto no encontraría nada.
+   */
+  const q = busqueda.trim().toLowerCase();
+  const soloDigitos = q.replace(/\D/g, '');
+  const visibles = usuarios.filter((u) => {
+    if (!q) return true;
+    const enTexto = [u.Nombre, u.Email, u.ID_Usuario]
+      .some((c) => (c || '').toLowerCase().includes(q));
+    const enTelefono =
+      soloDigitos.length >= 3 && (u.Telefono || '').replace(/\D/g, '').includes(soloDigitos);
+    return enTexto || enTelefono;
+  });
+
   const verHistorial = (u: Usuario) => {
     setHistorialDe(u);
     setCargandoHistorial(true);
@@ -72,7 +141,19 @@ export default function UsuariosPage() {
 
   return (
     <div className="space-y-6">
-      <span className="text-sm text-neutral-700">{usuarios.length} usuario{usuarios.length === 1 ? '' : 's'}</span>
+      <div className="space-y-2">
+        <input
+          value={busqueda}
+          onChange={(e) => setBusqueda(e.target.value)}
+          placeholder="Buscar por nombre, teléfono o correo…"
+          className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2.5 text-sm text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-black"
+        />
+        <span className="text-sm text-neutral-700">
+          {busqueda.trim()
+            ? `${visibles.length} de ${usuarios.length} usuario${usuarios.length === 1 ? '' : 's'}`
+            : `${usuarios.length} usuario${usuarios.length === 1 ? '' : 's'}`}
+        </span>
+      </div>
 
       {cargando ? (
         <p className="text-neutral-700 animate-pulse">Cargando usuarios...</p>
@@ -89,7 +170,7 @@ export default function UsuariosPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
-              {usuarios.map((u) => (
+              {visibles.map((u) => (
                 <tr key={u.ID_Usuario} className="hover:bg-neutral-50">
                   <td className="p-4">
                     <button onClick={() => verHistorial(u)} className="font-semibold text-neutral-900 hover:underline text-left">
@@ -131,11 +212,22 @@ export default function UsuariosPage() {
                     >
                       Historial
                     </button>
+                    <button
+                      onClick={() => abrirEditar(u)}
+                      className="ml-2 text-sm font-semibold text-neutral-600 bg-neutral-100 px-3 py-1.5 rounded-lg active:scale-95 transition-transform"
+                    >
+                      Editar
+                    </button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          {visibles.length === 0 && (
+            <p className="p-6 text-center text-neutral-700">
+              Nadie coincide con “{busqueda.trim()}”.
+            </p>
+          )}
         </div>
       )}
 
@@ -170,6 +262,99 @@ export default function UsuariosPage() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Editar datos de contacto */}
+      {editando && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => setEditando(null)}
+        >
+          <form
+            onSubmit={guardar}
+            className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl shadow-2xl flex flex-col max-h-[92dvh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-6 pt-6 pb-3 shrink-0">
+              <h2 className="text-lg font-bold text-black">Editar usuario</h2>
+              <p className="text-xs text-neutral-600 mt-0.5">{editando.ID_Usuario}</p>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-neutral-700">Nombre</label>
+                <input
+                  value={form.nombre}
+                  onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+                  className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-neutral-700">Teléfono</label>
+                <input
+                  value={form.telefono}
+                  onChange={(e) => setForm({ ...form, telefono: e.target.value })}
+                  inputMode="tel"
+                  placeholder="8117850462"
+                  className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-black"
+                />
+                <p className="text-xs text-neutral-600">
+                  Con este número se le encuentra en el mostrador y se le acumulan sus compras. No
+                  puede estar en dos cuentas.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-neutral-700">
+                  Correo <span className="font-normal text-neutral-600">(no se puede cambiar)</span>
+                </label>
+                <p className="w-full bg-neutral-100 border border-neutral-200 rounded-xl p-3 text-neutral-700 break-all">
+                  {editando.Email || '— entró desde el mostrador, sin cuenta de Google —'}
+                </p>
+                <p className="text-xs text-neutral-600">
+                  Es la cuenta de Google con la que inicia sesión. Cambiarla lo dejaría sin poder
+                  entrar.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-neutral-700">
+                  Notas <span className="font-normal text-neutral-600">(solo tú las ves)</span>
+                </label>
+                <textarea
+                  value={form.notas}
+                  onChange={(e) => setForm({ ...form, notas: e.target.value })}
+                  rows={2}
+                  className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-black"
+                  placeholder="Ej. prefiere sin hielo"
+                />
+              </div>
+              <div className="h-2" />
+            </div>
+
+            <div className="shrink-0 border-t border-neutral-100 px-6 py-4 space-y-3 bg-white sm:rounded-b-3xl">
+              {error && <p className="text-sm text-red-600">{error}</p>}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditando(null)}
+                  className="flex-1 border border-neutral-200 text-neutral-600 font-semibold py-3 rounded-2xl active:scale-95 transition-transform"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={guardando}
+                  className="flex-1 bg-black text-white font-semibold py-3 rounded-2xl active:scale-95 transition-transform disabled:opacity-50"
+                >
+                  {guardando ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            </div>
+          </form>
         </div>
       )}
     </div>

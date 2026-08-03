@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-03',
+    tipo: 'nuevo',
+    titulo: 'Buscador y edición en Usuarios',
+    detalle:
+      'Arriba de la lista hay un buscador: escribes nombre, teléfono o correo y filtra al momento. El teléfono lo encuentra aunque lo teclees distinto a como está guardado (con lada, con espacios o solo los últimos dígitos). Y cada usuario tiene un botón de Editar para corregirle el nombre, el teléfono y dejarle una nota privada. El correo no se puede cambiar porque es su cuenta de Google: cambiarlo lo dejaría sin poder entrar. Si le pones un teléfono que ya es de otra cuenta, te avisa de quién es y no lo guarda.',
+    donde: 'Usuarios',
+  },
+  {
+    fecha: '2026-08-03',
     tipo: 'mejora',
     titulo: 'Las opciones se recogen al contestarlas',
     detalle:

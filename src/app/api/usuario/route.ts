@@ -13,6 +13,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/authOptions';
 import { findRow, getSheetData, updateCell } from '@/lib/googleSheets';
 import { beneficioVigente } from '@/lib/lealtad';
+import { claveTelefono, telefonoUtil } from '@/lib/telefono';
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -68,14 +69,12 @@ export async function PATCH(req: NextRequest) {
     // compara por los últimos 10 dígitos (el número local): con
     // comparación exacta, "8117850462" y "+52 8117850462" pasaban como
     // distintos y el mismo número acababa en dos cuentas.
-    const clave = (t: string) => {
-      const d = (t || '').replace(/\D/g, '');
-      return d.length >= 10 ? d.slice(-10) : d;
-    };
-    if (clave(nuevoTel).length >= 8) {
+    if (telefonoUtil(nuevoTel)) {
       const usuarios = await getSheetData('USUARIOS');
       const enOtraCuenta = usuarios.some(
-        (u) => u.ID_Usuario !== usuario.id_usuario && clave(u.Telefono) === clave(nuevoTel)
+        (u) =>
+          u.ID_Usuario !== usuario.id_usuario &&
+          claveTelefono(u.Telefono) === claveTelefono(nuevoTel)
       );
       if (enOtraCuenta) {
         return NextResponse.json(

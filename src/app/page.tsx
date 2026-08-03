@@ -172,6 +172,11 @@ export default function Home() {
     abierta: true,
     mensaje: '',
   });
+  /** Dónde recoger. Vacío mientras no se capture en Ajustes. */
+  const [local, setLocal] = useState<{ direccion: string; mapa: string }>({
+    direccion: '',
+    mapa: '',
+  });
 
   useEffect(() => {
     fetch('/api/productos')
@@ -179,6 +184,7 @@ export default function Home() {
       .then((data) => {
         if (data.productos) setProductos(data.productos);
         if (data.tienda) setTienda(data.tienda);
+        if (data.local) setLocal(data.local);
         setCargando(false);
       })
       .catch(() => setCargando(false));
@@ -328,6 +334,27 @@ export default function Home() {
    * Icono de un producto sin foto: el emoji que se le puso en el panel y,
    * si no tiene, el genérico de su categoría.
    */
+  /** Dónde está el local. No se pinta nada si todavía no se ha capturado. */
+  const BloqueDireccion = ({ titulo }: { titulo: string }) =>
+    !local.direccion ? null : (
+      <div className="bg-neutral-50 border border-neutral-200 rounded-2xl p-4">
+        <p className="text-xs font-bold text-neutral-800 mb-1">📍 {titulo}</p>
+        <p className="text-sm text-neutral-800 leading-relaxed whitespace-pre-line">
+          {local.direccion}
+        </p>
+        {local.mapa && (
+          <a
+            href={local.mapa}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block mt-2 text-xs font-bold text-white bg-marron px-3 py-2 rounded-lg active:scale-95"
+          >
+            Cómo llegar
+          </a>
+        )}
+      </div>
+    );
+
   const iconoProducto = (p: { emoji?: string; categoria?: string }) =>
     (p.emoji || '').trim() || getIcono(p.categoria || '');
 
@@ -475,11 +502,18 @@ export default function Home() {
             telefono: telefonoCompleto,
           }),
         });
+        const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          // Ej: el número ya está registrado en otra cuenta (409)
+          // Ej: el número ya está en la cuenta de Google de otra persona
           setErrorTelefono(data.error || 'No se pudo guardar. Intenta de nuevo.');
           return;
+        }
+        // Si su número ya estaba en el mostrador, se le juntaron las
+        // compras y hay que contárselo: si no, sus pedidos "aparecen" de
+        // la nada y su avance de lealtad da un salto sin explicación.
+        if (data.aviso) {
+          setAvisoStock(data.aviso);
+          setLealtad(null); // se vuelve a leer con el avance ya juntado
         }
       } catch {
         // Si falla por red, ya quedará en localStorage abajo. No bloqueamos.
@@ -945,6 +979,9 @@ export default function Home() {
               </a>
             </div>
           )}
+          <div className="mb-6 text-left">
+            <BloqueDireccion titulo="Aquí lo recoges" />
+          </div>
           <p className="text-sm text-neutral-700 leading-relaxed mb-8">
             Recibirás una notificación cuando tu pedido esté listo para recoger.
           </p>
@@ -1275,6 +1312,10 @@ export default function Home() {
                     </section>
                   );
                 })}
+
+                {/* Al final del menú, para quien solo quiere saber dónde
+                    estamos sin tener que iniciar sesión ni pedir nada. */}
+                <BloqueDireccion titulo="Dónde estamos" />
               </div>
             )}
           </div>
@@ -1452,6 +1493,12 @@ export default function Home() {
                       Tarjeta
                     </button>
                   </div>
+
+                  {formaPago === 'recoger' && (
+                    <div className="mt-3">
+                      <BloqueDireccion titulo="Nos encuentras aquí" />
+                    </div>
+                  )}
 
                   {formaPago === 'linea' && (
                     <p className="text-xs text-neutral-700 mt-2">

@@ -30,6 +30,12 @@ export default function AjustesPage() {
   const [guardandoHorario, setGuardandoHorario] = useState(false);
   const [okHorario, setOkHorario] = useState(false);
   const [errorHorario, setErrorHorario] = useState('');
+  const [direccion, setDireccion] = useState('');
+  const [mapa, setMapa] = useState('');
+  const [localGuardado, setLocalGuardado] = useState({ direccion: '', mapa: '' });
+  const [guardandoLocal, setGuardandoLocal] = useState(false);
+  const [okLocal, setOkLocal] = useState(false);
+  const [errorLocal, setErrorLocal] = useState('');
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [ok, setOk] = useState(false);
@@ -67,6 +73,10 @@ export default function AjustesPage() {
     setOrden(final);
     setOrdenGuardado(final);
 
+    setDireccion(a?.direccion ?? '');
+    setMapa(a?.mapa ?? '');
+    setLocalGuardado({ direccion: a?.direccion ?? '', mapa: a?.mapa ?? '' });
+
     if (a?.horario?.dias?.length === 7) {
       setHorario(a.horario);
       setHorarioGuardado(a.horario);
@@ -101,6 +111,28 @@ export default function AjustesPage() {
     setOk(true);
     setTimeout(() => setOk(false), 2500);
   }
+
+  async function guardarLocal() {
+    setGuardandoLocal(true);
+    setErrorLocal('');
+    const res = await fetch('/api/admin/ajustes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ direccion, mapa }),
+    });
+    const data = await res.json();
+    setGuardandoLocal(false);
+    if (!res.ok) {
+      setErrorLocal(data.error || 'No se pudo guardar');
+      return;
+    }
+    setLocalGuardado({ direccion, mapa });
+    setOkLocal(true);
+    setTimeout(() => setOkLocal(false), 2500);
+  }
+
+  const localCambiado =
+    direccion !== localGuardado.direccion || mapa !== localGuardado.mapa;
 
   function mover(i: number, hacia: -1 | 1) {
     const j = i + hacia;
@@ -176,6 +208,67 @@ export default function AjustesPage() {
       <p className="text-sm text-neutral-700">
         Reglas del negocio que puedes cambiar tú, sin que nadie toque la aplicación.
       </p>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5 space-y-4">
+        <div>
+          <h2 className="font-bold text-neutral-900">📍 Dirección del local</h2>
+          <p className="text-sm text-neutral-700 mt-1">
+            Se le muestra al cliente cuando elige pagar al recoger y en la pantalla de su pedido,
+            para que sepa a dónde ir. Si lo dejas vacío, no se muestra nada.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-sm font-semibold text-neutral-700">Dirección</label>
+          <textarea
+            value={direccion}
+            onChange={(e) => setDireccion(e.target.value)}
+            rows={2}
+            placeholder="Ej. Av. Universidad 123, Col. Centro, San Nicolás de los Garza, N.L."
+            className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-marron"
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-sm font-semibold text-neutral-700">
+            Enlace del mapa <span className="font-normal text-neutral-600">(opcional)</span>
+          </label>
+          <input
+            value={mapa}
+            onChange={(e) => setMapa(e.target.value)}
+            placeholder="https://maps.app.goo.gl/…"
+            className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-marron"
+          />
+          <p className="text-xs text-neutral-600">
+            En Google Maps busca tu local, toca Compartir y copia el enlace. Con esto al cliente le
+            aparece un botón de “Cómo llegar”.
+          </p>
+        </div>
+
+        {errorLocal && <p className="text-sm text-red-600">{errorLocal}</p>}
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={guardarLocal}
+            disabled={guardandoLocal || !localCambiado}
+            className="bg-marron text-white font-semibold px-5 py-3 rounded-xl active:scale-95 disabled:opacity-50"
+          >
+            {guardandoLocal ? 'Guardando…' : okLocal ? '✅ Guardado' : 'Guardar dirección'}
+          </button>
+          {localCambiado && (
+            <button
+              onClick={() => {
+                setDireccion(localGuardado.direccion);
+                setMapa(localGuardado.mapa);
+                setErrorLocal('');
+              }}
+              className="text-sm font-semibold text-neutral-700 px-3 py-3"
+            >
+              Deshacer
+            </button>
+          )}
+        </div>
+      </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5 space-y-4">
         <div>

@@ -39,10 +39,20 @@ const SEPARADOR = '|';
 /** Horario de atención: a qué horas se pueden hacer pedidos. */
 export const CLAVE_HORARIO = 'HorarioTienda';
 
+/**
+ * Dirección del local, para que el cliente sepa a dónde ir por su pedido.
+ * Vacía = no se muestra nada, en vez de enseñar una dirección inventada.
+ */
+export const CLAVE_DIRECCION = 'DireccionLocal';
+export const CLAVE_MAPA = 'MapaLocal';
+
 export interface Ajustes {
   topeArticuloGratis: number;
   ordenCategorias: string[];
   horario: Horario;
+  /** Dónde está el local y cómo llegar; ambos pueden ir vacíos */
+  direccion: string;
+  mapa: string;
 }
 
 // Viven en su propio archivo para que la tienda y el panel las puedan usar
@@ -85,11 +95,15 @@ export async function leerAjustes(): Promise<Ajustes> {
       .filter(Boolean);
 
     const horarioCrudo = (filas.find((f) => f.Clave === CLAVE_HORARIO)?.Valor ?? '').toString();
+    const texto = (clave: string) =>
+      (filas.find((f) => f.Clave === clave)?.Valor ?? '').toString().trim();
 
     const ajustes: Ajustes = {
       topeArticuloGratis: !isNaN(tope) && tope > 0 ? tope : TOPE_ARTICULO_DEFAULT,
       ordenCategorias: orden.length > 0 ? orden : ORDEN_CATEGORIAS_DEFAULT,
       horario: parsearHorario(horarioCrudo),
+      direccion: texto(CLAVE_DIRECCION),
+      mapa: texto(CLAVE_MAPA),
     };
     cache = { valor: ajustes, hasta: Date.now() + VIDA_CACHE_MS };
     return ajustes;
@@ -102,6 +116,8 @@ export async function leerAjustes(): Promise<Ajustes> {
       topeArticuloGratis: TOPE_ARTICULO_DEFAULT,
       ordenCategorias: ORDEN_CATEGORIAS_DEFAULT,
       horario: HORARIO_DEFAULT,
+      direccion: '',
+      mapa: '',
     };
   }
 }

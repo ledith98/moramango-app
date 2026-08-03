@@ -14,6 +14,7 @@ import { authOptions } from '@/lib/authOptions';
 import { findRow, getSheetData, updateCell } from '@/lib/googleSheets';
 import { beneficioVigente } from '@/lib/lealtad';
 import { claveTelefono, telefonoUtil } from '@/lib/telefono';
+import { fusionarFichaDeMostrador } from '@/lib/fusionCuentas';
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -69,21 +70,41 @@ export async function PATCH(req: NextRequest) {
     // compara por los últimos 10 dígitos (el número local): con
     // comparación exacta, "8117850462" y "+52 8117850462" pasaban como
     // distintos y el mismo número acababa en dos cuentas.
+    let avisoFusion = '';
     if (telefonoUtil(nuevoTel)) {
       const usuarios = await getSheetData('USUARIOS');
-      const enOtraCuenta = usuarios.some(
+      const otra = usuarios.find(
         (u) =>
           u.ID_Usuario !== usuario.id_usuario &&
           claveTelefono(u.Telefono) === claveTelefono(nuevoTel)
       );
-      if (enOtraCuenta) {
-        return NextResponse.json(
-          { error: 'Ese número ya está registrado en otra cuenta.' },
-          { status: 409 }
-        );
+
+      if (otra) {
+        // Con correo es una cuenta de Google de otra persona: ahí no se
+        // toca nada. Sin correo es una ficha del mostrador, casi siempre
+        // del mismo cliente que ahora se bajó la app.
+        if ((otra.Email || '').trim()) {
+          return NextResponse.json(
+            { error: 'Ese número ya está registrado en otra cuenta.' },
+            { status: 409 }
+          );
+        }
+
+        const r = await fusionarFichaDeMostrador(usuario.id_usuario, otra.ID_Usuario);
+        avisoFusion =
+          r.pedidosMovidos > 0
+            ? `Encontramos ${r.pedidosMovidos} compra${
+                r.pedidosMovidos === 1 ? '' : 's'
+              } que ya habías hecho en el local y ${
+                r.pedidosMovidos === 1 ? 'la sumamos' : 'las sumamos'
+              } a tu cuenta.`
+            : 'Ya tenías un registro en el local y lo unimos con tu cuenta.';
       }
     }
     await updateCell('USUARIOS', usuarioRow.rowIndex, 3, nuevoTel);
+    if (avisoFusion) {
+      return NextResponse.json({ success: true, aviso: avisoFusion });
+    }
   }
 
   return NextResponse.json({ success: true });

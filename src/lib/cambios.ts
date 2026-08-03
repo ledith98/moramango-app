@@ -32,6 +32,22 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-03',
     tipo: 'nuevo',
+    titulo: 'El registro del local se une solo con la cuenta de la app',
+    detalle:
+      'Si alguien ya compraba en el local y luego se baja la app, al capturar su teléfono se le juntan las dos: sus compras anteriores aparecen en su cuenta y su avance para el premio sigue donde iba, sin empezar de cero. Se lo avisamos en pantalla para que no le salgan pedidos de la nada. Si el número resulta estar en la cuenta de Google de otra persona, ahí sí se rechaza como antes.',
+    donde: 'Tienda · Usuarios',
+  },
+  {
+    fecha: '2026-08-03',
+    tipo: 'nuevo',
+    titulo: 'La dirección del local en la app',
+    detalle:
+      'En Ajustes puedes capturar la dirección y, opcionalmente, el enlace de Google Maps. Se le muestra al cliente al final del menú (sin necesidad de iniciar sesión), al elegir pagar al recoger y en la pantalla de su pedido confirmado, con un botón de “Cómo llegar”. Está vacía: hay que capturarla para que se vea.',
+    donde: 'Ajustes · Tienda',
+  },
+  {
+    fecha: '2026-08-03',
+    tipo: 'nuevo',
     titulo: 'Buscador y edición en Usuarios',
     detalle:
       'Arriba de la lista hay un buscador: escribes nombre, teléfono o correo y filtra al momento. El teléfono lo encuentra aunque lo teclees distinto a como está guardado (con lada, con espacios o solo los últimos dígitos). Y cada usuario tiene un botón de Editar para corregirle el nombre, el teléfono y dejarle una nota privada. El correo no se puede cambiar porque es su cuenta de Google: cambiarlo lo dejaría sin poder entrar. Si le pones un teléfono que ya es de otra cuenta, te avisa de quién es y no lo guarda.',

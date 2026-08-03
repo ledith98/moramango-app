@@ -15,7 +15,7 @@ export async function GET() {
     // crudo: con el locale es_ES un precio de 52.50 se leía "52,50" y
     // parseFloat lo truncaba a 52. Hoy todos son enteros y nadie lo notó,
     // pero el primer precio con centavos habría cobrado de menos.
-    const [{ ordenCategorias, horario }, todos] = await Promise.all([
+    const [{ ordenCategorias, horario, direccion, mapa }, todos] = await Promise.all([
       leerAjustes(),
       getSheetData('Productos', { crudo: true }),
     ]);
@@ -71,6 +71,7 @@ export async function GET() {
       ordenCategorias,
       tienda: estadoTienda(horario),
       horario,
+      local: { direccion, mapa },
     });
   } catch (error) {
     console.error('Error en /api/productos:', error);

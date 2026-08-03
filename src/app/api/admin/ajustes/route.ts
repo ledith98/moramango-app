@@ -8,6 +8,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import {
+  CLAVE_DIRECCION,
+  CLAVE_MAPA,
   CLAVE_TOPE_ARTICULO,
   guardarAjuste,
   guardarHorario,
@@ -29,7 +31,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
-  const { topeArticuloGratis, ordenCategorias, horario } = await req.json();
+  const { topeArticuloGratis, ordenCategorias, horario, direccion, mapa } = await req.json();
 
   if (topeArticuloGratis !== undefined) {
     const tope = parseFloat(topeArticuloGratis);
@@ -87,6 +89,20 @@ export async function POST(req: NextRequest) {
         hasta: String(d.hasta ?? '16:00'),
       })),
     });
+  }
+
+  if (direccion !== undefined) {
+    await guardarAjuste(CLAVE_DIRECCION, (direccion ?? '').toString().trim(), 'Dirección del local');
+  }
+  if (mapa !== undefined) {
+    const url = (mapa ?? '').toString().trim();
+    if (url && !/^https:\/\//i.test(url)) {
+      return NextResponse.json(
+        { error: 'El enlace del mapa debe empezar con https://' },
+        { status: 400 }
+      );
+    }
+    await guardarAjuste(CLAVE_MAPA, url, 'Enlace para llegar al local');
   }
 
   return NextResponse.json({ success: true, ajustes: await leerAjustes() });

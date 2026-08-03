@@ -5,6 +5,7 @@ import { esEnlaceDeVisorDrive } from '@/lib/imagenes';
 import { parsearTamanos, TAMANOS_SUGERIDOS, type Tamano } from '@/lib/tamanos';
 import { type GrupoOpcion, parsearOpciones } from '@/lib/opciones';
 import { type Extra, parsearExtras } from '@/lib/extras';
+import { claveCategoria, posicionCategoria } from '@/lib/categorias';
 
 interface Producto {
   ID_Producto: string;
@@ -20,6 +21,7 @@ interface Producto {
   Tamanos?: string;
   Opciones?: string;
   Extras?: string;
+  Orden_Menu?: string;
 }
 
 type EstadoProducto = 'vendiendo' | 'pausado' | 'oculto';
@@ -80,6 +82,9 @@ const FORM_VACIO: FormProducto = {
 
 export default function ProductosPage() {
   const [productos, setProductos] = useState<Producto[]>([]);
+  /** Orden de los grupos, el mismo que ve el cliente (Panel → Ajustes) */
+  const [ordenCategorias, setOrdenCategorias] = useState<string[]>([]);
+  const [acomodando, setAcomodando] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [editando, setEditando] = useState<Producto | null>(null);
   const [creando, setCreando] = useState(false);
@@ -93,9 +98,14 @@ export default function ProductosPage() {
 
   const cargarProductos = useCallback(() => {
     setCargando(true);
-    fetch('/api/admin/productos')
-      .then((res) => res.json())
-      .then((data) => setProductos(data.productos || []))
+    Promise.all([
+      fetch('/api/admin/productos').then((r) => r.json()),
+      fetch('/api/admin/ajustes').then((r) => r.json()),
+    ])
+      .then(([prod, ajustes]) => {
+        setProductos(prod.productos || []);
+        setOrdenCategorias(ajustes?.ordenCategorias || []);
+      })
       .finally(() => setCargando(false));
   }, []);
 
@@ -108,6 +118,67 @@ export default function ProductosPage() {
   const categoriasExistentes = Array.from(
     new Set(productos.map((p) => (p.Categoría || '').trim()).filter(Boolean))
   ).sort((a, b) => a.localeCompare(b, 'es'));
+
+  const orden = (p: Producto) => parseInt(p.Orden_Menu ?? '') || 9999;
+
+  /**
+   * Los productos se ven agrupados y en el mismo orden que en la tienda y
+   * en Venta. Antes salían en el orden de las filas del Excel, así que un
+   * producto nuevo aparecía hasta el final y lejos de los suyos.
+   */
+  const grupos = Array.from(
+    new Set(productos.map((p) => (p.Categoría || 'Otros').trim() || 'Otros'))
+  )
+    .sort(
+      (a, b) =>
+        posicionCategoria(a, ordenCategorias) - posicionCategoria(b, ordenCategorias) ||
+        a.localeCompare(b, 'es')
+    )
+    .map((cat) => ({
+      cat,
+      items: productos
+        .filter((p) => claveCategoria(p.Categoría || 'Otros') === claveCategoria(cat))
+        .sort((a, b) => orden(a) - orden(b)),
+    }));
+
+  /** Lista completa, ya aplanada, en el orden en que se ve en pantalla. */
+  const idsEnOrden = (gs: typeof grupos) => gs.flatMap((g) => g.items.map((p) => p.ID_Producto));
+
+  /**
+   * Sube o baja un producto dentro de su grupo. Para cambiarlo de grupo se
+   * edita su categoría, que es lo que ya hacía esa decisión.
+   */
+  const mover = async (cat: string, i: number, hacia: -1 | 1) => {
+    const g = grupos.find((x) => x.cat === cat);
+    if (!g) return;
+    const j = i + hacia;
+    if (j < 0 || j >= g.items.length) return;
+
+    const nuevos = [...g.items];
+    [nuevos[i], nuevos[j]] = [nuevos[j], nuevos[i]];
+    const listos = grupos.map((x) => (x.cat === cat ? { ...x, items: nuevos } : x));
+    const ids = idsEnOrden(listos);
+
+    // Se pinta el cambio de inmediato y luego se guarda: mover una flecha
+    // y esperar a Google para verla moverse se siente descompuesto.
+    setProductos((prev) => {
+      const pos = new Map(ids.map((id, n) => [id, n + 1]));
+      return prev.map((p) =>
+        pos.has(p.ID_Producto) ? { ...p, Orden_Menu: String(pos.get(p.ID_Producto)) } : p
+      );
+    });
+
+    setAcomodando(true);
+    try {
+      await fetch('/api/admin/productos/orden', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+    } finally {
+      setAcomodando(false);
+    }
+  };
 
   /** Reusa la categoría que ya existe si solo cambian mayúsculas o acentos. */
   const canonizarCategoria = (valor: string) => {
@@ -290,11 +361,45 @@ export default function ProductosPage() {
       {cargando ? (
         <p className="text-neutral-700 animate-pulse">Cargando productos...</p>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {productos.map((p) => {
+        <div className="space-y-6">
+          {grupos.map(({ cat, items }) => (
+            <section key={cat}>
+              <h3 className="font-bold text-neutral-900 mb-1">
+                {cat}{' '}
+                <span className="font-normal text-sm text-neutral-600">
+                  ({items.length})
+                </span>
+              </h3>
+              <p className="text-xs text-neutral-600 mb-3">
+                Con las flechas cambias el orden en que se ven, tanto en la tienda como en Venta.
+                Para pasarlo a otro grupo, edítalo y cámbiale la categoría.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {items.map((p, indice) => {
             const estado = estadoDe(p);
             return (
               <div key={p.ID_Producto} className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 flex flex-col gap-2">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => mover(cat, indice, -1)}
+                    disabled={indice === 0 || acomodando}
+                    aria-label={`Subir ${p.Nombre}`}
+                    className="w-8 h-8 rounded-lg bg-neutral-100 text-neutral-900 font-bold active:scale-90 disabled:opacity-30"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    onClick={() => mover(cat, indice, 1)}
+                    disabled={indice === items.length - 1 || acomodando}
+                    aria-label={`Bajar ${p.Nombre}`}
+                    className="w-8 h-8 rounded-lg bg-neutral-100 text-neutral-900 font-bold active:scale-90 disabled:opacity-30"
+                  >
+                    ↓
+                  </button>
+                  <span className="text-xs font-semibold text-neutral-600 ml-1">
+                    {indice + 1}º de {items.length}
+                  </span>
+                </div>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex items-start gap-2">
                     {p.Imagen_URL && (
@@ -356,6 +461,9 @@ export default function ProductosPage() {
               </div>
             );
           })}
+              </div>
+            </section>
+          ))}
         </div>
       )}
 

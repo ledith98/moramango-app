@@ -168,7 +168,20 @@ export async function POST(req: NextRequest) {
 
   const existentes = await getSheetData('Productos');
   const nuevoId = `PROD-${String(existentes.length + 1).padStart(3, '0')}`;
-  const ordenMenu = existentes.length + 1;
+
+  // El producto nuevo entra al final de SU grupo, no al final del menú.
+  // Antes se le daba un número más alto que todos, así que un jugo nuevo
+  // aparecía después de las bebidas, fuera de los suyos, y había que
+  // reacomodarlo a mano cada vez.
+  const cat = (categoria?.trim() || 'Otros').toLowerCase();
+  const ordenesDelGrupo = existentes
+    .filter((p) => (p['Categoría'] ?? p.Categoria ?? '').toString().trim().toLowerCase() === cat)
+    .map((p) => parseInt(p.Orden_Menu))
+    .filter((n) => !isNaN(n));
+  const ordenMenu =
+    ordenesDelGrupo.length > 0
+      ? Math.max(...ordenesDelGrupo) + 1
+      : existentes.length + 1; // categoría nueva: se va al final y se acomoda desde el panel
 
   const fila = await appendRow('Productos', [
     nuevoId,

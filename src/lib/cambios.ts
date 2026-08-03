@@ -32,6 +32,14 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-03',
     tipo: 'nuevo',
+    titulo: 'Reacomodar los productos con flechas',
+    detalle:
+      'En Productos ahora los ves agrupados (Combos, Comida salada, Jugos…) y en cada uno hay flechas para subir y bajar. El acomodo que dejes se ve igual en la tienda y en Venta, así que ya no hay que buscar los productos revueltos al cobrar. Para pasar algo a otro grupo, edítalo y cámbiale la categoría. Y un producto nuevo ya entra al final de SU grupo, no hasta el final de todo: ese era el problema de antes.',
+    donde: 'Productos · Venta',
+  },
+  {
+    fecha: '2026-08-03',
+    tipo: 'nuevo',
     titulo: 'Toppings extra con costo',
     detalle:
       'Ahora puedes ofrecer agregados que suben el precio: chía, granola, lo que vendas. En Productos → editar → Toppings extra pones cuáles son y cuánto cuesta cada uno. El cliente marca los que quiera (o ninguno) y el precio se actualiza al momento; en el mostrador te aparecen igual. Se cobran por pieza y salen en el ticket: "Licuado de Fresa (1 litro · + Proteína)". Ningún producto tiene toppings todavía: se los pones tú a los que quieras.',

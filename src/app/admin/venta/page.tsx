@@ -10,6 +10,7 @@ import {
   resumenEleccion,
 } from '@/lib/opciones';
 import { claveExtras, type Extra, parsearExtras, precioExtras, resumenExtras } from '@/lib/extras';
+import { claveCategoria, posicionCategoria } from '@/lib/categorias';
 import { TicketBotones } from '../TicketBotones';
 import type { DatosTicket } from '@/lib/ticket';
 import { esBeneficioReactivacion, montoReactivacion } from '@/lib/beneficioCliente';
@@ -35,6 +36,7 @@ interface Producto {
   Tamanos?: string;
   Opciones?: string;
   Extras?: string;
+  Orden_Menu?: string;
 }
 
 interface ItemVenta {
@@ -116,6 +118,8 @@ export default function VentaPage() {
   // Artículo gratis de la décima compra: cuál del carrito se regala
   const [articuloGratisId, setArticuloGratisId] = useState('');
   const [topeArticulo, setTopeArticulo] = useState(35);
+  /** Orden de los grupos, el mismo del panel y de la tienda */
+  const [ordenCategorias, setOrdenCategorias] = useState<string[]>([]);
 
   useEffect(() => {
     fetch('/api/admin/productos')
@@ -133,6 +137,7 @@ export default function VentaPage() {
       .then((res) => res.json())
       .then((d) => {
         if (d?.topeArticuloGratis) setTopeArticulo(d.topeArticuloGratis);
+        setOrdenCategorias(d?.ordenCategorias || []);
       })
       .catch(() => {});
   }, []);
@@ -182,6 +187,27 @@ export default function VentaPage() {
   // Suma todos los tamaños: el mismo jugo puede ir en 500 ml y en 1 litro
   const cantidadDe = (idProducto: string) =>
     items.filter((i) => i.id === idProducto).reduce((n, i) => n + i.cantidad, 0);
+
+  /**
+   * Mismo acomodo que en Productos y en la tienda: por grupo y, dentro de
+   * cada grupo, en el orden que se les dio. Antes salían en el orden de
+   * las filas del Excel, así que buscar un producto al cobrar era una
+   * cacería y los nuevos aparecían hasta el final.
+   */
+  const gruposProductos = Array.from(
+    new Set(productos.map((p) => (p.Categoría || 'Otros').trim() || 'Otros'))
+  )
+    .sort(
+      (a, b) =>
+        posicionCategoria(a, ordenCategorias) - posicionCategoria(b, ordenCategorias) ||
+        a.localeCompare(b, 'es')
+    )
+    .map((cat) => ({
+      cat,
+      items: productos
+        .filter((p) => claveCategoria(p.Categoría || 'Otros') === claveCategoria(cat))
+        .sort((a, b) => (parseInt(a.Orden_Menu ?? '') || 9999) - (parseInt(b.Orden_Menu ?? '') || 9999)),
+    }));
 
   const agregar = (p: Producto, tamano?: string, eleccion?: Eleccion, extras?: Extra[]) => {
     setVentaOk(null);
@@ -613,8 +639,14 @@ export default function VentaPage() {
         {cargando ? (
           <p className="text-neutral-700 animate-pulse">Cargando productos...</p>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {productos.map((p) => {
+          <div className="space-y-5">
+            {gruposProductos.map(({ cat, items }) => (
+              <section key={cat}>
+                <h3 className="text-xs font-bold text-neutral-600 uppercase tracking-wide mb-2">
+                  {cat}
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {items.map((p) => {
               const cant = cantidadDe(p.ID_Producto);
               const tamanosP = parsearTamanos(p.Tamanos ?? '');
               const gruposP = parsearOpciones(p.Opciones ?? '');
@@ -629,7 +661,6 @@ export default function VentaPage() {
                   }`}
                 >
                   <button onClick={() => agregar(p)} className="w-full text-left active:scale-95 transition-transform">
-                    <p className="text-[10px] text-neutral-600 uppercase tracking-wide">{p.Categoría}</p>
                     <p className="font-semibold text-neutral-900 text-sm leading-tight">
                       {p.Emoji && <span className="mr-1">{p.Emoji}</span>}
                       {p.Nombre}
@@ -678,6 +709,9 @@ export default function VentaPage() {
                 </div>
               );
             })}
+                </div>
+              </section>
+            ))}
           </div>
         )}
       </div>

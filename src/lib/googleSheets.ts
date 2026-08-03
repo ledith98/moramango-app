@@ -175,6 +175,35 @@ export async function updateCells(
   );
 }
 
+/**
+ * Escribe celdas sueltas de VARIAS filas en un solo viaje.
+ *
+ * Reacomodar el menú toca los 28 productos a la vez: con una llamada por
+ * producto serían 28 viajes de ~300 ms cada uno, casi nueve segundos de
+ * espera por mover una flecha.
+ */
+export async function updateCeldas(
+  tabName: string,
+  cambios: { fila: number; col: number; valor: string | number | boolean }[]
+) {
+  if (cambios.length === 0) return;
+
+  const auth = getAuthClient();
+  const sheets = google.sheets({ version: 'v4', auth });
+
+  const data = cambios.map(({ fila, col, valor }) => ({
+    range: `${tabName}!${String.fromCharCode(64 + col)}${fila}`,
+    values: [[valor]],
+  }));
+
+  await conReintento(() =>
+    sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+      requestBody: { valueInputOption: 'USER_ENTERED', data },
+    })
+  );
+}
+
 export async function findRow(tabName: string, columnName: string, value: string) {
   const rows = await getSheetData(tabName);
   const index = rows.findIndex((row) => row[columnName] === value);

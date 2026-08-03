@@ -45,23 +45,9 @@ export interface Ajustes {
   horario: Horario;
 }
 
-/** Para comparar categorías sin que estorben acentos, mayúsculas o espacios. */
-export function claveCategoria(nombre: string): string {
-  return (nombre || '')
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '');
-}
-
-/**
- * Posición de una categoría según el orden guardado. Las que no estén en la
- * lista (una nueva que se acabe de crear) se van al final, no desaparecen.
- */
-export function posicionCategoria(categoria: string, orden: string[]): number {
-  const i = orden.findIndex((c) => claveCategoria(c) === claveCategoria(categoria));
-  return i === -1 ? orden.length : i;
-}
+// Viven en su propio archivo para que la tienda y el panel las puedan usar
+// sin arrastrar Google Sheets al navegador.
+export { claveCategoria, posicionCategoria } from './categorias';
 
 async function preparar() {
   await ensureSheet(HOJA, COLS);

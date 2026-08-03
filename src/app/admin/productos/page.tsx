@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { esEnlaceDeVisorDrive } from '@/lib/imagenes';
+import { parsearTamanos, TAMANOS_SUGERIDOS, type Tamano } from '@/lib/tamanos';
 
 interface Producto {
   ID_Producto: string;
@@ -14,6 +15,7 @@ interface Producto {
   Imagen_URL?: string;
   Oculto?: string;
   Existencias?: string;
+  Tamanos?: string;
 }
 
 type EstadoProducto = 'vendiendo' | 'pausado' | 'oculto';
@@ -51,6 +53,8 @@ interface FormProducto {
   precio: string;
   emoji: string;
   existencias: string;
+  /** Vacío = un solo precio. Con renglones = precio por tamaño. */
+  tamanos: Tamano[];
 }
 
 const FORM_VACIO: FormProducto = {
@@ -60,6 +64,7 @@ const FORM_VACIO: FormProducto = {
   precio: '',
   emoji: '',
   existencias: '',
+  tamanos: [],
 };
 
 
@@ -133,6 +138,7 @@ export default function ProductosPage() {
       precio: p.Precio_Venta,
       emoji: p.Emoji || '',
       existencias: p.Existencias ?? '',
+      tamanos: parsearTamanos(p.Tamanos ?? ''),
     });
     setImagenUrl(p.Imagen_URL || '');
     setPegarUrl(false);
@@ -218,6 +224,7 @@ export default function ProductosPage() {
             emoji: form.emoji,
             imagenUrl,
             existencias: form.existencias,
+            tamanos: form.tamanos,
           }),
         });
       } else {
@@ -502,6 +509,99 @@ export default function ProductosPage() {
                   con cada venta. Los productos elaborados (sándwiches, jugos, licuados) déjalo
                   vacío.
                 </p>
+              </div>
+            )}
+
+            {editando && (
+              <div className="space-y-2 text-neutral-900 border-t border-neutral-100 pt-4">
+                <div>
+                  <label className="text-sm font-semibold text-neutral-700">
+                    Tamaños con precio propio{' '}
+                    <span className="font-normal text-neutral-600">(jugos y licuados)</span>
+                  </label>
+                  <p className="text-xs text-neutral-600 mt-0.5">
+                    Si pones tamaños, el cliente elige cuál quiere y se cobra el precio de ese
+                    tamaño. El precio de arriba deja de usarse en este producto.
+                  </p>
+                </div>
+
+                {form.tamanos.length === 0 ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setForm({
+                        ...form,
+                        tamanos: TAMANOS_SUGERIDOS.map((nombre, i) => ({
+                          nombre,
+                          // El grande arranca al doble como punto de partida
+                          precio: (parseFloat(form.precio) || 0) * (i === 0 ? 1 : 2),
+                        })),
+                      })
+                    }
+                    className="w-full border-2 border-dashed border-neutral-300 rounded-xl py-3 text-sm font-semibold text-neutral-700 active:scale-95"
+                  >
+                    + Vender por tamaños (500 ml y 1 litro)
+                  </button>
+                ) : (
+                  <>
+                    {form.tamanos.map((t, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <input
+                          value={t.nombre}
+                          onChange={(e) => {
+                            const copia = [...form.tamanos];
+                            copia[i] = { ...copia[i], nombre: e.target.value };
+                            setForm({ ...form, tamanos: copia });
+                          }}
+                          placeholder="500 ml"
+                          className="flex-1 min-w-0 bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-black"
+                        />
+                        <span className="text-lg font-bold text-neutral-700">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          inputMode="decimal"
+                          value={t.precio}
+                          onChange={(e) => {
+                            const copia = [...form.tamanos];
+                            copia[i] = { ...copia[i], precio: parseFloat(e.target.value) };
+                            setForm({ ...form, tamanos: copia });
+                          }}
+                          className="w-24 shrink-0 bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setForm({ ...form, tamanos: form.tamanos.filter((_, j) => j !== i) })
+                          }
+                          aria-label={`Quitar ${t.nombre}`}
+                          className="w-11 h-11 shrink-0 rounded-xl bg-neutral-100 text-neutral-700 font-bold active:scale-90"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm({ ...form, tamanos: [...form.tamanos, { nombre: '', precio: 0 }] })
+                        }
+                        className="text-sm font-semibold text-neutral-700 px-3 py-2 rounded-lg bg-neutral-100 active:scale-95"
+                      >
+                        + Otro tamaño
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setForm({ ...form, tamanos: [] })}
+                        className="text-sm font-semibold text-neutral-700 px-3 py-2 rounded-lg active:scale-95"
+                      >
+                        Quitar tamaños
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 

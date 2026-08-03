@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { claveLinea, parsearTamanos, precioDesde, precioDeTamano } from '@/lib/tamanos';
 import { TicketBotones } from '../TicketBotones';
 import type { DatosTicket } from '@/lib/ticket';
 import { esBeneficioReactivacion, montoReactivacion } from '@/lib/beneficioCliente';
@@ -23,6 +24,7 @@ interface Producto {
   Precio_Venta: string;
   Disponible: string;
   Emoji?: string;
+  Tamanos?: string;
 }
 
 interface ItemVenta {
@@ -30,6 +32,8 @@ interface ItemVenta {
   nombre: string;
   precio: number;
   cantidad: number;
+  /** Vacío si el producto se vende con un solo precio */
+  tamano: string;
 }
 
 interface Cliente {
@@ -56,6 +60,8 @@ const ICONO_METODO: Record<string, string> = {
 
 export default function VentaPage() {
   const [productos, setProductos] = useState<Producto[]>([]);
+  /** Producto al que hay que elegirle tamaño antes de agregarlo */
+  const [eligiendoTamano, setEligiendoTamano] = useState<Producto | null>(null);
   const [cargando, setCargando] = useState(true);
   const [items, setItems] = useState<ItemVenta[]>([]);
   const [nombre, setNombre] = useState('');
@@ -149,16 +155,28 @@ export default function VentaPage() {
     setArticuloGratisId('');
   };
 
+  // Suma todos los tamaños: el mismo jugo puede ir en 500 ml y en 1 litro
   const cantidadDe = (idProducto: string) =>
-    items.find((i) => i.id === idProducto)?.cantidad ?? 0;
+    items.filter((i) => i.id === idProducto).reduce((n, i) => n + i.cantidad, 0);
 
-  const agregar = (p: Producto) => {
+  const agregar = (p: Producto, tamano?: string) => {
     setVentaOk(null);
+    const tamanos = parsearTamanos(p.Tamanos ?? '');
+    // Con tamaños hay que decir cuál: se abre el selector en vez de adivinar
+    if (tamanos.length > 0 && !tamano) {
+      setEligiendoTamano(p);
+      return;
+    }
+    const precio = tamano
+      ? precioDeTamano(tamanos, tamano) ?? 0
+      : parseFloat(p.Precio_Venta) || 0;
+    const clave = claveLinea(p.ID_Producto, tamano);
+    setEligiendoTamano(null);
     setItems((prev) => {
-      const existe = prev.find((i) => i.id === p.ID_Producto);
+      const existe = prev.find((i) => claveLinea(i.id, i.tamano) === clave);
       if (existe) {
         return prev.map((i) =>
-          i.id === p.ID_Producto ? { ...i, cantidad: i.cantidad + 1 } : i
+          claveLinea(i.id, i.tamano) === clave ? { ...i, cantidad: i.cantidad + 1 } : i
         );
       }
       return [
@@ -166,21 +184,24 @@ export default function VentaPage() {
         {
           id: p.ID_Producto,
           nombre: p.Nombre,
-          precio: parseFloat(p.Precio_Venta) || 0,
+          precio,
           cantidad: 1,
+          tamano: tamano ?? '',
         },
       ];
     });
   };
 
-  const quitar = (idProducto: string) => {
+  const quitar = (clave: string) => {
     setItems((prev) => {
-      const item = prev.find((i) => i.id === idProducto);
+      const item = prev.find((i) => claveLinea(i.id, i.tamano) === clave);
       if (!item) return prev;
       if (item.cantidad > 1) {
-        return prev.map((i) => (i.id === idProducto ? { ...i, cantidad: i.cantidad - 1 } : i));
+        return prev.map((i) =>
+          claveLinea(i.id, i.tamano) === clave ? { ...i, cantidad: i.cantidad - 1 } : i
+        );
       }
-      return prev.filter((i) => i.id !== idProducto);
+      return prev.filter((i) => claveLinea(i.id, i.tamano) !== clave);
     });
   };
 
@@ -192,7 +213,7 @@ export default function VentaPage() {
   const candidatosGratis = items.filter((i) => i.precio <= topeArticulo);
   const articuloGratis =
     beneficioCanjeado === 'Articulo Gratis'
-      ? candidatosGratis.find((i) => i.id === articuloGratisId)
+      ? candidatosGratis.find((i) => claveLinea(i.id, i.tamano) === articuloGratisId)
       : undefined;
 
   const descuento =
@@ -224,7 +245,9 @@ export default function VentaPage() {
         estadoPago,
         idUsuario: cliente?.id,
         beneficioCanjeado,
-        articuloGratisId: articuloGratis?.id,
+        articuloGratisId: articuloGratis
+          ? claveLinea(articuloGratis.id, articuloGratis.tamano)
+          : undefined,
         // Solo para efectivo con cambio; queda de registro en el pedido
         efectivoRecibido: metodoPago === 'Efectivo' && recibidoNum > 0 ? recibidoNum : undefined,
         cambio: cambio > 0 ? cambio : undefined,
@@ -413,6 +436,49 @@ export default function VentaPage() {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Elegir tamaño antes de agregar */}
+      {eligiendoTamano && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4"
+          onClick={() => setEligiendoTamano(null)}
+        >
+          <div
+            className="bg-white rounded-3xl p-5 w-full max-w-sm space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div>
+              <p className="text-xs text-neutral-600 uppercase tracking-wide font-semibold">
+                {eligiendoTamano.Categoría}
+              </p>
+              <h3 className="font-bold text-lg text-neutral-900 leading-tight">
+                {eligiendoTamano.Nombre}
+              </h3>
+              <p className="text-sm text-neutral-700 mt-0.5">¿Qué tamaño lleva?</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {parsearTamanos(eligiendoTamano.Tamanos ?? '').map((t) => (
+                <button
+                  key={t.nombre}
+                  onClick={() => agregar(eligiendoTamano, t.nombre)}
+                  className="border-2 border-neutral-200 rounded-2xl p-4 text-left active:scale-95 transition-transform"
+                >
+                  <span className="block font-bold text-neutral-900">{t.nombre}</span>
+                  <span className="block text-lg font-bold text-black">
+                    ${t.precio.toFixed(2)}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setEligiendoTamano(null)}
+              className="w-full py-3 rounded-xl bg-neutral-100 font-semibold text-neutral-800 active:scale-95"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Columna 1: productos */}
       <div>
         <h2 className="font-bold text-neutral-900 mb-3">Productos</h2>
@@ -422,6 +488,7 @@ export default function VentaPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {productos.map((p) => {
               const cant = cantidadDe(p.ID_Producto);
+              const tamanosP = parsearTamanos(p.Tamanos ?? '');
               return (
                 <div
                   key={p.ID_Producto}
@@ -435,12 +502,29 @@ export default function VentaPage() {
                       {p.Emoji && <span className="mr-1">{p.Emoji}</span>}
                       {p.Nombre}
                     </p>
-                    <p className="font-bold text-black mt-1">${parseFloat(p.Precio_Venta || '0').toFixed(2)}</p>
+                    <p className="font-bold text-black mt-1">
+                      {tamanosP.length > 0 && (
+                        <span className="text-[10px] font-semibold text-neutral-700 mr-1">desde</span>
+                      )}
+                      ${precioDesde(tamanosP, parseFloat(p.Precio_Venta || '0')).toFixed(2)}
+                    </p>
+                    {tamanosP.length > 0 && (
+                      <p className="text-[10px] font-semibold text-neutral-700 mt-0.5">
+                        {tamanosP.map((t) => t.nombre).join(' · ')}
+                      </p>
+                    )}
                   </button>
-                  {cant > 0 && (
+                  {cant > 0 && tamanosP.length > 0 && (
+                    <div className="mt-2 text-center bg-neutral-100 rounded-lg py-1">
+                      <span className="font-bold text-sm text-neutral-900 tabular-nums">
+                        {cant} en la venta
+                      </span>
+                    </div>
+                  )}
+                  {cant > 0 && tamanosP.length === 0 && (
                     <div className="mt-2 flex items-center justify-between bg-neutral-100 rounded-lg p-1">
                       <button
-                        onClick={() => quitar(p.ID_Producto)}
+                        onClick={() => quitar(claveLinea(p.ID_Producto))}
                         className="w-7 h-7 flex items-center justify-center bg-white rounded-md font-bold text-neutral-900 shadow-sm active:scale-90"
                       >
                         −
@@ -468,13 +552,23 @@ export default function VentaPage() {
         {items.length > 0 && (
           <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 space-y-2">
             {items.map((i) => (
-              <div key={i.id} className="flex justify-between text-sm">
-                <span className="text-neutral-900 font-medium">
+              <div key={claveLinea(i.id, i.tamano)} className="flex justify-between items-center text-sm gap-2">
+                <span className="text-neutral-900 font-medium flex-1 min-w-0">
                   {i.cantidad}× {i.nombre}
+                  {i.tamano && (
+                    <span className="text-neutral-700 font-semibold"> ({i.tamano})</span>
+                  )}
                 </span>
-                <span className="font-semibold text-neutral-900">
+                <span className="font-semibold text-neutral-900 shrink-0">
                   ${(i.precio * i.cantidad).toFixed(2)}
                 </span>
+                <button
+                  onClick={() => quitar(claveLinea(i.id, i.tamano))}
+                  aria-label={`Quitar uno de ${i.nombre}`}
+                  className="w-6 h-6 shrink-0 rounded-md bg-neutral-100 text-neutral-700 font-bold active:scale-90"
+                >
+                  −
+                </button>
               </div>
             ))}
             {descuento > 0 && (
@@ -596,8 +690,12 @@ export default function VentaPage() {
                       >
                         <option value="">Elige el producto…</option>
                         {candidatosGratis.map((i) => (
-                          <option key={i.id} value={i.id}>
-                            {i.nombre} — ${i.precio.toFixed(2)}
+                          <option
+                            key={claveLinea(i.id, i.tamano)}
+                            value={claveLinea(i.id, i.tamano)}
+                          >
+                            {i.nombre}
+                            {i.tamano ? ` (${i.tamano})` : ''} — ${i.precio.toFixed(2)}
                           </option>
                         ))}
                       </select>

@@ -18,6 +18,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { appendRow, ensureColumn, findRow, getSheetData, updateCell } from '@/lib/googleSheets';
 import { normalizarUrlImagen } from '@/lib/imagenes';
 import { getAdminSession } from '@/lib/roles';
+import { iguales, serializarTamanos, type Tamano } from '@/lib/tamanos';
 
 /**
  * Deja como mucho dos emojis. Los combos llevan dos (🥪🥤) y más de eso ya
@@ -32,7 +33,10 @@ export async function GET() {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
-  await ensureColumn('Productos', 'Emoji');
+  await Promise.all([
+    ensureColumn('Productos', 'Emoji'),
+    ensureColumn('Productos', 'Tamanos'),
+  ]);
   // crudo: la hoja tiene locale es_ES y devolvía el precio como "50,00",
   // que un <input type="number"> no puede mostrar y deja el campo vacío
   const productos = await getSheetData('Productos', { crudo: true });
@@ -87,8 +91,19 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
-  const { idProducto, nombre, categoria, descripcion, precio, disponible, oculto, emoji, imagenUrl, existencias } =
-    await req.json();
+  const {
+    idProducto,
+    nombre,
+    categoria,
+    descripcion,
+    precio,
+    disponible,
+    oculto,
+    emoji,
+    imagenUrl,
+    existencias,
+    tamanos,
+  } = await req.json();
 
   if (!idProducto) {
     return NextResponse.json({ error: 'Falta idProducto' }, { status: 400 });
@@ -157,6 +172,41 @@ export async function PATCH(req: NextRequest) {
       }
       await updateCell('Productos', fila.rowIndex, colExistencias, n);
     }
+  }
+  // Tamaños con precio propio (500 ml / 1 litro). Lista vacía = el producto
+  // vuelve a venderse con un solo precio, el de siempre.
+  if (tamanos !== undefined) {
+    if (!Array.isArray(tamanos)) {
+      return NextResponse.json({ error: 'Tamaños inválidos' }, { status: 400 });
+    }
+    const limpios: Tamano[] = [];
+    for (const t of tamanos) {
+      const nom = (t?.nombre ?? '').toString().trim();
+      const p = parseFloat((t?.precio ?? '').toString().replace(',', '.'));
+      if (!nom) continue;
+      if (isNaN(p) || p < 0) {
+        return NextResponse.json(
+          { error: `Precio inválido en el tamaño "${nom}"` },
+          { status: 400 }
+        );
+      }
+      if (limpios.some((x) => iguales(x.nombre, nom))) {
+        return NextResponse.json(
+          { error: `El tamaño "${nom}" está repetido` },
+          { status: 400 }
+        );
+      }
+      limpios.push({ nombre: nom, precio: p });
+    }
+    // Un solo tamaño confunde más de lo que ayuda: o hay opciones o no hay
+    if (limpios.length === 1) {
+      return NextResponse.json(
+        { error: 'Deja al menos dos tamaños, o quítalos todos' },
+        { status: 400 }
+      );
+    }
+    const colTamanos = await ensureColumn('Productos', 'Tamanos');
+    await updateCell('Productos', fila.rowIndex, colTamanos, serializarTamanos(limpios));
   }
 
   return NextResponse.json({ success: true });

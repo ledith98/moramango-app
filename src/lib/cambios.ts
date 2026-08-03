@@ -30,6 +30,22 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 
 export const CAMBIOS: Cambio[] = [
   {
+    fecha: '2026-08-03',
+    tipo: 'nuevo',
+    titulo: 'Jugos y licuados en 500 ml y 1 litro',
+    detalle:
+      'Los 8 jugos y licuados ya se venden en dos tamaños con precio propio. El cliente elige el tamaño al tocar el producto, y en el mostrador te pregunta cuál lleva antes de agregarlo. Los precios se editan en Productos → editar → Tamaños, uno por uno. Ojo: el precio de 1 litro quedó puesto al doble solo como punto de partida, revísalo. Cualquier otro producto puede venderse por tamaños igual, no solo los jugos.',
+    donde: 'Productos · Tienda · Venta',
+  },
+  {
+    fecha: '2026-08-03',
+    tipo: 'arreglo',
+    titulo: 'El precio ahora lo decide el sistema, no el celular',
+    detalle:
+      'Hasta hoy el total de un pedido se calculaba con el precio que mandaba el celular del cliente. Alguien con conocimientos podía modificarlo y pagar de menos. Ahora el precio siempre se toma de tu hoja de Productos y se ignora lo que venga del celular. Nadie lo había hecho, pero con dos precios por producto convenía cerrarlo.',
+    donde: 'Tienda · Venta',
+  },
+  {
     fecha: '2026-08-02',
     tipo: 'mejora',
     titulo: 'El panel ya no se queda pensando',

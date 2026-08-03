@@ -33,12 +33,16 @@ const parsearTelefono = (telefonoCompleto: string): { lada: string; numero: stri
   return { lada: '52', numero: soloDigitos.slice(-10) };
 };
 
+import { claveLinea, precioDeTamano, precioDesde, type Tamano } from '@/lib/tamanos';
+
 interface ItemCarrito {
   id: string;
   nombre: string;
   precio: number;
   categoria: string;
   cantidad: number;
+  /** Vacío si el producto se vende con un solo precio */
+  tamano: string;
 }
 
 interface DatosLealtad {
@@ -138,6 +142,8 @@ export default function Home() {
   const [cargandoLealtad, setCargandoLealtad] = useState(false);
   const [beneficioAplicado, setBeneficioAplicado] = useState(false);
   const [productoDetalle, setProductoDetalle] = useState<any | null>(null);
+  /** Tamaño elegido en la ficha del producto (vacío = no tiene tamaños) */
+  const [tamanoElegido, setTamanoElegido] = useState('');
   /** Horario: lo calcula el servidor, no la hora del celular del cliente */
   const [tienda, setTienda] = useState<{ abierta: boolean; mensaje: string }>({
     abierta: true,
@@ -293,17 +299,32 @@ export default function Home() {
     return isNaN(num) ? 0 : num;
   };
 
-  const agregarAlCarrito = (producto: any) => {
+  const agregarAlCarrito = (producto: any, tamano?: string) => {
     if (producto.disponible === false) {
       setAvisoStock(`${producto.nombre} no está disponible por el momento`);
       return;
     }
+    // Con tamaños no se puede agregar a ciegas: hay más de un precio, así
+    // que se abre la ficha para que el cliente elija cuál quiere.
+    const tamanos: Tamano[] = producto.tamanos ?? [];
+    if (tamanos.length > 0 && !tamano) {
+      abrirDetalle(producto);
+      return;
+    }
+    const precio = tamano
+      ? precioDeTamano(tamanos, tamano) ?? limpiarPrecio(producto.precio)
+      : limpiarPrecio(producto.precio);
+    const clave = claveLinea(producto.id, tamano);
+
     // disponibles null = sin inventario cargado, sin límite
     const tope = producto.disponibles;
     setCarrito(prev => {
-      const existe = prev.find(item => item.id === producto.id);
+      const existe = prev.find(item => claveLinea(item.id, item.tamano) === clave);
       if (tope !== null && tope !== undefined) {
-        const yaEnCarrito = existe?.cantidad ?? 0;
+        // El tope es por producto, no por tamaño: se cuentan todos sus renglones
+        const yaEnCarrito = prev
+          .filter(i => i.id === producto.id)
+          .reduce((n, i) => n + i.cantidad, 0);
         if (yaEnCarrito >= tope) {
           setAvisoStock(
             tope <= 0
@@ -315,27 +336,32 @@ export default function Home() {
       }
       if (existe) {
         return prev.map(item =>
-          item.id === producto.id ? { ...item, cantidad: item.cantidad + 1 } : item
+          claveLinea(item.id, item.tamano) === clave
+            ? { ...item, cantidad: item.cantidad + 1 }
+            : item
         );
       }
       return [...prev, {
         id: producto.id,
         nombre: producto.nombre,
-        precio: limpiarPrecio(producto.precio),
+        precio,
         categoria: producto.categoria,
-        cantidad: 1
+        cantidad: 1,
+        tamano: tamano ?? '',
       }];
     });
   };
 
-  const eliminarDelCarrito = (idProducto: string) => {
+  const eliminarDelCarrito = (clave: string) => {
     setCarrito(prev => {
-      const item = prev.find(i => i.id === idProducto);
+      const item = prev.find(i => claveLinea(i.id, i.tamano) === clave);
       if (!item) return prev;
       if (item.cantidad > 1) {
-        return prev.map(i => i.id === idProducto ? { ...i, cantidad: i.cantidad - 1 } : i);
+        return prev.map(i =>
+          claveLinea(i.id, i.tamano) === clave ? { ...i, cantidad: i.cantidad - 1 } : i
+        );
       }
-      const nuevo = prev.filter(i => i.id !== idProducto);
+      const nuevo = prev.filter(i => claveLinea(i.id, i.tamano) !== clave);
       if (nuevo.length === 0) setVerCarrito(false);
       return nuevo;
     });
@@ -397,9 +423,11 @@ export default function Home() {
 
   // Abrir detalle solo si hay descripción — evita modal vacío
   const abrirDetalle = (producto: any) => {
-    if (producto.descripcion && producto.descripcion.trim()) {
-      setProductoDetalle(producto);
-    }
+    const tamanos: Tamano[] = producto.tamanos ?? [];
+    // Con tamaños la ficha se abre siempre: es donde se elige cuál se lleva
+    if (tamanos.length === 0 && !(producto.descripcion && producto.descripcion.trim())) return;
+    setTamanoElegido(tamanos[0]?.nombre ?? '');
+    setProductoDetalle(producto);
   };
 
   const totalArticulos = carrito.reduce((total, item) => total + item.cantidad, 0);
@@ -608,12 +636,26 @@ export default function Home() {
         noDisponibles.push(item.nombre);
         continue;
       }
+      // El pedido guardado trae el tamaño en el nombre: "Jugo de Mango
+      // (1 litro)". Se recupera comparándolo con los tamaños que el
+      // producto ofrece HOY, para no repetir uno que ya se dejó de vender.
+      const tamanos: Tamano[] = actual.tamanos ?? [];
+      const tamano = tamanos.find((t) =>
+        item.nombre.toLowerCase().endsWith(`(${t.nombre.toLowerCase()})`)
+      )?.nombre;
+      if (tamanos.length > 0 && !tamano) {
+        noDisponibles.push(item.nombre);
+        continue;
+      }
       disponibles.push({
         id: actual.id,
         nombre: actual.nombre,
-        precio: limpiarPrecio(actual.precio),
+        precio: tamano
+          ? precioDeTamano(tamanos, tamano) ?? limpiarPrecio(actual.precio)
+          : limpiarPrecio(actual.precio),
         categoria: actual.categoria,
         cantidad: item.cantidad,
+        tamano: tamano ?? '',
       });
     }
 
@@ -693,6 +735,7 @@ export default function Home() {
             nombre: item.nombre,
             precio: item.precio,
             cantidad: item.cantidad,
+            tamano: item.tamano,
           })),
           notas: notas.trim(),
           horaRecoleccion: '',
@@ -808,10 +851,19 @@ export default function Home() {
   }
 
   // Info del producto en detalle (para el modal)
+  const tamanosDetalle: Tamano[] = productoDetalle?.tamanos ?? [];
   const itemEnCarritoDetalle = productoDetalle
-    ? carrito.find(i => i.id === productoDetalle.id)
+    ? carrito.find(
+        i => claveLinea(i.id, i.tamano) === claveLinea(productoDetalle.id, tamanoElegido)
+      )
     : null;
   const cantidadEnCarritoDetalle = itemEnCarritoDetalle?.cantidad ?? 0;
+  // El precio que se muestra y se cobra es el del tamaño elegido
+  const precioDetalle = productoDetalle
+    ? (tamanosDetalle.length > 0
+        ? precioDeTamano(tamanosDetalle, tamanoElegido) ?? 0
+        : limpiarPrecio(productoDetalle.precio))
+    : 0;
 
   return (
     <main className="h-[100dvh] bg-neutral-200 font-sans flex justify-center overflow-hidden">
@@ -956,8 +1008,13 @@ export default function Home() {
                       <h2 className="text-xl font-bold text-neutral-900 mb-4 capitalize">{categoria}</h2>
                       <div className="space-y-4">
                         {(items as any[]).map((producto, index) => {
-                          const itemEnCarrito = carrito.find(item => item.id === producto.id);
-                          const cantidadAgregada = itemEnCarrito ? itemEnCarrito.cantidad : 0;
+                          // Con tamaños, el mismo producto ocupa varios
+                          // renglones del carrito: se suman todos
+                          const cantidadAgregada = carrito
+                            .filter(item => item.id === producto.id)
+                            .reduce((n, item) => n + item.cantidad, 0);
+                          const tamanosProd: Tamano[] = producto.tamanos ?? [];
+                          const tieneTamanos = tamanosProd.length > 0;
                           const tieneDescripcion = producto.descripcion && producto.descripcion.trim();
                           const venta = estadoDeVenta(producto);
 
@@ -988,7 +1045,19 @@ export default function Home() {
                                   </p>
                                 )}
                                 <div className="mt-3 flex items-center gap-2 flex-wrap">
-                                  <span className="font-bold text-neutral-900">${producto.precio}</span>
+                                  <span className="font-bold text-neutral-900">
+                                    {tieneTamanos && (
+                                      <span className="font-semibold text-neutral-700 text-xs mr-1">
+                                        desde
+                                      </span>
+                                    )}
+                                    ${precioDesde(tamanosProd, limpiarPrecio(producto.precio)).toFixed(2)}
+                                  </span>
+                                  {tieneTamanos && (
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-700">
+                                      {tamanosProd.map(t => t.nombre).join(' · ')}
+                                    </span>
+                                  )}
                                   {venta.etiqueta && (
                                     <span
                                       className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -1039,10 +1108,18 @@ export default function Home() {
                                   </div>
                                 )}
                                 
-                                {cantidadAgregada > 0 && (
+                                {cantidadAgregada > 0 && tieneTamanos && (
+                                  <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center bg-white/90 backdrop-blur-sm rounded-b-2xl px-1.5 py-1 shadow-sm">
+                                    <span className="text-sm font-bold text-neutral-900 tabular-nums">
+                                      {cantidadAgregada} en tu pedido
+                                    </span>
+                                  </div>
+                                )}
+
+                                {cantidadAgregada > 0 && !tieneTamanos && (
                                   <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between bg-white/90 backdrop-blur-sm rounded-b-2xl px-1.5 py-1 shadow-sm">
                                     <button
-                                      onClick={() => eliminarDelCarrito(producto.id)}
+                                      onClick={() => eliminarDelCarrito(claveLinea(producto.id))}
                                       className="w-7 h-7 flex items-center justify-center rounded-lg bg-neutral-100 active:scale-90 transition-transform text-neutral-900"
                                     >
                                       {cantidadAgregada === 1 ? (
@@ -1117,15 +1194,18 @@ export default function Home() {
                 </div>
               )}
               {carrito.map((item) => (
-                <div key={item.id} className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-neutral-100">
+                <div key={claveLinea(item.id, item.tamano)} className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-neutral-100">
                   <div className="pr-4 flex-1">
                     <h3 className="font-semibold text-neutral-900 leading-tight">{item.nombre}</h3>
+                    {item.tamano && (
+                      <p className="text-xs text-neutral-700 font-medium mt-0.5">{item.tamano}</p>
+                    )}
                     <p className="text-neutral-800 font-semibold text-sm mt-1">${(item.precio * item.cantidad).toFixed(2)}</p>
                   </div>
                   <div className="flex items-center bg-neutral-100 rounded-xl p-1 gap-2 shrink-0">
-                    <button onClick={() => eliminarDelCarrito(item.id)} className="w-8 h-8 flex items-center justify-center bg-white rounded-lg font-bold text-neutral-900 shadow-sm active:scale-90">-</button>
+                    <button onClick={() => eliminarDelCarrito(claveLinea(item.id, item.tamano))} className="w-8 h-8 flex items-center justify-center bg-white rounded-lg font-bold text-neutral-900 shadow-sm active:scale-90">-</button>
                     <span className="font-bold text-neutral-900 px-1 min-w-[16px] text-center">{item.cantidad}</span>
-                    <button onClick={() => agregarAlCarrito(item)} className="w-8 h-8 flex items-center justify-center bg-white rounded-lg font-bold text-neutral-900 shadow-sm active:scale-90">+</button>
+                    <button onClick={() => agregarAlCarrito(item, item.tamano)} className="w-8 h-8 flex items-center justify-center bg-white rounded-lg font-bold text-neutral-900 shadow-sm active:scale-90">+</button>
                   </div>
                 </div>
               ))}
@@ -1861,9 +1941,39 @@ export default function Home() {
                   </p>
                 )}
 
+                {/* Tamaño: solo si el producto se vende en varios */}
+                {tamanosDetalle.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-sm font-semibold text-neutral-800 mb-2">Elige el tamaño</p>
+                    <div className="flex flex-wrap gap-2">
+                      {tamanosDetalle.map((t) => {
+                        const activo = t.nombre === tamanoElegido;
+                        return (
+                          <button
+                            key={t.nombre}
+                            onClick={() => setTamanoElegido(t.nombre)}
+                            className={`px-4 py-2.5 rounded-xl border-2 text-left transition-colors ${
+                              activo
+                                ? 'border-marron bg-marron/10'
+                                : 'border-neutral-200 bg-white'
+                            }`}
+                          >
+                            <span className="block text-sm font-bold text-neutral-900">
+                              {t.nombre}
+                            </span>
+                            <span className="block text-xs font-semibold text-neutral-700">
+                              ${t.precio.toFixed(2)}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Precio */}
                 <div className="text-2xl font-bold text-neutral-900 mb-2">
-                  ${productoDetalle.precio}
+                  ${precioDetalle.toFixed(2)}
                 </div>
               </div>
 
@@ -1871,16 +1981,18 @@ export default function Home() {
               <div className="border-t border-neutral-100 p-4 shrink-0 bg-white rounded-b-3xl">
                 {cantidadEnCarritoDetalle === 0 ? (
                   <button
-                    onClick={() => agregarAlCarrito(productoDetalle)}
+                    onClick={() => agregarAlCarrito(productoDetalle, tamanoElegido)}
                     className="w-full bg-marron text-white font-bold text-base py-4 rounded-2xl active:scale-95 transition-transform shadow-md"
                   >
-                    Agregar al pedido
+                    Agregar al pedido{tamanoElegido ? ` · ${tamanoElegido}` : ''}
                   </button>
                 ) : (
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center bg-neutral-100 rounded-2xl p-1.5 gap-2">
                       <button
-                        onClick={() => eliminarDelCarrito(productoDetalle.id)}
+                        onClick={() =>
+                          eliminarDelCarrito(claveLinea(productoDetalle.id, tamanoElegido))
+                        }
                         className="w-11 h-11 flex items-center justify-center bg-white rounded-xl font-medium text-neutral-700 shadow-sm active:scale-90 text-lg"
                       >
                         −
@@ -1889,7 +2001,7 @@ export default function Home() {
                         {cantidadEnCarritoDetalle}
                       </span>
                       <button
-                        onClick={() => agregarAlCarrito(productoDetalle)}
+                        onClick={() => agregarAlCarrito(productoDetalle, tamanoElegido)}
                         className="w-11 h-11 flex items-center justify-center bg-marron text-white rounded-xl font-medium shadow-sm active:scale-90 text-lg"
                       >
                         +
@@ -1898,7 +2010,7 @@ export default function Home() {
                     <div className="text-right">
                       <p className="text-xs text-neutral-700">En tu pedido</p>
                       <p className="font-bold text-neutral-900">
-                        ${(limpiarPrecio(productoDetalle.precio) * cantidadEnCarritoDetalle).toFixed(2)}
+                        ${(precioDetalle * cantidadEnCarritoDetalle).toFixed(2)}
                       </p>
                     </div>
                   </div>

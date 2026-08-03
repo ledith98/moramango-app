@@ -26,6 +26,7 @@ import { enviarTelegram } from '@/lib/telegram';
 import { moverStockDePedido } from '@/lib/stock';
 import { leerAjustes } from '@/lib/ajustes';
 import { estadoTienda } from '@/lib/horario';
+import { validarItems } from '@/lib/preciosServidor';
 
 /**
  * Devuelve los pedidos del usuario logueado, del más reciente al más
@@ -145,10 +146,15 @@ export async function POST(req: NextRequest) {
   // Formato final: PED-260708-001
   const idPedido = `PED-${fechaCorta}-${String(delMismoDia + 1).padStart(3, '0')}`;
 
-  const totalBruto = items.reduce(
-    (sum: number, item: any) => sum + item.precio * item.cantidad,
-    0
-  );
+  // El precio sale de la hoja, no de lo que mandó el navegador: con
+  // tamaños hay más de un precio válido por producto y el servidor tiene
+  // que ser quien decida cuál se cobra.
+  const validacion = await validarItems(items);
+  if (!validacion.ok) {
+    return NextResponse.json({ error: validacion.error }, { status: 400 });
+  }
+  const itemsValidados = validacion.items;
+  const totalBruto = validacion.total;
 
   // El descuento se calcula sobre lo que el Sheet dice que el cliente
   // tiene disponible AHORA (respetando vencimiento), no sobre lo que
@@ -182,19 +188,20 @@ export async function POST(req: NextRequest) {
 
   // 2. Filas en DT PEDIDOS
   const dtExistentes = await getSheetData('DT PEDIDOS');
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
+  for (let i = 0; i < itemsValidados.length; i++) {
+    const item = itemsValidados[i];
     const idDetalle = `DET-${String(dtExistentes.length + i + 1).padStart(4, '0')}`;
 
     await appendRow('DT PEDIDOS', [
       idDetalle,
       idPedido,
       item.id,
+      // El nombre ya trae el tamaño: "Jugo de Mango (1 litro)"
       item.nombre,
       item.cantidad,
       item.precio,
       item.precio * item.cantidad,
-      item.notas ?? '',
+      '',
     ]);
   }
 
@@ -210,10 +217,7 @@ export async function POST(req: NextRequest) {
   // envío alcance a completarse antes de que termine la función en Vercel,
   // pero nunca rompe el pedido si falla.
   try {
-    const numArticulos = items.reduce(
-      (sum: number, item: any) => sum + (parseInt(item.cantidad) || 1),
-      0
-    );
+    const numArticulos = itemsValidados.reduce((sum, item) => sum + item.cantidad, 0);
     // Ojo: este aviso sale al CREAR el pedido, antes de que el cliente
     // pague. Por eso el pago en línea se anuncia como pendiente; cuando
     // Mercado Pago confirme, el webhook manda un segundo aviso.
@@ -227,9 +231,9 @@ export async function POST(req: NextRequest) {
     // normales se dejan en una línea para no inflar el mensaje.
     const productosSheet = await getSheetData('Productos').catch(() => []);
     const productoPorId = new Map(productosSheet.map((p) => [p.ID_Producto, p]));
-    const listaItems = items
-      .map((it: any) => {
-        const linea = `• ${parseInt(it.cantidad) || 1}× ${it.nombre}`;
+    const listaItems = itemsValidados
+      .map((it) => {
+        const linea = `• ${it.cantidad}× ${it.nombre}`;
         const prod = productoPorId.get(it.id);
         const esCombo = ((prod?.Categoria ?? prod?.['Categoría']) || '')
           .toLowerCase()
@@ -268,10 +272,7 @@ export async function POST(req: NextRequest) {
   // el cliente simplemente paga al recoger.
   if (pagoEnLinea && mpConfigurado()) {
     try {
-      const numArticulos = items.reduce(
-        (sum: number, item: any) => sum + (parseInt(item.cantidad) || 1),
-        0
-      );
+      const numArticulos = itemsValidados.reduce((sum, item) => sum + item.cantidad, 0);
       const preferencia = await crearPreferencia({
         idPedido,
         descripcion: `Pedido Moramango ${idPedido} (${numArticulos} artículo${numArticulos === 1 ? '' : 's'})`,

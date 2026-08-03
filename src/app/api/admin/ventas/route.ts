@@ -19,6 +19,8 @@ import { appendRow, ensureColumn, getSheetData, updateCell } from '@/lib/googleS
 import { actualizarLealtad, descuentoPorBeneficio } from '@/lib/lealtad';
 import { getAdminSession } from '@/lib/roles';
 import { moverStockDePedido } from '@/lib/stock';
+import { validarItems } from '@/lib/preciosServidor';
+import { claveLinea } from '@/lib/tamanos';
 
 const ESTADOS_VALIDOS = [
   'Recibido',
@@ -80,10 +82,14 @@ export async function POST(req: NextRequest) {
   ).length;
   const idPedido = `PED-${fechaCorta}-${String(delMismoDia + 1).padStart(3, '0')}`;
 
-  const totalBruto = items.reduce(
-    (sum: number, item: any) => sum + (parseFloat(item.precio) || 0) * (parseInt(item.cantidad) || 0),
-    0
-  );
+  // El precio lo pone la hoja, no el navegador: con tamaños hay varios
+  // precios válidos por producto y el mostrador debe cobrar el correcto.
+  const validacion = await validarItems(items);
+  if (!validacion.ok) {
+    return NextResponse.json({ error: validacion.error }, { status: 400 });
+  }
+  const itemsValidados = validacion.items;
+  const totalBruto = validacion.total;
 
   // Lealtad: si la venta se ligó a un cliente, se le puede canjear su
   // beneficio y el pedido le suma a su ciclo (igual que en la app).
@@ -98,14 +104,16 @@ export async function POST(req: NextRequest) {
   let nombreArticuloGratis = '';
   if (canjea === 'Articulo Gratis' && articuloGratisId) {
     const { topeArticuloGratis } = await leerAjustes();
-    const elegido = items.find((i: any) => i.id === articuloGratisId);
+    // Se busca por producto + tamaño: el mismo jugo puede estar en la
+    // venta en 500 ml y en 1 litro, a precios distintos.
+    const elegido = itemsValidados.find((i) => claveLinea(i.id, i.tamano) === articuloGratisId);
     if (!elegido) {
       return NextResponse.json(
         { error: 'El artículo gratis elegido no está en la venta' },
         { status: 400 }
       );
     }
-    const precio = parseFloat(elegido.precio) || 0;
+    const precio = elegido.precio;
     if (precio > topeArticuloGratis) {
       return NextResponse.json(
         { error: `El artículo gratis no puede costar más de $${topeArticuloGratis}` },
@@ -113,7 +121,7 @@ export async function POST(req: NextRequest) {
       );
     }
     descuento += precio; // solo una pieza, aunque lleve varias
-    nombreArticuloGratis = elegido.nombre ?? '';
+    nombreArticuloGratis = elegido.nombre;
   }
   const total = Math.max(0, totalBruto - descuento);
 
@@ -217,20 +225,19 @@ export async function POST(req: NextRequest) {
 
   // Detalle de items
   const dtExistentes = await getSheetData('DT PEDIDOS');
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
+  for (let i = 0; i < itemsValidados.length; i++) {
+    const item = itemsValidados[i];
     const idDetalle = `DET-${String(dtExistentes.length + i + 1).padStart(4, '0')}`;
-    const cantidad = parseInt(item.cantidad) || 1;
-    const precio = parseFloat(item.precio) || 0;
 
     await appendRow('DT PEDIDOS', [
       idDetalle,
       idPedido,
-      item.id ?? '',
-      item.nombre ?? '',
-      cantidad,
-      precio,
-      precio * cantidad,
+      item.id,
+      // El nombre ya trae el tamaño: "Jugo de Mango (1 litro)"
+      item.nombre,
+      item.cantidad,
+      item.precio,
+      item.precio * item.cantidad,
       '',
     ]);
   }

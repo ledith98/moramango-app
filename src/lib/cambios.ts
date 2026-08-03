@@ -30,6 +30,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 
 export const CAMBIOS: Cambio[] = [
   {
+    fecha: '2026-08-02',
+    tipo: 'mejora',
+    titulo: 'La app abre más rápido',
+    detalle:
+      'La imagen de fondo del menú pesaba 734 KB y el logo 90 KB, cuando en pantalla se ven chiquitos. Ahora pesan 117 KB y 17 KB: son 690 KB menos que descarga el celular del cliente cada vez que entra, y se nota sobre todo con datos o en equipos lentos. También se dejó de consultar el mismo dato dos veces al abrir el menú.',
+    donde: 'Tienda',
+  },
+  {
     fecha: '2026-07-30',
     tipo: 'nuevo',
     titulo: 'Horario para recibir pedidos',

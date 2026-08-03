@@ -67,9 +67,27 @@ async function preparar() {
   await ensureSheet(HOJA, COLS);
 }
 
+/**
+ * Los ajustes se leen en cada pedido y en cada carga del menú, pero cambian
+ * una vez cada varios meses. Sin esto, cada visita al menú gastaba dos
+ * viajes a Google (uno para revisar que la hoja existiera y otro para
+ * leerla) antes de siquiera empezar a leer los productos.
+ *
+ * Al guardar se limpia, así que un cambio desde el panel se ve al instante.
+ */
+const VIDA_CACHE_MS = 60 * 1000;
+let cache: { valor: Ajustes; hasta: number } | null = null;
+
+export function olvidarAjustes() {
+  cache = null;
+}
+
 export async function leerAjustes(): Promise<Ajustes> {
+  if (cache && Date.now() < cache.hasta) return cache.valor;
   try {
-    await preparar();
+    // Sin ensureSheet: si la hoja todavía no existe, la lectura falla y se
+    // devuelven los valores por omisión, que es justo lo que se quiere. La
+    // hoja se crea sola la primera vez que se guarda algo.
     const filas = await getSheetData(HOJA, { crudo: true });
     const valor = filas.find((f) => f.Clave === CLAVE_TOPE_ARTICULO)?.Valor;
     const tope = parseFloat((valor ?? '').toString());
@@ -82,12 +100,15 @@ export async function leerAjustes(): Promise<Ajustes> {
 
     const horarioCrudo = (filas.find((f) => f.Clave === CLAVE_HORARIO)?.Valor ?? '').toString();
 
-    return {
+    const ajustes: Ajustes = {
       topeArticuloGratis: !isNaN(tope) && tope > 0 ? tope : TOPE_ARTICULO_DEFAULT,
       ordenCategorias: orden.length > 0 ? orden : ORDEN_CATEGORIAS_DEFAULT,
       horario: parsearHorario(horarioCrudo),
     };
+    cache = { valor: ajustes, hasta: Date.now() + VIDA_CACHE_MS };
+    return ajustes;
   } catch {
+    // Un error no se guarda en caché: la próxima visita vuelve a intentar
     // Si la hoja falla, el negocio sigue con los valores de siempre. Ojo
     // con el horario: se cae del lado de dejar pedir, porque rechazar
     // pedidos buenos por un error de lectura sale más caro.
@@ -120,6 +141,7 @@ export async function guardarOrdenCategorias(orden: string[]): Promise<void> {
 
 /** Guarda (o crea) un ajuste por su clave. */
 export async function guardarAjuste(clave: string, valor: string | number, nota = ''): Promise<void> {
+  olvidarAjustes();
   await preparar();
   const filas = await getSheetData(HOJA);
   const idx = filas.findIndex((f) => f.Clave === clave);

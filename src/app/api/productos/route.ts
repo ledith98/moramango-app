@@ -6,12 +6,16 @@ import { estadoTienda } from '@/lib/horario';
 
 export async function GET() {
   try {
-    // Orden de los grupos y horario de atención (Panel → Ajustes)
-    const { ordenCategorias, horario } = await leerAjustes();
+    // Las dos lecturas van juntas: en fila, el menú tardaba lo de una más
+    // lo de la otra sin que ninguna dependa de la anterior.
+    //
     // crudo: con el locale es_ES un precio de 52.50 se leía "52,50" y
     // parseFloat lo truncaba a 52. Hoy todos son enteros y nadie lo notó,
     // pero el primer precio con centavos habría cobrado de menos.
-    const todos = await getSheetData('Productos', { crudo: true });
+    const [{ ordenCategorias, horario }, todos] = await Promise.all([
+      leerAjustes(),
+      getSheetData('Productos', { crudo: true }),
+    ]);
 
     const publicos = todos
       // Tres estados, no dos:

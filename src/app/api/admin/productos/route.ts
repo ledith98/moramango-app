@@ -20,6 +20,7 @@ import { normalizarUrlImagen } from '@/lib/imagenes';
 import { getAdminSession } from '@/lib/roles';
 import { iguales, serializarTamanos, type Tamano } from '@/lib/tamanos';
 import { type GrupoOpcion, serializarOpciones } from '@/lib/opciones';
+import { type Extra, serializarExtras } from '@/lib/extras';
 
 /**
  * Deja como mucho dos emojis. Los combos llevan dos (🥪🥤) y más de eso ya
@@ -78,6 +79,27 @@ export function revisarOpciones(opciones: unknown): { ok: true; valor: string } 
   return { ok: true, valor: serializarOpciones(limpios) };
 }
 
+/**
+ * Toppings: mismo formato que los tamaños, pero aquí un solo extra sí
+ * tiene sentido —se puede ofrecer únicamente chía— y el precio puede ser
+ * 0 si la casa lo regala.
+ */
+export function revisarExtras(extras: unknown): { ok: true; valor: string } | { ok: false; error: string } {
+  if (!Array.isArray(extras)) return { ok: false, error: 'Extras inválidos' };
+  const limpios: Extra[] = [];
+  for (const e of extras as { nombre?: string; precio?: unknown }[]) {
+    const nom = (e?.nombre ?? '').toString().trim();
+    const p = parseFloat((e?.precio ?? '').toString().replace(',', '.'));
+    if (!nom) continue;
+    if (isNaN(p) || p < 0) return { ok: false, error: `Precio inválido en el extra "${nom}"` };
+    if (limpios.some((x) => iguales(x.nombre, nom))) {
+      return { ok: false, error: `El extra "${nom}" está repetido` };
+    }
+    limpios.push({ nombre: nom, precio: p });
+  }
+  return { ok: true, valor: serializarExtras(limpios) };
+}
+
 export async function GET() {
   if (!(await getAdminSession())) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
@@ -87,6 +109,7 @@ export async function GET() {
     ensureColumn('Productos', 'Emoji'),
     ensureColumn('Productos', 'Tamanos'),
     ensureColumn('Productos', 'Opciones'),
+    ensureColumn('Productos', 'Extras'),
   ]);
   // crudo: la hoja tiene locale es_ES y devolvía el precio como "50,00",
   // que un <input type="number"> no puede mostrar y deja el campo vacío
@@ -100,7 +123,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
-  const { nombre, categoria, descripcion, precio, emoji, existencias, tamanos, opciones } =
+  const { nombre, categoria, descripcion, precio, emoji, existencias, tamanos, opciones, extras } =
     await req.json();
 
   if (!nombre || typeof nombre !== 'string' || !nombre.trim()) {
@@ -122,6 +145,12 @@ export async function POST(req: NextRequest) {
     const r = revisarOpciones(opciones);
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 });
     opcionesValor = r.valor;
+  }
+  let extrasValor: string | null = null;
+  if (extras !== undefined) {
+    const r = revisarExtras(extras);
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 });
+    extrasValor = r.valor;
   }
   let existenciasLimpias: string | number | null = null;
   if (existencias !== undefined) {
@@ -174,6 +203,10 @@ export async function POST(req: NextRequest) {
     const col = await ensureColumn('Productos', 'Opciones');
     await updateCell('Productos', fila, col, opcionesValor);
   }
+  if (extrasValor !== null) {
+    const col = await ensureColumn('Productos', 'Extras');
+    await updateCell('Productos', fila, col, extrasValor);
+  }
 
   return NextResponse.json({ success: true, idProducto: nuevoId });
 }
@@ -196,6 +229,7 @@ export async function PATCH(req: NextRequest) {
     existencias,
     tamanos,
     opciones,
+    extras,
   } = await req.json();
 
   if (!idProducto) {
@@ -280,6 +314,14 @@ export async function PATCH(req: NextRequest) {
     const r = revisarOpciones(opciones);
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 });
     const col = await ensureColumn('Productos', 'Opciones');
+    await updateCell('Productos', fila.rowIndex, col, r.valor);
+  }
+
+  // Toppings con costo. Lista vacía = el producto deja de ofrecerlos.
+  if (extras !== undefined) {
+    const r = revisarExtras(extras);
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 });
+    const col = await ensureColumn('Productos', 'Extras');
     await updateCell('Productos', fila.rowIndex, col, r.valor);
   }
 

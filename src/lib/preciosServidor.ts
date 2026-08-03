@@ -19,6 +19,14 @@ import {
   validarEleccion,
 } from './opciones';
 import { claveLinea, nombreConTamano, parsearTamanos, precioDeTamano } from './tamanos';
+import {
+  claveExtras,
+  type Extra,
+  parsearExtras,
+  precioExtras,
+  resumenExtras,
+  validarExtras,
+} from './extras';
 
 export interface ItemEntrante {
   id?: string;
@@ -29,6 +37,8 @@ export interface ItemEntrante {
   tamano?: string;
   /** Lo elegido en cada grupo: { Queso: 'Queso suizo' } */
   opciones?: Eleccion;
+  /** Toppings elegidos; cada uno suma a lo que se cobra */
+  extras?: unknown;
 }
 
 export interface ItemValidado {
@@ -39,6 +49,7 @@ export interface ItemValidado {
   cantidad: number;
   tamano: string;
   opciones: Eleccion;
+  extras: Extra[];
   /** Identifica el renglón: mismo producto con distinto queso son dos */
   clave: string;
   categoria: string;
@@ -107,17 +118,32 @@ export async function validarItems(items: ItemEntrante[]): Promise<ResultadoVali
     }
     const eleccion = revision.eleccion;
 
-    // "Combo 1 (Queso suizo · Jugo de Mango)" o "Jugo de Mango (1 litro)"
-    const detalle = [tamano, resumenEleccion(grupos, eleccion)].filter(Boolean).join(' · ');
+    // Toppings: son opcionales, pero el que se pida tiene que existir y
+    // se cobra con el precio de la hoja, no con el que mande el navegador.
+    const revisionExtras = validarExtras(parsearExtras(p.Extras ?? ''), item.extras);
+    if (!revisionExtras.ok) {
+      return { ok: false, error: `${revisionExtras.error} en "${p.Nombre}"` };
+    }
+    const extras = revisionExtras.extras;
+
+    // "Combo 1 (Queso suizo · Jugo de Mango)" o "Licuado (1 litro · + Chía)"
+    const detalle = [tamano, resumenEleccion(grupos, eleccion), resumenExtras(extras)]
+      .filter(Boolean)
+      .join(' · ');
 
     validados.push({
       id: p.ID_Producto,
       nombre: nombreConTamano(p.Nombre, detalle),
-      precio,
+      precio: precio + precioExtras(extras),
       cantidad,
       tamano,
       opciones: eleccion,
-      clave: claveLinea(p.ID_Producto, tamano, claveEleccion(grupos, eleccion)),
+      extras,
+      clave: claveLinea(
+        p.ID_Producto,
+        tamano,
+        `${claveEleccion(grupos, eleccion)}#${claveExtras(extras)}`
+      ),
       categoria: (p['Categoría'] ?? p.Categoria ?? '').toString(),
     });
   }

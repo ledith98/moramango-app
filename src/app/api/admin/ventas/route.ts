@@ -31,13 +31,40 @@ const ESTADOS_VALIDOS = [
 
 const METODOS_PAGO = ['Efectivo', 'Terminal', 'Transferencia'];
 
+/**
+ * Revisa el descuento manual del mostrador. Se exporta para poder probarla
+ * sin sesión de administrador.
+ *
+ * Reglas: no negativo, no puede pasarse del total de la venta (sumado a lo
+ * que ya descuenta la lealtad) y siempre lleva motivo, para que en el corte
+ * se pueda saber por qué se cobró de menos.
+ */
+export function revisarDescuentoManual(
+  monto: unknown,
+  motivo: unknown,
+  descuentoActual: number,
+  totalBruto: number
+): { ok: true; monto: number; motivo: string } | { ok: false; error: string } {
+  if (monto === undefined || monto === null || monto === '') {
+    return { ok: true, monto: 0, motivo: '' };
+  }
+  const n = parseFloat(monto.toString().replace(',', '.'));
+  if (isNaN(n) || n < 0) return { ok: false, error: 'Descuento manual inválido' };
+  if (descuentoActual + n > totalBruto + 0.001) {
+    return { ok: false, error: 'El descuento no puede ser mayor que el total de la venta' };
+  }
+  const texto = (motivo ?? '').toString().trim();
+  if (n > 0 && !texto) return { ok: false, error: 'Escribe el motivo del descuento manual' };
+  return { ok: true, monto: n, motivo: texto };
+}
+
 export async function POST(req: NextRequest) {
   const session = await getAdminSession();
   if (!session) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
-  const { nombre, telefono, metodoPago, estado, notas, items, estadoPago, idUsuario, beneficioCanjeado, efectivoRecibido, cambio, articuloGratisId } =
+  const { nombre, telefono, metodoPago, estado, notas, items, estadoPago, idUsuario, beneficioCanjeado, efectivoRecibido, cambio, articuloGratisId, descuentoManual, motivoDescuento } =
     await req.json();
 
   if (!nombre || typeof nombre !== 'string' || !nombre.trim()) {
@@ -122,6 +149,21 @@ export async function POST(req: NextRequest) {
     descuento += precio; // solo una pieza, aunque lleve varias
     nombreArticuloGratis = elegido.nombre;
   }
+  // Descuento manual: para cosas fuera de lo normal (una disculpa, un
+  // acuerdo con un cliente). Se suma a lo que ya trae de lealtad.
+  const revisionDescuento = revisarDescuentoManual(
+    descuentoManual,
+    motivoDescuento,
+    descuento,
+    totalBruto
+  );
+  if (!revisionDescuento.ok) {
+    return NextResponse.json({ error: revisionDescuento.error }, { status: 400 });
+  }
+  const descuentoExtra = revisionDescuento.monto;
+  const motivoLimpio = revisionDescuento.motivo;
+  descuento += descuentoExtra;
+
   const total = Math.max(0, totalBruto - descuento);
 
   if (metodoPago === 'Efectivo' && parseFloat(efectivoRecibido) + 0.001 < total) {
@@ -190,8 +232,13 @@ export async function POST(req: NextRequest) {
     canjea,                                   // Beneficio_Canjeado
     descuento,                                // Descuento_Monto
     total,                                    // Total_Final
-    // Queda anotado qué se regaló, para poder revisarlo después
-    [notas?.trim(), nombreArticuloGratis ? `🎁 Gratis: ${nombreArticuloGratis}` : '']
+    // Queda anotado qué se regaló y por qué se descontó, para poder
+    // revisarlo después en el corte o en Pedidos
+    [
+      notas?.trim(),
+      nombreArticuloGratis ? `🎁 Gratis: ${nombreArticuloGratis}` : '',
+      descuentoExtra > 0 ? `🏷️ Descuento manual $${descuentoExtra}: ${motivoLimpio}` : '',
+    ]
       .filter(Boolean)
       .join(' · '),
     'Local',                                  // Origen_Venta

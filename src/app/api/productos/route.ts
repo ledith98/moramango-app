@@ -5,6 +5,7 @@ import { leerAjustes, posicionCategoria } from '@/lib/ajustes';
 import { estadoTienda } from '@/lib/horario';
 import { parsearTamanos } from '@/lib/tamanos';
 import { parsearOpciones } from '@/lib/opciones';
+import { parsearExtras } from '@/lib/extras';
 
 export async function GET() {
   try {
@@ -42,6 +43,8 @@ export async function GET() {
         tamanos: parsearTamanos(p.Tamanos ?? ''),
         // Lo que el cliente elige dentro del producto: queso, sabor…
         opciones: parsearOpciones(p.Opciones ?? ''),
+        // Toppings opcionales que suman al precio
+        extras: parsearExtras(p.Extras ?? ''),
         // Existencias por producto: solo se usa en los de reventa (conchas,
         // galletas…). Los elaborados la dejan vacía y NO muestran "últimas
         // piezas". Vacío = sin control de existencias, sin límite.

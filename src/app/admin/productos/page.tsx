@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { esEnlaceDeVisorDrive } from '@/lib/imagenes';
 import { parsearTamanos, TAMANOS_SUGERIDOS, type Tamano } from '@/lib/tamanos';
 import { type GrupoOpcion, parsearOpciones } from '@/lib/opciones';
+import { type Extra, parsearExtras } from '@/lib/extras';
 
 interface Producto {
   ID_Producto: string;
@@ -18,6 +19,7 @@ interface Producto {
   Existencias?: string;
   Tamanos?: string;
   Opciones?: string;
+  Extras?: string;
 }
 
 type EstadoProducto = 'vendiendo' | 'pausado' | 'oculto';
@@ -59,6 +61,8 @@ interface FormProducto {
   tamanos: Tamano[];
   /** Vacío = no se pregunta nada. Con grupos = el cliente elige. */
   opciones: GrupoOpcion[];
+  /** Toppings opcionales que suman al precio */
+  extras: Extra[];
 }
 
 const FORM_VACIO: FormProducto = {
@@ -70,6 +74,7 @@ const FORM_VACIO: FormProducto = {
   existencias: '',
   tamanos: [],
   opciones: [],
+  extras: [],
 };
 
 
@@ -145,6 +150,7 @@ export default function ProductosPage() {
       existencias: p.Existencias ?? '',
       tamanos: parsearTamanos(p.Tamanos ?? ''),
       opciones: parsearOpciones(p.Opciones ?? ''),
+      extras: parsearExtras(p.Extras ?? ''),
     });
     setImagenUrl(p.Imagen_URL || '');
     setPegarUrl(false);
@@ -232,6 +238,7 @@ export default function ProductosPage() {
             existencias: form.existencias,
             tamanos: form.tamanos,
             opciones: form.opciones,
+            extras: form.extras,
           }),
         });
       } else {
@@ -247,6 +254,7 @@ export default function ProductosPage() {
             existencias: form.existencias,
             tamanos: form.tamanos,
             opciones: form.opciones,
+            extras: form.extras,
           }),
         });
         const data = await res.json();
@@ -624,6 +632,66 @@ export default function ProductosPage() {
                   </>
                 )}
               </div>
+
+            <div className="space-y-2 text-neutral-900 border-t border-neutral-100 pt-4">
+              <div>
+                <label className="text-sm font-semibold text-neutral-700">
+                  Toppings extra{' '}
+                  <span className="font-normal text-neutral-600">(con costo)</span>
+                </label>
+                <p className="text-xs text-neutral-600 mt-0.5">
+                  Agregados opcionales. El cliente puede llevar varios o ninguno, y cada uno se
+                  suma al precio del producto.
+                </p>
+              </div>
+
+              {form.extras.map((e, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input
+                    value={e.nombre}
+                    onChange={(ev) => {
+                      const copia = [...form.extras];
+                      copia[i] = { ...copia[i], nombre: ev.target.value };
+                      setForm({ ...form, extras: copia });
+                    }}
+                    placeholder="Chía"
+                    className="flex-1 min-w-0 bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-black"
+                  />
+                  <span className="text-lg font-bold text-neutral-700">+$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    inputMode="decimal"
+                    value={e.precio}
+                    onChange={(ev) => {
+                      const copia = [...form.extras];
+                      copia[i] = { ...copia[i], precio: parseFloat(ev.target.value) };
+                      setForm({ ...form, extras: copia });
+                    }}
+                    className="w-24 shrink-0 bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setForm({ ...form, extras: form.extras.filter((_, j) => j !== i) })
+                    }
+                    aria-label={`Quitar ${e.nombre}`}
+                    className="w-11 h-11 shrink-0 rounded-xl bg-neutral-100 text-neutral-700 font-bold active:scale-90"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, extras: [...form.extras, { nombre: '', precio: 0 }] })}
+                className="w-full border-2 border-dashed border-neutral-300 rounded-xl py-3 text-sm font-semibold text-neutral-700 active:scale-95"
+              >
+                + Agregar topping
+              </button>
+            </div>
 
             <div className="space-y-3 text-neutral-900 border-t border-neutral-100 pt-4">
                 <div>

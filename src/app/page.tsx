@@ -41,6 +41,7 @@ import {
   type GrupoOpcion,
   resumenEleccion,
 } from '@/lib/opciones';
+import { claveExtras, type Extra, precioExtras, resumenExtras } from '@/lib/extras';
 
 interface ItemCarrito {
   id: string;
@@ -52,6 +53,8 @@ interface ItemCarrito {
   tamano: string;
   /** Lo elegido dentro del producto: { Queso: 'Queso suizo' } */
   opciones: Eleccion;
+  /** Toppings elegidos; su costo ya viene sumado en `precio` */
+  extras: Extra[];
   /**
    * Identifica el renglón. Dos combos con distinto queso son dos
    * renglones, no uno con cantidad 2, aunque cuesten lo mismo.
@@ -160,6 +163,8 @@ export default function Home() {
   const [tamanoElegido, setTamanoElegido] = useState('');
   /** Opciones elegidas en la ficha: { Queso: 'Queso suizo' } */
   const [opcionesElegidas, setOpcionesElegidas] = useState<Eleccion>({});
+  /** Toppings marcados en la ficha */
+  const [extrasElegidos, setExtrasElegidos] = useState<Extra[]>([]);
   /** Horario: lo calcula el servidor, no la hora del celular del cliente */
   const [tienda, setTienda] = useState<{ abierta: boolean; mensaje: string }>({
     abierta: true,
@@ -188,7 +193,8 @@ export default function Home() {
             ...i,
             tamano: i.tamano ?? '',
             opciones: i.opciones ?? {},
-            clave: i.clave ?? claveLinea(i.id, i.tamano),
+            extras: i.extras ?? [],
+            clave: i.clave ?? claveLinea(i.id, i.tamano, '#'),
           }))
         );
       }
@@ -357,23 +363,41 @@ export default function Home() {
     return [...prev, nuevo()];
   };
 
-  const agregarAlCarrito = (producto: any, tamano?: string, eleccion?: Eleccion) => {
+  const agregarAlCarrito = (
+    producto: any,
+    tamano?: string,
+    eleccion?: Eleccion,
+    /** undefined = todavía no se le preguntó; [] = eligió no llevar ninguno */
+    extras?: Extra[]
+  ) => {
     if (producto.disponible === false) {
       setAvisoStock(`${producto.nombre} no está disponible por el momento`);
       return;
     }
-    // Con tamaños u opciones no se puede agregar a ciegas: hay decisiones
-    // que solo el cliente puede tomar, así que se abre la ficha.
+    // No se puede agregar a ciegas algo que el cliente tiene que decidir:
+    // se abre la ficha. Con los toppings no llevar ninguno es una respuesta
+    // válida, pero hay que dejarle verlos antes de darla por hecha.
     const tamanos: Tamano[] = producto.tamanos ?? [];
     const grupos: GrupoOpcion[] = producto.opciones ?? [];
-    if ((tamanos.length > 0 && !tamano) || (grupos.length > 0 && !eleccion)) {
+    const extrasProducto: Extra[] = producto.extras ?? [];
+    if (
+      (tamanos.length > 0 && !tamano) ||
+      (grupos.length > 0 && !eleccion) ||
+      (extrasProducto.length > 0 && extras === undefined)
+    ) {
       abrirDetalle(producto);
       return;
     }
-    const precio = tamano
+    const elegidos = extras ?? [];
+    const base = tamano
       ? precioDeTamano(tamanos, tamano) ?? limpiarPrecio(producto.precio)
       : limpiarPrecio(producto.precio);
-    const clave = claveLinea(producto.id, tamano, claveEleccion(grupos, eleccion));
+    const precio = base + precioExtras(elegidos);
+    const clave = claveLinea(
+      producto.id,
+      tamano,
+      `${claveEleccion(grupos, eleccion)}#${claveExtras(elegidos)}`
+    );
 
     setCarrito(prev =>
       sumarSiCabe(prev, producto, clave, () => ({
@@ -384,6 +408,7 @@ export default function Home() {
         cantidad: 1,
         tamano: tamano ?? '',
         opciones: eleccion ?? {},
+        extras: elegidos,
         clave,
       }))
     );
@@ -488,10 +513,12 @@ export default function Home() {
     const tamanos: Tamano[] = producto.tamanos ?? [];
     const grupos: GrupoOpcion[] = producto.opciones ?? [];
     // Con tamaños u opciones la ficha se abre siempre: es donde se elige
-    const hayQueElegir = tamanos.length > 0 || grupos.length > 0;
+    const hayQueElegir =
+      tamanos.length > 0 || grupos.length > 0 || (producto.extras ?? []).length > 0;
     if (!hayQueElegir && !(producto.descripcion && producto.descripcion.trim())) return;
     setTamanoElegido(tamanos[0]?.nombre ?? '');
     setOpcionesElegidas(eleccionInicial(grupos));
+    setExtrasElegidos([]); // los toppings arrancan sin marcar
     setProductoDetalle(producto);
   };
 
@@ -731,7 +758,8 @@ export default function Home() {
         cantidad: item.cantidad,
         tamano: tamano ?? '',
         opciones: {},
-        clave: claveLinea(actual.id, tamano, ''),
+        extras: [],
+        clave: claveLinea(actual.id, tamano, '#'),
       });
     }
 
@@ -813,6 +841,7 @@ export default function Home() {
             cantidad: item.cantidad,
             tamano: item.tamano,
             opciones: item.opciones,
+            extras: item.extras,
           })),
           notas: notas.trim(),
           horaRecoleccion: '',
@@ -930,8 +959,13 @@ export default function Home() {
   // Info del producto en detalle (para el modal)
   const tamanosDetalle: Tamano[] = productoDetalle?.tamanos ?? [];
   const gruposDetalle: GrupoOpcion[] = productoDetalle?.opciones ?? [];
+  const extrasDetalle: Extra[] = productoDetalle?.extras ?? [];
   const claveDetalle = productoDetalle
-    ? claveLinea(productoDetalle.id, tamanoElegido, claveEleccion(gruposDetalle, opcionesElegidas))
+    ? claveLinea(
+        productoDetalle.id,
+        tamanoElegido,
+        `${claveEleccion(gruposDetalle, opcionesElegidas)}#${claveExtras(extrasElegidos)}`
+      )
     : '';
   const itemEnCarritoDetalle = productoDetalle
     ? carrito.find(i => i.clave === claveDetalle)
@@ -941,7 +975,7 @@ export default function Home() {
   const precioDetalle = productoDetalle
     ? (tamanosDetalle.length > 0
         ? precioDeTamano(tamanosDetalle, tamanoElegido) ?? 0
-        : limpiarPrecio(productoDetalle.precio))
+        : limpiarPrecio(productoDetalle.precio)) + precioExtras(extrasElegidos)
     : 0;
 
   return (
@@ -1097,7 +1131,9 @@ export default function Home() {
                           const tieneTamanos = tamanosProd.length > 0;
                           // Con opciones tampoco se puede sumar/restar desde
                           // la tarjeta: hay que saber cuál de los renglones
-                          const hayQueElegir = tieneTamanos || gruposProd.length > 0;
+                          const extrasProd: Extra[] = producto.extras ?? [];
+                          const hayQueElegir =
+                            tieneTamanos || gruposProd.length > 0 || extrasProd.length > 0;
                           const tieneDescripcion = producto.descripcion && producto.descripcion.trim();
                           const venta = estadoDeVenta(producto);
 
@@ -1280,9 +1316,17 @@ export default function Home() {
                 <div key={item.clave} className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-neutral-100">
                   <div className="pr-4 flex-1">
                     <h3 className="font-semibold text-neutral-900 leading-tight">{item.nombre}</h3>
-                    {(item.tamano || Object.keys(item.opciones ?? {}).length > 0) && (
+                    {[
+                      item.tamano,
+                      ...Object.values(item.opciones ?? {}),
+                      resumenExtras(item.extras ?? []),
+                    ].filter(Boolean).length > 0 && (
                       <p className="text-xs text-neutral-700 font-medium mt-0.5">
-                        {[item.tamano, ...Object.values(item.opciones ?? {})]
+                        {[
+                          item.tamano,
+                          ...Object.values(item.opciones ?? {}),
+                          resumenExtras(item.extras ?? []),
+                        ]
                           .filter(Boolean)
                           .join(' · ')}
                       </p>
@@ -2057,6 +2101,41 @@ export default function Home() {
                   </div>
                 ))}
 
+                {/* Toppings: se pueden marcar varios o ninguno */}
+                {extrasDetalle.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-sm font-semibold text-neutral-800 mb-2">
+                      ¿Le agregamos algo? <span className="font-normal text-neutral-600">(opcional)</span>
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {extrasDetalle.map((e) => {
+                        const activo = extrasElegidos.some((x) => x.nombre === e.nombre);
+                        return (
+                          <button
+                            key={e.nombre}
+                            onClick={() =>
+                              setExtrasElegidos((prev) =>
+                                activo
+                                  ? prev.filter((x) => x.nombre !== e.nombre)
+                                  : [...prev, e]
+                              )
+                            }
+                            className={`px-3.5 py-2 rounded-xl border-2 text-sm font-semibold transition-colors ${
+                              activo
+                                ? 'border-marron bg-marron/10 text-neutral-900'
+                                : 'border-neutral-200 bg-white text-neutral-800'
+                            }`}
+                          >
+                            {activo ? '✓ ' : '+ '}
+                            {e.nombre}
+                            <span className="font-bold"> ${e.precio.toFixed(2)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Tamaño: solo si el producto se vende en varios */}
                 {tamanosDetalle.length > 0 && (
                   <div className="mb-4">
@@ -2098,12 +2177,21 @@ export default function Home() {
                 {cantidadEnCarritoDetalle === 0 ? (
                   <button
                     onClick={() =>
-                      agregarAlCarrito(productoDetalle, tamanoElegido, opcionesElegidas)
+                      agregarAlCarrito(
+                        productoDetalle,
+                        tamanoElegido,
+                        opcionesElegidas,
+                        extrasElegidos
+                      )
                     }
                     className="w-full bg-marron text-white font-bold text-base py-4 rounded-2xl active:scale-95 transition-transform shadow-md"
                   >
                     Agregar al pedido
-                    {[tamanoElegido, resumenEleccion(gruposDetalle, opcionesElegidas)]
+                    {[
+                      tamanoElegido,
+                      resumenEleccion(gruposDetalle, opcionesElegidas),
+                      resumenExtras(extrasElegidos),
+                    ]
                       .filter(Boolean)
                       .map((t) => ` · ${t}`)
                       .join('')}
@@ -2122,7 +2210,12 @@ export default function Home() {
                       </span>
                       <button
                         onClick={() =>
-                          agregarAlCarrito(productoDetalle, tamanoElegido, opcionesElegidas)
+                          agregarAlCarrito(
+                            productoDetalle,
+                            tamanoElegido,
+                            opcionesElegidas,
+                            extrasElegidos
+                          )
                         }
                         className="w-11 h-11 flex items-center justify-center bg-marron text-white rounded-xl font-medium shadow-sm active:scale-90 text-lg"
                       >

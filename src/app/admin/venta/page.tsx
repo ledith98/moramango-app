@@ -9,6 +9,7 @@ import {
   parsearOpciones,
   resumenEleccion,
 } from '@/lib/opciones';
+import { claveExtras, type Extra, parsearExtras, precioExtras, resumenExtras } from '@/lib/extras';
 import { TicketBotones } from '../TicketBotones';
 import type { DatosTicket } from '@/lib/ticket';
 import { esBeneficioReactivacion, montoReactivacion } from '@/lib/beneficioCliente';
@@ -33,6 +34,7 @@ interface Producto {
   Emoji?: string;
   Tamanos?: string;
   Opciones?: string;
+  Extras?: string;
 }
 
 interface ItemVenta {
@@ -44,6 +46,8 @@ interface ItemVenta {
   tamano: string;
   /** Lo elegido dentro del producto: { Queso: 'Queso suizo' } */
   opciones: Eleccion;
+  /** Toppings; su costo ya viene sumado en `precio` */
+  extras: Extra[];
   /** Identifica el renglón: mismo combo con distinto queso son dos */
   clave: string;
 }
@@ -76,6 +80,10 @@ export default function VentaPage() {
   const [configurando, setConfigurando] = useState<Producto | null>(null);
   const [tamanoTemp, setTamanoTemp] = useState('');
   const [opcionesTemp, setOpcionesTemp] = useState<Eleccion>({});
+  const [extrasTemp, setExtrasTemp] = useState<Extra[]>([]);
+  /** Descuento fuera de lo normal, a criterio de quien cobra */
+  const [descuentoManual, setDescuentoManual] = useState('');
+  const [motivoDescuento, setMotivoDescuento] = useState('');
   const [cargando, setCargando] = useState(true);
   const [items, setItems] = useState<ItemVenta[]>([]);
   const [nombre, setNombre] = useState('');
@@ -166,6 +174,8 @@ export default function VentaPage() {
   const quitarCliente = () => {
     setCliente(null);
     setAplicarBeneficio(false);
+    setDescuentoManual('');
+    setMotivoDescuento('');
     setArticuloGratisId('');
   };
 
@@ -173,22 +183,34 @@ export default function VentaPage() {
   const cantidadDe = (idProducto: string) =>
     items.filter((i) => i.id === idProducto).reduce((n, i) => n + i.cantidad, 0);
 
-  const agregar = (p: Producto, tamano?: string, eleccion?: Eleccion) => {
+  const agregar = (p: Producto, tamano?: string, eleccion?: Eleccion, extras?: Extra[]) => {
     setVentaOk(null);
     const tamanos = parsearTamanos(p.Tamanos ?? '');
     const grupos = parsearOpciones(p.Opciones ?? '');
+    const extrasProducto = parsearExtras(p.Extras ?? '');
     // Hay decisiones que las toma el cliente: se abre el selector en vez
-    // de adivinar el tamaño o el sabor
-    if ((tamanos.length > 0 && !tamano) || (grupos.length > 0 && !eleccion)) {
+    // de adivinar el tamaño, el sabor o si quiere algún topping
+    if (
+      (tamanos.length > 0 && !tamano) ||
+      (grupos.length > 0 && !eleccion) ||
+      (extrasProducto.length > 0 && extras === undefined)
+    ) {
       setConfigurando(p);
       setTamanoTemp(tamanos[0]?.nombre ?? '');
       setOpcionesTemp(eleccionInicial(grupos));
+      setExtrasTemp([]);
       return;
     }
-    const precio = tamano
+    const elegidos = extras ?? [];
+    const base = tamano
       ? precioDeTamano(tamanos, tamano) ?? 0
       : parseFloat(p.Precio_Venta) || 0;
-    const clave = claveLinea(p.ID_Producto, tamano, claveEleccion(grupos, eleccion));
+    const precio = base + precioExtras(elegidos);
+    const clave = claveLinea(
+      p.ID_Producto,
+      tamano,
+      `${claveEleccion(grupos, eleccion)}#${claveExtras(elegidos)}`
+    );
     setConfigurando(null);
     setItems((prev) => {
       if (prev.some((i) => i.clave === clave)) {
@@ -203,6 +225,7 @@ export default function VentaPage() {
           cantidad: 1,
           tamano: tamano ?? '',
           opciones: eleccion ?? {},
+          extras: elegidos,
           clave,
         },
       ];
@@ -231,7 +254,7 @@ export default function VentaPage() {
       ? candidatosGratis.find((i) => i.clave === articuloGratisId)
       : undefined;
 
-  const descuento =
+  const descuentoLealtad =
     beneficioCanjeado === '15% Descuento'
       ? totalBruto * 0.15
       : esBeneficioReactivacion(beneficioCanjeado)
@@ -239,6 +262,10 @@ export default function VentaPage() {
       : articuloGratis
       ? articuloGratis.precio // solo una pieza, aunque lleve varias
       : 0;
+  // Descuento manual: se suma al de lealtad, nunca lo reemplaza
+  const descuentoManualNum = parseFloat(descuentoManual.replace(',', '.')) || 0;
+  const descuentoExcedido = descuentoLealtad + descuentoManualNum > totalBruto + 0.001;
+  const descuento = descuentoLealtad + (descuentoExcedido ? 0 : descuentoManualNum);
   const total = Math.max(0, totalBruto - descuento);
   // Cambio en efectivo: solo tiene sentido si el cliente da de más
   const recibidoNum = parseFloat(efectivoRecibido.replace(',', '.')) || 0;
@@ -247,6 +274,12 @@ export default function VentaPage() {
   // Registra la venta en el sheet. estadoPago='Pagado' cuando el cobro ya
   // se aprobó (ej. terminal). Limpia el formulario al terminar.
   const registrarVenta = async (estadoPago?: string) => {
+    if (descuentoExcedido) {
+      throw new Error('El descuento no puede ser mayor que el total de la venta');
+    }
+    if (descuentoManualNum > 0 && !motivoDescuento.trim()) {
+      throw new Error('Escribe el motivo del descuento manual');
+    }
     const res = await fetch('/api/admin/ventas', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -261,6 +294,8 @@ export default function VentaPage() {
         idUsuario: cliente?.id,
         beneficioCanjeado,
         articuloGratisId: articuloGratis?.clave,
+        descuentoManual: descuentoManualNum > 0 ? descuentoManualNum : undefined,
+        motivoDescuento: motivoDescuento.trim() || undefined,
         // Solo para efectivo con cambio; queda de registro en el pedido
         efectivoRecibido: metodoPago === 'Efectivo' && recibidoNum > 0 ? recibidoNum : undefined,
         cambio: cambio > 0 ? cambio : undefined,
@@ -492,6 +527,37 @@ export default function VentaPage() {
               </div>
             ))}
 
+            {parsearExtras(configurando.Extras ?? '').length > 0 && (
+              <div>
+                <p className="text-sm font-semibold text-neutral-800 mb-2">
+                  Extras <span className="font-normal text-neutral-600">(opcional)</span>
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {parsearExtras(configurando.Extras ?? '').map((e) => {
+                    const activo = extrasTemp.some((x) => x.nombre === e.nombre);
+                    return (
+                      <button
+                        key={e.nombre}
+                        onClick={() =>
+                          setExtrasTemp((prev) =>
+                            activo ? prev.filter((x) => x.nombre !== e.nombre) : [...prev, e]
+                          )
+                        }
+                        className={`px-3 py-2 rounded-xl border-2 text-sm font-semibold active:scale-95 ${
+                          activo
+                            ? 'border-black bg-neutral-100 text-neutral-900'
+                            : 'border-neutral-200 bg-white text-neutral-800'
+                        }`}
+                      >
+                        {activo ? '✓ ' : '+ '}
+                        {e.nombre} <span className="font-bold">${e.precio.toFixed(2)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {parsearTamanos(configurando.Tamanos ?? '').length > 0 && (
               <div>
                 <p className="text-sm font-semibold text-neutral-800 mb-2">Tamaño</p>
@@ -518,11 +584,15 @@ export default function VentaPage() {
             )}
 
             <button
-              onClick={() => agregar(configurando, tamanoTemp, opcionesTemp)}
+              onClick={() => agregar(configurando, tamanoTemp, opcionesTemp, extrasTemp)}
               className="w-full py-3.5 rounded-xl bg-black text-white font-bold active:scale-95"
             >
               Agregar a la venta
-              {[tamanoTemp, resumenEleccion(parsearOpciones(configurando.Opciones ?? ''), opcionesTemp)]
+              {[
+                tamanoTemp,
+                resumenEleccion(parsearOpciones(configurando.Opciones ?? ''), opcionesTemp),
+                resumenExtras(extrasTemp),
+              ]
                 .filter(Boolean)
                 .map((t) => ` · ${t}`)
                 .join('')}
@@ -548,7 +618,9 @@ export default function VentaPage() {
               const cant = cantidadDe(p.ID_Producto);
               const tamanosP = parsearTamanos(p.Tamanos ?? '');
               const gruposP = parsearOpciones(p.Opciones ?? '');
-              const hayQueElegir = tamanosP.length > 0 || gruposP.length > 0;
+              const extrasP = parsearExtras(p.Extras ?? '');
+              const hayQueElegir =
+                tamanosP.length > 0 || gruposP.length > 0 || extrasP.length > 0;
               return (
                 <div
                   key={p.ID_Producto}
@@ -620,10 +692,19 @@ export default function VentaPage() {
               <div key={i.clave} className="flex justify-between items-center text-sm gap-2">
                 <span className="text-neutral-900 font-medium flex-1 min-w-0">
                   {i.cantidad}× {i.nombre}
-                  {[i.tamano, ...Object.values(i.opciones ?? {})].filter(Boolean).length > 0 && (
+                  {[i.tamano, ...Object.values(i.opciones ?? {}), resumenExtras(i.extras ?? [])]
+                    .filter(Boolean).length > 0 && (
                     <span className="text-neutral-700 font-semibold">
                       {' '}
-                      ({[i.tamano, ...Object.values(i.opciones ?? {})].filter(Boolean).join(' · ')})
+                      (
+                      {[
+                        i.tamano,
+                        ...Object.values(i.opciones ?? {}),
+                        resumenExtras(i.extras ?? []),
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                      )
                     </span>
                   )}
                 </span>
@@ -645,22 +726,77 @@ export default function VentaPage() {
                   <span className="text-neutral-700">Subtotal</span>
                   <span className="text-neutral-700">${totalBruto.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between text-sm text-green-600 font-medium">
-                  <span>
-                    {articuloGratis
-                      ? `🎁 Gratis: ${articuloGratis.nombre}`
-                      : beneficioCanjeado === '15% Descuento'
-                      ? '🎁 Descuento 15% (lealtad)'
-                      : '🎁 Descuento (lealtad)'}
-                  </span>
-                  <span>−${descuento.toFixed(2)}</span>
-                </div>
+                {descuentoLealtad > 0 && (
+                  <div className="flex justify-between text-sm text-green-600 font-medium">
+                    <span>
+                      {articuloGratis
+                        ? `🎁 Gratis: ${articuloGratis.nombre}`
+                        : beneficioCanjeado === '15% Descuento'
+                        ? '🎁 Descuento 15% (lealtad)'
+                        : '🎁 Descuento (lealtad)'}
+                    </span>
+                    <span>−${descuentoLealtad.toFixed(2)}</span>
+                  </div>
+                )}
+                {!descuentoExcedido && descuentoManualNum > 0 && (
+                  <div className="flex justify-between text-sm text-green-600 font-medium">
+                    <span>🏷️ Descuento manual</span>
+                    <span>−${descuentoManualNum.toFixed(2)}</span>
+                  </div>
+                )}
               </>
             )}
             <div className="flex justify-between items-center pt-2 border-t border-neutral-100">
               <span className="font-medium text-neutral-700">Total</span>
               <span className="text-xl font-bold text-black">${total.toFixed(2)}</span>
             </div>
+          </div>
+        )}
+
+        {/* Descuento manual — para casos fuera de lo normal */}
+        {items.length > 0 && (
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 space-y-3">
+            <div>
+              <label className="text-sm font-semibold text-neutral-700">
+                Descuento manual{' '}
+                <span className="font-normal text-neutral-600">(opcional)</span>
+              </label>
+              <p className="text-xs text-neutral-600 mt-0.5">
+                Solo para casos fuera de lo normal. Se suma al de lealtad si el cliente ya traía
+                uno, y queda anotado en el pedido con su motivo.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-lg font-bold text-neutral-700">$</span>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                inputMode="decimal"
+                value={descuentoManual}
+                onChange={(e) => setDescuentoManual(e.target.value)}
+                placeholder="0"
+                className="w-28 bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-black"
+              />
+              <input
+                value={motivoDescuento}
+                onChange={(e) => setMotivoDescuento(e.target.value)}
+                placeholder="Motivo (ej. se tardó el pedido)"
+                className="flex-1 min-w-0 bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-black"
+              />
+            </div>
+
+            {descuentoExcedido && (
+              <p className="text-sm text-red-600 font-semibold">
+                El descuento no puede ser mayor que el total de la venta (${totalBruto.toFixed(2)}).
+              </p>
+            )}
+            {!descuentoExcedido && descuentoManualNum > 0 && !motivoDescuento.trim() && (
+              <p className="text-sm text-amber-700 font-semibold">
+                Escribe el motivo para poder registrarlo.
+              </p>
+            )}
           </div>
         )}
 
@@ -760,9 +896,16 @@ export default function VentaPage() {
                         {candidatosGratis.map((i) => (
                           <option key={i.clave} value={i.clave}>
                             {i.nombre}
-                            {[i.tamano, ...Object.values(i.opciones ?? {})].filter(Boolean).length >
-                            0
-                              ? ` (${[i.tamano, ...Object.values(i.opciones ?? {})]
+                            {[
+                              i.tamano,
+                              ...Object.values(i.opciones ?? {}),
+                              resumenExtras(i.extras ?? []),
+                            ].filter(Boolean).length > 0
+                              ? ` (${[
+                                  i.tamano,
+                                  ...Object.values(i.opciones ?? {}),
+                                  resumenExtras(i.extras ?? []),
+                                ]
                                   .filter(Boolean)
                                   .join(' · ')})`
                               : ''}{' '}

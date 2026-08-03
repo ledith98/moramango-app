@@ -31,6 +31,22 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-03',
+    tipo: 'nuevo',
+    titulo: 'Toppings extra con costo',
+    detalle:
+      'Ahora puedes ofrecer agregados que suben el precio: chía, granola, lo que vendas. En Productos → editar → Toppings extra pones cuáles son y cuánto cuesta cada uno. El cliente marca los que quiera (o ninguno) y el precio se actualiza al momento; en el mostrador te aparecen igual. Se cobran por pieza y salen en el ticket: "Licuado de Fresa (1 litro · + Proteína)". Ningún producto tiene toppings todavía: se los pones tú a los que quieras.',
+    donde: 'Productos · Tienda · Venta',
+  },
+  {
+    fecha: '2026-08-03',
+    tipo: 'nuevo',
+    titulo: 'Descuento manual en el mostrador',
+    detalle:
+      'En Venta hay un apartado para descontar un monto por algo fuera de lo normal: se tardó el pedido, un acuerdo con un cliente, lo que sea. Pide el motivo a fuerza, para que en el corte se pueda saber por qué esa venta cobró de menos, y no deja descontar más de lo que cuesta la venta. Si el cliente además traía descuento de lealtad, los dos se suman.',
+    donde: 'Venta',
+  },
+  {
+    fecha: '2026-08-03',
     tipo: 'arreglo',
     titulo: 'Ya se alcanza el botón de Guardar en Productos',
     detalle:

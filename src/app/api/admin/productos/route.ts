@@ -29,6 +29,55 @@ function recortarEmoji(valor: string): string {
   return [...valor.trim()].filter((c) => c.trim()).slice(0, 4).join('');
 }
 
+/**
+ * Revisa y normaliza los tamaños. Se exporta para poder probarla sin
+ * levantar la ruta, que exige sesión de administrador.
+ *
+ * Se comparte entre crear y editar: si
+ * solo se validara al editar, un producto nuevo podría nacer con precios
+ * inválidos y nadie se enteraría hasta que un cliente lo pidiera.
+ */
+export function revisarTamanos(tamanos: unknown): { ok: true; valor: string } | { ok: false; error: string } {
+  if (!Array.isArray(tamanos)) return { ok: false, error: 'Tamaños inválidos' };
+  const limpios: Tamano[] = [];
+  for (const t of tamanos as { nombre?: string; precio?: unknown }[]) {
+    const nom = (t?.nombre ?? '').toString().trim();
+    const p = parseFloat((t?.precio ?? '').toString().replace(',', '.'));
+    if (!nom) continue;
+    if (isNaN(p) || p < 0) return { ok: false, error: `Precio inválido en el tamaño "${nom}"` };
+    if (limpios.some((x) => iguales(x.nombre, nom))) {
+      return { ok: false, error: `El tamaño "${nom}" está repetido` };
+    }
+    limpios.push({ nombre: nom, precio: p });
+  }
+  // Un solo tamaño confunde más de lo que ayuda: o hay opciones o no hay
+  if (limpios.length === 1) {
+    return { ok: false, error: 'Deja al menos dos tamaños, o quítalos todos' };
+  }
+  return { ok: true, valor: serializarTamanos(limpios) };
+}
+
+/** Igual que revisarTamanos, para las preguntas al cliente. */
+export function revisarOpciones(opciones: unknown): { ok: true; valor: string } | { ok: false; error: string } {
+  if (!Array.isArray(opciones)) return { ok: false, error: 'Opciones inválidas' };
+  const limpios: GrupoOpcion[] = [];
+  for (const g of opciones as { nombre?: string; opciones?: unknown }[]) {
+    const nom = (g?.nombre ?? '').toString().trim();
+    if (!nom) continue;
+    const lista = Array.isArray(g?.opciones)
+      ? (g.opciones as unknown[]).map((o) => (o ?? '').toString().trim()).filter(Boolean)
+      : [];
+    if (lista.length < 2) {
+      return { ok: false, error: `"${nom}" necesita al menos dos opciones para poder elegir` };
+    }
+    if (limpios.some((x) => x.nombre.toLowerCase() === nom.toLowerCase())) {
+      return { ok: false, error: `El grupo "${nom}" está repetido` };
+    }
+    limpios.push({ nombre: nom, opciones: lista });
+  }
+  return { ok: true, valor: serializarOpciones(limpios) };
+}
+
 export async function GET() {
   if (!(await getAdminSession())) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
@@ -51,7 +100,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
-  const { nombre, categoria, descripcion, precio, emoji } = await req.json();
+  const { nombre, categoria, descripcion, precio, emoji, existencias, tamanos, opciones } =
+    await req.json();
 
   if (!nombre || typeof nombre !== 'string' || !nombre.trim()) {
     return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 });
@@ -59,6 +109,32 @@ export async function POST(req: NextRequest) {
   const precioNum = parseFloat(precio);
   if (isNaN(precioNum) || precioNum < 0) {
     return NextResponse.json({ error: 'Precio inválido' }, { status: 400 });
+  }
+
+  let tamanosValor: string | null = null;
+  if (tamanos !== undefined) {
+    const r = revisarTamanos(tamanos);
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 });
+    tamanosValor = r.valor;
+  }
+  let opcionesValor: string | null = null;
+  if (opciones !== undefined) {
+    const r = revisarOpciones(opciones);
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 });
+    opcionesValor = r.valor;
+  }
+  let existenciasLimpias: string | number | null = null;
+  if (existencias !== undefined) {
+    const txt = (existencias ?? '').toString().trim();
+    if (txt === '') {
+      existenciasLimpias = '';
+    } else {
+      const n = parseInt(txt, 10);
+      if (isNaN(n) || n < 0) {
+        return NextResponse.json({ error: 'Existencias inválidas' }, { status: 400 });
+      }
+      existenciasLimpias = n;
+    }
   }
 
   const existentes = await getSheetData('Productos');
@@ -79,10 +155,24 @@ export async function POST(req: NextRequest) {
     '',
   ]);
 
-  // Emoji va fuera del rango A–K que escribe appendRow
+  // Estas columnas van fuera del rango A–K que escribe appendRow, así que
+  // se llenan aparte. Se validan ANTES de crear la fila para no dejar un
+  // producto a medias si algo viene mal.
   if (typeof emoji === 'string' && emoji.trim()) {
     const colEmoji = await ensureColumn('Productos', 'Emoji');
     await updateCell('Productos', fila, colEmoji, recortarEmoji(emoji));
+  }
+  if (existenciasLimpias !== null) {
+    const col = await ensureColumn('Productos', 'Existencias');
+    await updateCell('Productos', fila, col, existenciasLimpias);
+  }
+  if (tamanosValor !== null) {
+    const col = await ensureColumn('Productos', 'Tamanos');
+    await updateCell('Productos', fila, col, tamanosValor);
+  }
+  if (opcionesValor !== null) {
+    const col = await ensureColumn('Productos', 'Opciones');
+    await updateCell('Productos', fila, col, opcionesValor);
   }
 
   return NextResponse.json({ success: true, idProducto: nuevoId });
@@ -179,65 +269,18 @@ export async function PATCH(req: NextRequest) {
   // Tamaños con precio propio (500 ml / 1 litro). Lista vacía = el producto
   // vuelve a venderse con un solo precio, el de siempre.
   if (tamanos !== undefined) {
-    if (!Array.isArray(tamanos)) {
-      return NextResponse.json({ error: 'Tamaños inválidos' }, { status: 400 });
-    }
-    const limpios: Tamano[] = [];
-    for (const t of tamanos) {
-      const nom = (t?.nombre ?? '').toString().trim();
-      const p = parseFloat((t?.precio ?? '').toString().replace(',', '.'));
-      if (!nom) continue;
-      if (isNaN(p) || p < 0) {
-        return NextResponse.json(
-          { error: `Precio inválido en el tamaño "${nom}"` },
-          { status: 400 }
-        );
-      }
-      if (limpios.some((x) => iguales(x.nombre, nom))) {
-        return NextResponse.json(
-          { error: `El tamaño "${nom}" está repetido` },
-          { status: 400 }
-        );
-      }
-      limpios.push({ nombre: nom, precio: p });
-    }
-    // Un solo tamaño confunde más de lo que ayuda: o hay opciones o no hay
-    if (limpios.length === 1) {
-      return NextResponse.json(
-        { error: 'Deja al menos dos tamaños, o quítalos todos' },
-        { status: 400 }
-      );
-    }
-    const colTamanos = await ensureColumn('Productos', 'Tamanos');
-    await updateCell('Productos', fila.rowIndex, colTamanos, serializarTamanos(limpios));
+    const r = revisarTamanos(tamanos);
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 });
+    const col = await ensureColumn('Productos', 'Tamanos');
+    await updateCell('Productos', fila.rowIndex, col, r.valor);
   }
-
   // Opciones a elegir dentro del producto (queso del combo, sabor de la
   // bebida…). Lista vacía = el producto vuelve a venderse sin preguntar.
   if (opciones !== undefined) {
-    if (!Array.isArray(opciones)) {
-      return NextResponse.json({ error: 'Opciones inválidas' }, { status: 400 });
-    }
-    const limpios: GrupoOpcion[] = [];
-    for (const g of opciones) {
-      const nom = (g?.nombre ?? '').toString().trim();
-      if (!nom) continue;
-      const lista = Array.isArray(g?.opciones)
-        ? g.opciones.map((o: unknown) => (o ?? '').toString().trim()).filter(Boolean)
-        : [];
-      if (lista.length < 2) {
-        return NextResponse.json(
-          { error: `"${nom}" necesita al menos dos opciones para poder elegir` },
-          { status: 400 }
-        );
-      }
-      if (limpios.some((x) => x.nombre.toLowerCase() === nom.toLowerCase())) {
-        return NextResponse.json({ error: `El grupo "${nom}" está repetido` }, { status: 400 });
-      }
-      limpios.push({ nombre: nom, opciones: lista });
-    }
-    const colOpciones = await ensureColumn('Productos', 'Opciones');
-    await updateCell('Productos', fila.rowIndex, colOpciones, serializarOpciones(limpios));
+    const r = revisarOpciones(opciones);
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 });
+    const col = await ensureColumn('Productos', 'Opciones');
+    await updateCell('Productos', fila.rowIndex, col, r.valor);
   }
 
   return NextResponse.json({ success: true });

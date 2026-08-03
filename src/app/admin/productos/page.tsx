@@ -244,6 +244,9 @@ export default function ProductosPage() {
             descripcion: form.descripcion,
             precio: precioNum,
             emoji: form.emoji,
+            existencias: form.existencias,
+            tamanos: form.tamanos,
+            opciones: form.opciones,
           }),
         });
         const data = await res.json();
@@ -352,10 +355,17 @@ export default function ProductosPage() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={cerrarModal}>
           <form
             onSubmit={guardar}
-            className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 space-y-4 shadow-2xl"
+            /* Alto tope + scroll propio: con tamaños y opciones el
+               formulario crecía más que la pantalla y el botón de Guardar
+               quedaba fuera, sin manera de bajar hasta él. */
+            className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl shadow-2xl flex flex-col max-h-[92dvh]"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-lg font-bold text-black">{editando ? 'Editar producto' : 'Nuevo producto'}</h2>
+            <h2 className="text-lg font-bold text-black px-6 pt-6 pb-3 shrink-0">
+              {editando ? 'Editar producto' : 'Nuevo producto'}
+            </h2>
+
+            <div className="flex-1 overflow-y-auto px-6 space-y-4">
 
             <div className="space-y-1.5">
               <label className="text-sm font-semibold text-neutral-700">Nombre</label>
@@ -387,6 +397,13 @@ export default function ProductosPage() {
                 corrige sola para no partir el menú en dos.
               </p>
             </div>
+
+            {!editando && (
+              <p className="text-xs text-neutral-600 bg-neutral-50 border border-neutral-200 rounded-xl p-3">
+                La foto se agrega después de guardar, cuando el producto ya existe. Todo lo demás
+                —incluidos tamaños y opciones— lo puedes dejar listo desde aquí.
+              </p>
+            )}
 
             {editando && (
               <div className="space-y-1.5">
@@ -494,8 +511,7 @@ export default function ProductosPage() {
               />
             </div>
 
-            {editando && (
-              <div className="space-y-1.5 text-neutral-900">
+            <div className="space-y-1.5 text-neutral-900">
                 <label className="text-sm font-semibold text-neutral-700">
                   Existencias{' '}
                   <span className="font-normal text-neutral-600">(solo productos de reventa)</span>
@@ -517,10 +533,8 @@ export default function ProductosPage() {
                   vacío.
                 </p>
               </div>
-            )}
 
-            {editando && (
-              <div className="space-y-2 text-neutral-900 border-t border-neutral-100 pt-4">
+            <div className="space-y-2 text-neutral-900 border-t border-neutral-100 pt-4">
                 <div>
                   <label className="text-sm font-semibold text-neutral-700">
                     Tamaños con precio propio{' '}
@@ -610,10 +624,8 @@ export default function ProductosPage() {
                   </>
                 )}
               </div>
-            )}
 
-            {editando && (
-              <div className="space-y-3 text-neutral-900 border-t border-neutral-100 pt-4">
+            <div className="space-y-3 text-neutral-900 border-t border-neutral-100 pt-4">
                 <div>
                   <label className="text-sm font-semibold text-neutral-700">
                     Opciones a elegir{' '}
@@ -710,25 +722,28 @@ export default function ProductosPage() {
                   + Nueva pregunta al cliente
                 </button>
               </div>
-            )}
 
-            {error && <p className="text-sm text-red-600">{error}</p>}
+              <div className="h-2" />
+            </div>
 
-            <div className="flex gap-2 pt-2">
-              <button
-                type="button"
-                onClick={cerrarModal}
-                className="flex-1 border border-neutral-200 text-neutral-600 font-semibold py-3 rounded-2xl active:scale-95 transition-transform"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                disabled={guardando}
-                className="flex-1 bg-black text-white font-semibold py-3 rounded-2xl active:scale-95 transition-transform disabled:opacity-50"
-              >
-                {guardando ? 'Guardando...' : 'Guardar'}
-              </button>
+            <div className="shrink-0 border-t border-neutral-100 px-6 py-4 space-y-3 bg-white sm:rounded-b-3xl">
+              {error && <p className="text-sm text-red-600">{error}</p>}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={cerrarModal}
+                  className="flex-1 border border-neutral-200 text-neutral-600 font-semibold py-3 rounded-2xl active:scale-95 transition-transform"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={guardando}
+                  className="flex-1 bg-black text-white font-semibold py-3 rounded-2xl active:scale-95 transition-transform disabled:opacity-50"
+                >
+                  {guardando ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
             </div>
           </form>
         </div>

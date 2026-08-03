@@ -31,6 +31,22 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-03',
+    tipo: 'arreglo',
+    titulo: 'Ya se alcanza el botón de Guardar en Productos',
+    detalle:
+      'Al editar un producto con muchas opciones, como el Combo 1, el formulario crecía más que la pantalla y no había manera de bajar hasta Guardar. Ahora los campos tienen su propio deslizamiento y los botones de Guardar y Cancelar se quedan fijos abajo, siempre a la vista, sin importar cuántas opciones tenga.',
+    donde: 'Productos',
+  },
+  {
+    fecha: '2026-08-03',
+    tipo: 'nuevo',
+    titulo: 'Puedes dar de alta combos nuevos tú sola',
+    detalle:
+      'Al crear un producto ya aparecen las mismas secciones que al editarlo: tamaños con precio propio, opciones a elegir y existencias. Para un combo nuevo, eliges la categoría "Combos" y le agregas sus preguntas (queso, bebida, lo que necesites) antes de guardar. Lo único que se agrega después es la foto, porque el producto tiene que existir primero.',
+    donde: 'Productos',
+  },
+  {
+    fecha: '2026-08-03',
     tipo: 'nuevo',
     titulo: 'Los combos ya se arman a gusto del cliente',
     detalle:

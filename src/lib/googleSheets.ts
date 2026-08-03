@@ -183,22 +183,77 @@ export async function findRow(tabName: string, columnName: string, value: string
 }
 
 /**
+ * Memoria de lo que ya se revisó de la estructura del Sheet.
+ *
+ * ensureSheet y ensureColumn gastan un viaje a Google cada vez, aunque la
+ * hoja y la columna lleven meses ahí. Insumos llamaba a cinco de estas
+ * antes de leer un solo dato: 1.2 s de espera en cada carga y en cada
+ * guardado.
+ *
+ * Se recuerda por un rato y no para siempre, porque la hoja se puede
+ * editar a mano desde Google Sheets: si alguien borra una columna, a los
+ * diez minutos se vuelve a revisar y se repone sola.
+ */
+const VIDA_ESTRUCTURA_MS = 10 * 60 * 1000;
+const hojasVistas = new Map<string, number>();
+const columnasVistas = new Map<string, { indice: number; hasta: number }>();
+
+/** Para las pruebas y para después de tocar la estructura a propósito. */
+export function olvidarEstructura() {
+  hojasVistas.clear();
+  columnasVistas.clear();
+  listaEnVuelo = null;
+}
+
+/**
+ * Pide la lista de pestañas, pero si ya hay una petición en camino se
+ * cuelga de esa. Preparar el inventario revisa tres hojas a la vez y las
+ * tres preguntaban lo mismo: eran tres consultas contra el límite de
+ * Google (60 por minuto) para enterarse del mismo dato. Pasarse de ese
+ * límite es lo que dispara las esperas largas.
+ */
+let listaEnVuelo: Promise<string[]> | null = null;
+
+function listarHojas(): Promise<string[]> {
+  if (listaEnVuelo) return listaEnVuelo;
+  const auth = getAuthClient();
+  const sheets = google.sheets({ version: 'v4', auth });
+  listaEnVuelo = conReintento(() =>
+    sheets.spreadsheets.get({
+      spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+      fields: 'sheets.properties.title',
+    })
+  )
+    .then((meta) =>
+      (meta.data.sheets || [])
+        .map((s) => s.properties?.title)
+        .filter((t): t is string => !!t)
+    )
+    .finally(() => {
+      listaEnVuelo = null;
+    });
+  return listaEnVuelo;
+}
+
+/**
  * Garantiza que una pestaña exista, creándola con sus encabezados si no
  * está. Permite estrenar funciones nuevas sin que nadie tenga que
  * preparar el Sheet a mano.
  */
 export async function ensureSheet(tabName: string, headers: string[]): Promise<void> {
+  const vista = hojasVistas.get(tabName);
+  if (vista !== undefined && Date.now() < vista) return;
+
   const auth = getAuthClient();
   const sheets = google.sheets({ version: 'v4', auth });
 
-  const meta = await conReintento(() =>
-    sheets.spreadsheets.get({
-      spreadsheetId: process.env.GOOGLE_SHEETS_ID,
-      fields: 'sheets.properties.title',
-    })
-  );
-  const existe = (meta.data.sheets || []).some((s) => s.properties?.title === tabName);
-  if (existe) return;
+  // La respuesta trae los nombres de TODAS las pestañas, así que se
+  // apuntan todas de una vez y no solo la que se preguntó.
+  const titulos = await listarHojas();
+  const caduca = Date.now() + VIDA_ESTRUCTURA_MS;
+  for (const t of titulos) hojasVistas.set(t, caduca);
+
+  if (titulos.includes(tabName)) return;
 
   await conReintento(() =>
     sheets.spreadsheets.batchUpdate({
@@ -216,6 +271,8 @@ export async function ensureSheet(tabName: string, headers: string[]): Promise<v
       requestBody: { values: [headers] },
     })
   );
+
+  hojasVistas.set(tabName, Date.now() + VIDA_ESTRUCTURA_MS);
 }
 
 /**
@@ -227,6 +284,10 @@ export async function ensureSheet(tabName: string, headers: string[]): Promise<v
  * el Sheet a mano ni migrar filas existentes.
  */
 export async function ensureColumn(tabName: string, columnName: string): Promise<number> {
+  const llave = `${tabName}!${columnName}`;
+  const vista = columnasVistas.get(llave);
+  if (vista && Date.now() < vista.hasta) return vista.indice;
+
   const auth = getAuthClient();
   const sheets = google.sheets({ version: 'v4', auth });
 
@@ -237,7 +298,14 @@ export async function ensureColumn(tabName: string, columnName: string): Promise
     })
   );
 
+  // Igual que con las hojas: la fila de encabezados viene completa, así que
+  // se apuntan todas las columnas de esa pestaña, no solo la que se pidió.
   const headers = (headerRes.data.values?.[0] as string[]) ?? [];
+  const caduca = Date.now() + VIDA_ESTRUCTURA_MS;
+  headers.forEach((h, i) => {
+    if (h) columnasVistas.set(`${tabName}!${h}`, { indice: i + 1, hasta: caduca });
+  });
+
   const existente = headers.indexOf(columnName);
   if (existente !== -1) return existente + 1;
 
@@ -252,5 +320,6 @@ export async function ensureColumn(tabName: string, columnName: string): Promise
     })
   );
 
+  columnasVistas.set(llave, { indice: nuevoIndice, hasta: Date.now() + VIDA_ESTRUCTURA_MS });
   return nuevoIndice;
 }

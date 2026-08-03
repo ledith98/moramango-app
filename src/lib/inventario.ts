@@ -100,15 +100,25 @@ export const COL_ACT = {
 
 export const STATUS_INSUMO = ['Fresco', 'Por caducar', 'Caducado'] as const;
 
-/** Crea las tres pestañas si aún no existen (idempotente). */
+/**
+ * Crea las tres pestañas si aún no existen (idempotente).
+ *
+ * Las hojas van primero y juntas; las columnas después, porque una columna
+ * no se puede revisar en una hoja que todavía no existe. Antes las cinco
+ * iban en fila y costaban ~1.2 s en cada carga y en cada guardado.
+ */
 export async function prepararInventario(): Promise<void> {
-  await ensureSheet(HOJA_BIBLIOTECA, COLS_BIBLIOTECA);
-  await ensureSheet(HOJA_ACTIVOS, COLS_ACTIVOS);
-  await ensureSheet(HOJA_COMPRAS, COLS_COMPRAS);
+  await Promise.all([
+    ensureSheet(HOJA_BIBLIOTECA, COLS_BIBLIOTECA),
+    ensureSheet(HOJA_ACTIVOS, COLS_ACTIVOS),
+    ensureSheet(HOJA_COMPRAS, COLS_COMPRAS),
+  ]);
   // ensureSheet solo escribe encabezados al crear la hoja; para una hoja
   // que ya existía, esto agrega la columna que falte.
-  await ensureColumn(HOJA_ACTIVOS, 'En_Uso');
-  await ensureColumn(HOJA_BIBLIOTECA, 'Ingredientes');
+  await Promise.all([
+    ensureColumn(HOJA_ACTIVOS, 'En_Uso'),
+    ensureColumn(HOJA_BIBLIOTECA, 'Ingredientes'),
+  ]);
 }
 
 export const columnaIngredientes = () => ensureColumn(HOJA_BIBLIOTECA, 'Ingredientes');

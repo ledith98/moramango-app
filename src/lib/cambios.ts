@@ -32,6 +32,14 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-02',
     tipo: 'mejora',
+    titulo: 'El panel ya no se queda pensando',
+    detalle:
+      'Insumos, Biblioteca y Recetario revisaban cinco veces que las hojas y columnas del Excel existieran, una tras otra, antes de mostrar o guardar nada: 1.2 segundos de espera en cada carga y en cada guardado. Ahora se revisa una sola vez al arrancar y se recuerda por diez minutos, así que a partir de la segunda vez no cuesta nada. Si llegas a borrar una columna a mano en el Excel, en diez minutos se vuelve a revisar y se repone sola.',
+    donde: 'Insumos · Recetario · Productos · Venta',
+  },
+  {
+    fecha: '2026-08-02',
+    tipo: 'mejora',
     titulo: 'La app abre más rápido',
     detalle:
       'La imagen de fondo del menú pesaba 734 KB y el logo 90 KB, cuando en pantalla se ven chiquitos. Ahora pesan 117 KB y 17 KB: son 690 KB menos que descarga el celular del cliente cada vez que entra, y se nota sobre todo con datos o en equipos lentos. También se dejó de consultar el mismo dato dos veces al abrir el menú.',

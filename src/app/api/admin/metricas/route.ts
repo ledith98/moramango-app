@@ -11,6 +11,7 @@ import { getSheetData } from '@/lib/googleSheets';
 import { normalizarMetodoPago } from '@/lib/negocio';
 import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 import { getAdminSession } from '@/lib/roles';
+import { METODOS_CON_COMISION, resumenComision } from '@/lib/comision';
 
 export async function GET(req: NextRequest) {
   if (!(await getAdminSession())) {
@@ -60,6 +61,14 @@ export async function GET(req: NextRequest) {
     ventasPorMetodo[metodo].pedidos += 1;
   }
 
+  // Comisión de la terminal. Se calcula cobro por cobro y no sobre el
+  // total del periodo, porque el cargo fijo es por cada venta: $500 en una
+  // venta no cuesta lo mismo que $500 en cinco.
+  const cobrosConComision = validos
+    .filter((p) => METODOS_CON_COMISION.includes(normalizarMetodoPago(p.Metodo_Pago)))
+    .map((p) => parseFloat(p.Total_Final) || 0);
+  const comisionTerminal = resumenComision(cobrosConComision);
+
   const idsValidos = new Set(validos.map((p) => p.ID_Pedido));
   const conteoProductos = new Map<string, number>();
   for (const item of detalles) {
@@ -84,6 +93,9 @@ export async function GET(req: NextRequest) {
     ticketPromedio,
     productoMasVendido,
     ventasPorMetodo,
+    comisionTerminal,
+    // Lo que queda del periodo completo una vez descontada la comisión
+    totalNeto: Math.round((totalVentas - comisionTerminal.comision) * 100) / 100,
     reembolsos,
     // Cancelados "puros": los reembolsados se reportan aparte
     pedidosCancelados: delDia.filter((p) => p.Estado === 'Cancelado' && !estaReembolsado(p)).length,

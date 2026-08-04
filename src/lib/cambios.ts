@@ -32,6 +32,14 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-03',
     tipo: 'nuevo',
+    titulo: 'Métricas: cuánto te cobra la terminal',
+    detalle:
+      'Nuevo apartado en Métricas con tres cifras: venta total cobrada con terminal, comisión cobrada y total menos comisión. Abajo también sale cuánto te queda del periodo completo ya descontada. La cuenta es 3.49% + $4 + IVA, y se calcula venta por venta porque los $4 son por cada cobro: en tus ventas de terminal registradas, $1,395 dejan $1,255 — se van $140 en comisión. Ojo con los tickets chicos: un cobro de $20 paga $5.45, más de la cuarta parte.',
+    donde: 'Métricas',
+  },
+  {
+    fecha: '2026-08-03',
+    tipo: 'nuevo',
     titulo: 'El registro del local se une solo con la cuenta de la app',
     detalle:
       'Si alguien ya compraba en el local y luego se baja la app, al capturar su teléfono se le juntan las dos: sus compras anteriores aparecen en su cuenta y su avance para el premio sigue donde iba, sin empezar de cero. Se lo avisamos en pantalla para que no le salgan pedidos de la nada. Si el número resulta estar en la cuenta de Google de otra persona, ahí sí se rechaza como antes.',

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { fechaHoyMTY } from '@/lib/pedidoFecha';
+import { CARGO_FIJO, TEXTO_TARIFA } from '@/lib/comision';
 
 interface Metricas {
   desde: string;
@@ -13,6 +14,8 @@ interface Metricas {
   ventasPorMetodo: Record<string, { total: number; pedidos: number }>;
   reembolsos: { total: number; pedidos: number };
   pedidosCancelados: number;
+  comisionTerminal: { ventaBruta: number; comision: number; neto: number; cobros: number };
+  totalNeto: number;
 }
 
 // Orden y presentación fija del corte de caja; 'Sin registrar' solo se
@@ -162,6 +165,71 @@ export default function MetricasPage() {
               </div>
             ))}
           </div>
+
+          {metricas && metricas.comisionTerminal && (
+            <div className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100">
+              <p className="text-xs text-neutral-700 font-medium uppercase tracking-wide">
+                Comisión de la terminal
+              </p>
+              <p className="text-xs text-neutral-600 mt-0.5 mb-3">
+                {TEXTO_TARIFA} por cada cobro con tarjeta
+              </p>
+
+              {metricas.comisionTerminal.cobros === 0 ? (
+                <p className="text-sm text-neutral-700">
+                  No hubo cobros con terminal en este periodo.
+                </p>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between py-1.5 border-b border-neutral-50">
+                      <span className="text-sm text-neutral-700">
+                        Venta total con terminal
+                        <span className="text-neutral-600 ml-1.5">
+                          ({metricas.comisionTerminal.cobros} cobro
+                          {metricas.comisionTerminal.cobros === 1 ? '' : 's'})
+                        </span>
+                      </span>
+                      <span className="font-bold text-black tabular-nums">
+                        ${metricas.comisionTerminal.ventaBruta.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between py-1.5 border-b border-neutral-50">
+                      <span className="text-sm text-red-700">Comisión cobrada</span>
+                      <span className="font-bold text-red-700 tabular-nums">
+                        −${metricas.comisionTerminal.comision.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between py-1.5">
+                      <span className="text-sm font-semibold text-neutral-900">
+                        Total menos comisión
+                      </span>
+                      <span className="font-bold text-green-700 tabular-nums text-lg">
+                        ${metricas.comisionTerminal.neto.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 pt-3 border-t border-neutral-100 flex items-center justify-between">
+                    <span className="text-sm text-neutral-700">
+                      Ventas del periodo ya sin comisión
+                      <span className="block text-xs text-neutral-600">
+                        Todas las formas de pago juntas
+                      </span>
+                    </span>
+                    <span className="font-bold text-black tabular-nums">
+                      ${metricas.totalNeto.toFixed(2)}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-neutral-600 mt-3">
+                    💡 Los ${CARGO_FIJO} fijos se cobran por cada venta, no por día: conviene más un
+                    cobro de $500 que cinco de $100.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
 
           {metricas && (
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100">

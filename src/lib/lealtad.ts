@@ -17,7 +17,7 @@
  * encabezado (ensureColumn), nunca por índice fijo.
  */
 
-import { ensureColumn, findRow, updateCell } from './googleSheets';
+import { ensureColumn, findRow, updateCell, updateCells } from './googleSheets';
 import { esBeneficioReactivacion, montoReactivacion } from './beneficioCliente';
 import { fechaHoyMTY } from './pedidoFecha';
 
@@ -94,6 +94,76 @@ export function siguienteEstadoLealtad({
  * Registra un pedido en la lealtad del cliente y guarda el resultado.
  * No lanza: si algo falla, se registra en logs (nunca debe tumbar la venta).
  */
+/**
+ * Deshace lo que un pedido le sumó al cliente, al cancelarlo.
+ *
+ * Sin esto, cancelar dejaba la compra contada: se podía pedir y cancelar
+ * cinco veces para ganarse el 15%, y el negocio regalaba producto por un
+ * pedido que nunca existió.
+ *
+ * Es el espejo de `siguienteEstadoLealtad`:
+ *  · el ciclo y el histórico bajan uno (nunca por debajo de cero, por si
+ *    la hoja se editó a mano);
+ *  · si el pedido canjeó un beneficio, se le devuelve — no llegó a usarlo;
+ *  · si el pedido fue el que le dio un premio y con el ciclo ya bajado
+ *    deja de alcanzarlo, el premio se retira. Un premio que YA tenía de
+ *    antes no se toca.
+ */
+export function reversaEstadoLealtad({
+  cicloActual,
+  historicoActual,
+  beneficioActual,
+  beneficioCanjeado,
+}: EstadoLealtad): { cicloFinal: number; historicoFinal: number; beneficioNuevo: string } {
+  const cicloFinal = Math.max(0, cicloActual - 1);
+  const historicoFinal = Math.max(0, historicoActual - 1);
+
+  const canjeado = (beneficioCanjeado || '').trim();
+  if (canjeado && canjeado !== 'Ninguno') {
+    // Se lo devolvemos: el pedido donde lo iba a usar quedó cancelado
+    return { cicloFinal, historicoFinal, beneficioNuevo: canjeado };
+  }
+
+  let beneficioNuevo = beneficioActual || 'Ninguno';
+  if (beneficioNuevo === 'Articulo Gratis' && cicloFinal < META_ARTICULO) {
+    // Si aún alcanza el descuento, se queda con ese; si no, con nada
+    beneficioNuevo = cicloFinal >= META_DESCUENTO ? '15% Descuento' : 'Ninguno';
+  } else if (beneficioNuevo === '15% Descuento' && cicloFinal < META_DESCUENTO) {
+    beneficioNuevo = 'Ninguno';
+  }
+
+  return { cicloFinal, historicoFinal, beneficioNuevo };
+}
+
+/** Aplica la reversa en la hoja. Sin usuario ligado no hay nada que deshacer. */
+export async function revertirLealtad(idUsuario: string, beneficioCanjeado?: string): Promise<void> {
+  if (!idUsuario) return;
+  try {
+    const usuarioRow = await findRow('USUARIOS', 'ID_Usuario', idUsuario);
+    if (!usuarioRow) return;
+
+    const { cicloFinal, historicoFinal, beneficioNuevo } = reversaEstadoLealtad({
+      cicloActual: parseInt(usuarioRow.data.Ciclo_Actual) || 0,
+      historicoActual: parseInt(usuarioRow.data.Total_Articulos_Historico) || 0,
+      beneficioActual: usuarioRow.data.Beneficio_Disponible || 'Ninguno',
+      beneficioCanjeado,
+    });
+
+    const [colCiclo, colHistorico, colBeneficio] = await Promise.all([
+      ensureColumn('USUARIOS', 'Ciclo_Actual'),
+      ensureColumn('USUARIOS', 'Total_Articulos_Historico'),
+      ensureColumn('USUARIOS', 'Beneficio_Disponible'),
+    ]);
+    await updateCells('USUARIOS', usuarioRow.rowIndex, {
+      [colCiclo]: cicloFinal,
+      [colHistorico]: historicoFinal,
+      [colBeneficio]: beneficioNuevo,
+    });
+  } catch (error) {
+    console.error('Error revirtiendo lealtad:', error);
+  }
+}
+
 export async function actualizarLealtad(idUsuario: string, beneficioCanjeado?: string): Promise<void> {
   if (!idUsuario) return;
   try {

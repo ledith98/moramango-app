@@ -30,6 +30,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 
 export const CAMBIOS: Cambio[] = [
   {
+    fecha: '2026-08-17',
+    tipo: 'arreglo',
+    titulo: 'Un pedido cancelado ya no cuenta para el premio',
+    detalle:
+      'Al cancelar un pedido, la compra le seguía contando al cliente para su 15% y su artículo gratis. Se podía pedir y cancelar cinco veces y ganarse el descuento sin comprar nada. Ahora al cancelar se le descuenta ese avance, y si ese pedido fue justo el que le dio el premio, el premio se retira. Si el pedido cancelado iba a usar un premio suyo, se le devuelve para que no lo pierda. También se corrigieron los 13 cancelados que ya existían: se ajustó el avance de 8 clientes, pero los premios que ya tenían se les respetaron.',
+    donde: 'Pedidos · Usuarios',
+  },
+  {
     fecha: '2026-08-03',
     tipo: 'nuevo',
     titulo: 'Métricas: cuánto te cobra la terminal',

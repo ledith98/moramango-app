@@ -21,6 +21,7 @@ import { baseUrlDesdeRequest, crearPreferencia, mpConfigurado } from '@/lib/merc
 import { parsearFechaHora } from '@/lib/pedidoFecha';
 import { enviarTelegram } from '@/lib/telegram';
 import { moverStockDePedido } from '@/lib/stock';
+import { revertirLealtad } from '@/lib/lealtad';
 
 /** Minutos que deben pasar entre dos avisos de llegada del mismo pedido. */
 const ESPERA_AVISO_MIN = 2;
@@ -152,6 +153,9 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     await updateCell('PEDIDOS', pedidoRow.rowIndex, 5, 'Cancelado');
     // Lo apartado vuelve al inventario y el producto se puede volver a vender
     await moverStockDePedido(id, 'devolver');
+    // Y el avance para su premio también se deshace: si no, pedir y
+    // cancelar cinco veces le regalaba el 15%.
+    await revertirLealtad(pedidoRow.data.ID_Usuario, pedidoRow.data.Beneficio_Canjeado);
     // Avisar a quien atiende: el pedido pudo entrar hace segundos
     const monto = parseFloat(pedidoRow.data.Total_Final) || 0;
     await enviarTelegram(

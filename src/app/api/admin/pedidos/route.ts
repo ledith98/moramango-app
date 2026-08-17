@@ -17,6 +17,7 @@ import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 import { METODO_PAGO_EN_LINEA } from '@/lib/negocio';
 import { getAdminSession } from '@/lib/roles';
 import { moverStockDePedido } from '@/lib/stock';
+import { revertirLealtad } from '@/lib/lealtad';
 
 export const ESTADOS_VALIDOS = [
   'Recibido',
@@ -104,6 +105,10 @@ export async function PATCH(req: NextRequest) {
     // devuelve, salvo que ya estuviera cancelado (evita duplicar).
     if (nuevoEstado === 'Cancelado' && pedidoRow.data.Estado !== 'Cancelado') {
       await moverStockDePedido(idPedido, 'devolver');
+      // El avance para su premio se deshace junto con el pedido. La
+      // condición de arriba evita descontarlo dos veces si se vuelve a
+      // marcar Cancelado un pedido que ya lo estaba.
+      await revertirLealtad(pedidoRow.data.ID_Usuario, pedidoRow.data.Beneficio_Canjeado);
     }
   }
 

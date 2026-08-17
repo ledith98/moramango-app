@@ -19,6 +19,7 @@ import { appendRow, ensureColumn, getSheetData, updateCell } from '@/lib/googleS
 import { actualizarLealtad, descuentoPorBeneficio } from '@/lib/lealtad';
 import { getAdminSession } from '@/lib/roles';
 import { moverStockDePedido } from '@/lib/stock';
+import { enviarTelegram } from '@/lib/telegram';
 import { validarItems } from '@/lib/preciosServidor';
 
 const ESTADOS_VALIDOS = [
@@ -217,6 +218,16 @@ export async function POST(req: NextRequest) {
         'si',               // K Activo
         fechaStr,           // L Ultimo_Acceso
       ]);
+      // Cliente nuevo dado de alta en el mostrador
+      try {
+        await enviarTelegram(
+          `🎉 <b>Cliente nuevo</b> (mostrador)
+👤 ${nombre.trim()}
+📱 ${telLimpio}`
+        );
+      } catch (error) {
+        console.error('Error avisando de cliente nuevo:', error);
+      }
     }
   }
 

@@ -32,6 +32,14 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-17',
     tipo: 'nuevo',
+    titulo: 'Avisos de cliente nuevo y de pago confirmado',
+    detalle:
+      'Te llega un mensaje a Telegram cuando alguien se registra —por la app o dado de alta en el mostrador— y cuando se confirma un cobro que estaba pendiente. Para avisarle al CLIENTE hay dos botones de WhatsApp: uno en Pedidos, "Avisarle que ya recibimos su pago", y otro en Usuarios para mandarle la bienvenida. Van a mano a propósito: la app no puede mandar notificaciones al celular del cliente, sobre todo en iPhone, así que el botón deja el mensaje escrito y tú solo le das enviar.',
+    donde: 'Pedidos · Usuarios',
+  },
+  {
+    fecha: '2026-08-17',
+    tipo: 'nuevo',
     titulo: 'Las transferencias ya no se te pierden',
     detalle:
       'Al cobrar con transferencia en el mostrador aparece una casilla: "Ya vi la transferencia en mi cuenta". Si no la marcas, esa venta queda como cobro por confirmar y te sale un aviso arriba en Pedidos, con cuántos son y cuánto suman, hasta que la des por recibida. Antes ese dinero no quedaba en ningún radar. También hay filtro por forma de cobro en Pedidos (efectivo, terminal, transferencia, pago en línea o sin registrar), y al abrir un pedido se aclara que el método se puede corregir ahí mismo sin cancelar la venta.',

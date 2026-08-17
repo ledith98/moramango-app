@@ -28,6 +28,7 @@
 import type { NextAuthOptions } from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 import { getSheetData, appendRow, findRow, updateCell } from './googleSheets';
+import { enviarTelegram } from './telegram';
 
 // Cada cuánto se relee el rol/beneficio desde la hoja USUARIOS. Entre
 // refrescos, el dato viaja en la cookie de sesión sin tocar el Sheet.
@@ -68,6 +69,22 @@ export const authOptions: NextAuthOptions = {
             'si',              // K - Activo
             ahora,             // L - Ultimo_Acceso
           ]);
+
+          // Aviso de cliente nuevo. Va por Telegram y nunca rompe el
+          // registro: si el aviso falla, la persona igual entra.
+          try {
+            await enviarTelegram(
+              `🎉 <b>Cliente nuevo en Moramango</b>
+` +
+                `👤 ${user.name || 'Sin nombre'}
+` +
+                `✉️ ${user.email || '—'}
+` +
+                `<i>Todavía no captura su teléfono</i>`
+            );
+          } catch (error) {
+            console.error('Error avisando de cliente nuevo:', error);
+          }
         } else {
           // Usuario existente — bloquear si Activo dice explícitamente 'no'
           if (existe.Activo?.toLowerCase() === 'no') {

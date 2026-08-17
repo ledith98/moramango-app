@@ -52,6 +52,34 @@ export const linkWhatsApp = (telefono: string, mensaje: string): string =>
   `https://wa.me/${(telefono || '').replace(/\D/g, '')}?text=${encodeURIComponent(mensaje)}`;
 
 /**
+ * Mensaje para avisarle al cliente que su pago ya cayó.
+ *
+ * Va por WhatsApp y no automático: la app no puede mandarle nada al
+ * celular del cliente (no hay notificaciones, menos en iPhone), así que
+ * el botón deja el mensaje escrito y solo hay que darle enviar.
+ */
+export function mensajePagoRecibido(idPedido: string, total?: number): string {
+  const monto = total && total > 0 ? ` de $${total.toFixed(2)}` : '';
+  return (
+    `¡Hola! 🥭 Ya recibimos tu pago${monto} del pedido ${idPedido}. ` +
+    `Te avisamos en cuanto esté listo para recoger. ¡Gracias!`
+  );
+}
+
+/**
+ * Mensaje de bienvenida para quien se acaba de registrar. Se manda a mano
+ * desde Usuarios, por el mismo motivo que el de arriba.
+ */
+export function mensajeBienvenida(nombre?: string): string {
+  const saludo = nombre?.trim() ? `¡Hola ${nombre.trim().split(' ')[0]}!` : '¡Hola!';
+  return (
+    `${saludo} 🥭 Gracias por registrarte en Moramango. ` +
+    `Desde la app puedes pedir y se te van juntando tus compras: ` +
+    `a las 5 tienes 15% de descuento y a las 10 un producto gratis. ¡Te esperamos!`
+  );
+}
+
+/**
  * Mensaje que el CLIENTE manda al negocio con su comprobante de
  * transferencia. Lleva el número de pedido para que el admin sepa cuál
  * confirmar (mismo id que va en el concepto de la transferencia).

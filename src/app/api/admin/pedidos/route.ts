@@ -18,6 +18,7 @@ import { METODO_PAGO_EN_LINEA, normalizarMetodoPago } from '@/lib/negocio';
 import { getAdminSession } from '@/lib/roles';
 import { moverStockDePedido } from '@/lib/stock';
 import { revertirLealtad } from '@/lib/lealtad';
+import { enviarTelegram } from '@/lib/telegram';
 
 export const ESTADOS_VALIDOS = [
   'Recibido',
@@ -131,6 +132,23 @@ export async function PATCH(req: NextRequest) {
     // Confirmar (o revertir) el pago de una transferencia pendiente
     const colEstadoPago = await ensureColumn('PEDIDOS', 'Estado_Pago');
     await updateCell('PEDIDOS', pedidoRow.rowIndex, colEstadoPago, estadoPago);
+
+    // Aviso de que el dinero ya cayó. Importa cuando quien confirma no es
+    // la dueña: así se entera de que ese cobro dejó de estar pendiente.
+    if (estadoPago === 'Pagado' && pedidoRow.data.Estado_Pago !== 'Pagado') {
+      try {
+        const monto = parseFloat(pedidoRow.data.Total_Final) || 0;
+        await enviarTelegram(
+          `💰 <b>Cobro confirmado</b> — ${idPedido}
+` +
+            `👤 ${pedidoRow.data.Nombre_Cliente_Snap || 'Cliente'}
+` +
+            `${normalizarMetodoPago(pedidoRow.data.Metodo_Pago) || 'Sin método'} — <b>$${monto.toFixed(2)}</b>`
+        );
+      } catch (error) {
+        console.error('Error avisando del cobro confirmado:', error);
+      }
+    }
   }
 
   return NextResponse.json({ success: true });

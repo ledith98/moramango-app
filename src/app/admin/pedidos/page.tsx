@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 import {
   linkWhatsApp,
+  mensajePagoRecibido,
   mensajeTransferencia,
   METODO_PAGO_EN_LINEA,
   normalizarMetodoPago,
@@ -660,6 +661,24 @@ export default function PedidosPage() {
                       >
                         ✅ Confirmar pago recibido
                       </button>
+                    )}
+                    {/* Avisarle al cliente. Va por WhatsApp y a mano: la app
+                        no puede mandarle notificaciones a su celular. */}
+                    {detalle.pedido.Estado_Pago === 'Pagado' && detalle.pedido.Telefono && (
+                      <a
+                        href={linkWhatsApp(
+                          detalle.pedido.Telefono,
+                          mensajePagoRecibido(
+                            detalle.pedido.ID_Pedido,
+                            parseFloat(detalle.pedido.Total_Final) || 0
+                          )
+                        )}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 w-full block text-center bg-green-500 text-white font-semibold py-2.5 rounded-xl active:scale-95 transition-transform"
+                      >
+                        📲 Avisarle que ya recibimos su pago
+                      </a>
                     )}
                     {detalle.pedido.Estado_Pago === 'Pagado' && (
                       <>

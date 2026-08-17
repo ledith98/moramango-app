@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { linkWhatsApp, mensajeBienvenida } from '@/lib/negocio';
 
 interface Usuario {
   ID_Usuario: string;
@@ -218,6 +219,19 @@ export default function UsuariosPage() {
                     >
                       Editar
                     </button>
+                    {/* Bienvenida por WhatsApp. A mano: la app no puede
+                        mandarle notificaciones al celular del cliente. */}
+                    {u.Telefono && (
+                      <a
+                        href={linkWhatsApp(u.Telefono, mensajeBienvenida(u.Nombre))}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Mandarle la bienvenida por WhatsApp"
+                        className="ml-2 text-sm font-semibold text-green-700 bg-green-50 px-3 py-1.5 rounded-lg active:scale-95 transition-transform"
+                      >
+                        📲
+                      </a>
+                    )}
                   </td>
                 </tr>
               ))}

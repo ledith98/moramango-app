@@ -366,21 +366,39 @@ El stock quedará igual a lo que contaste.`)) return;
     if (ok) setCompraDe(null);
   }
 
-  async function capturarConteo(a: ItemActivo) {
+  /**
+   * "Conté y tengo esto". Antes eran tres botones distintos para el mismo
+   * número —Conteo (solo anotaba), Stock (lo cambiaba) y Ajustar (igualaba
+   * uno al otro)— y había que saber cuál usar. Aquí se anota el conteo con
+   * su fecha Y el stock queda en lo contado, que es lo que la persona
+   * quiere decir cuando cuenta.
+   */
+  async function registrarConteo(a: ItemActivo) {
     const valor = prompt(
-      `Conteo físico de ${a.nombre} (en ${a.unidadReceta}):`,
+      `¿Cuánto tienes de ${a.nombre}? (en ${a.unidadReceta})
+
+El sistema cree que hay ${a.stockActual}.`,
       String(a.stockActual)
     );
     if (valor === null) return;
     const num = parseFloat(valor.replace(',', '.'));
     if (isNaN(num) || num < 0) return alert('Cantidad inválida');
-    await accionActivo(a.id, { accion: 'conteo', cantidad: num });
-  }
-
-  async function ajustar(a: ItemActivo) {
-    if (a.conteoFisico === null) return;
-    if (!confirm(`¿Igualar el stock de ${a.nombre} a ${a.conteoFisico} ${a.unidadReceta}?`)) return;
-    await accionActivo(a.id, { accion: 'ajustar' });
+    setOcupado(true);
+    try {
+      const r = await fetch('/api/admin/insumos', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'conteoRapido', lecturas: [{ id: a.id, cantidad: num }] }),
+      });
+      const d = await r.json();
+      if (!r.ok) {
+        alert(d.error || 'No se pudo guardar');
+        return;
+      }
+      await cargar();
+    } finally {
+      setOcupado(false);
+    }
   }
 
   // ── Vínculo insumo ↔ ingredientes de las recetas ──────────────────────────
@@ -439,17 +457,6 @@ El stock quedará igual a lo que contaste.`)) return;
   }
 
   /** Corrige el stock a mano cuando se capturó mal, sin tocar precios. */
-  async function editarStock(a: ItemActivo) {
-    const valor = prompt(
-      `¿Cuánto tienes realmente de ${a.nombre}? (en ${a.unidadReceta})`,
-      String(a.stockActual)
-    );
-    if (valor === null) return;
-    const num = parseFloat(valor.replace(',', '.'));
-    if (isNaN(num) || num < 0) return alert('Cantidad inválida');
-    await accionActivo(a.id, { accion: 'stock', cantidad: num });
-  }
-
   /** Mueve un insumo entre "Insumos activos" y "solo biblioteca". */
   async function cambiarUso(id: string, nombre: string, enUso: boolean) {
     if (
@@ -812,12 +819,12 @@ El stock quedará igual a lo que contaste.`)) return;
               <thead>
                 <tr className="text-left text-neutral-700 border-b border-neutral-100">
                   <th className="p-3 font-semibold">Insumo</th>
-                  <th className="p-3 font-semibold">Stock</th>
-                  <th className="p-3 font-semibold">Consumo/día</th>
+                  <th className="p-3 font-semibold">Cuánto queda</th>
+                  <th className="p-3 font-semibold">Se gasta al día</th>
                   <th className="p-3 font-semibold">Alcanza para</th>
-                  <th className="p-3 font-semibold">Fecha de compra</th>
-                  <th className="p-3 font-semibold">Status</th>
-                  <th className="p-3 font-semibold">Conteo físico</th>
+                  <th className="p-3 font-semibold">Última compra</th>
+                  <th className="p-3 font-semibold">Cómo está</th>
+                  <th className="p-3 font-semibold">Último conteo</th>
                   <th className="p-3 font-semibold"></th>
                 </tr>
               </thead>
@@ -922,53 +929,45 @@ El stock quedará igual a lo que contaste.`)) return;
                       )}
                     </td>
                     <td className="p-3">
-                      <div className="flex flex-col gap-1 items-end">
-                        <button
-                          onClick={() => abrirCompra(a)}
-                          disabled={ocupado}
-                          className="text-xs font-semibold bg-marron text-white px-3 py-1.5 rounded-lg active:scale-95 disabled:opacity-50 whitespace-nowrap"
-                        >
-                          + Compra
-                        </button>
-                        <button
-                          onClick={() => capturarConteo(a)}
-                          disabled={ocupado}
-                          className="text-xs font-semibold text-black bg-neutral-200 px-3 py-1.5 rounded-lg active:scale-95 disabled:opacity-50 whitespace-nowrap"
-                        >
-                          Conteo
-                        </button>
-                        <button
-                          onClick={() => abrirRecetas(a.idBiblioteca, a.nombre)}
-                          className="text-xs font-semibold text-black bg-neutral-200 px-3 py-1.5 rounded-lg active:scale-95 whitespace-nowrap"
-                          title="Elegir en qué productos se usa este insumo"
-                        >
-                          🔗 Recetas
-                        </button>
-                        <button
-                          onClick={() => editarStock(a)}
-                          disabled={ocupado}
-                          className="text-xs font-semibold text-black bg-neutral-200 px-3 py-1.5 rounded-lg active:scale-95 disabled:opacity-50 whitespace-nowrap"
-                          title="Corregir el stock si se capturó mal"
-                        >
-                          ✏️ Stock
-                        </button>
-                        {a.conteoFisico !== null && a.diferencia !== 0 && (
+                      {/* Dos acciones, que son las dos cosas que de verdad
+                          pasan con un insumo: lo compré o lo conté. Lo demás
+                          es de vez en cuando y va en letra chica. */}
+                      <div className="flex flex-col gap-1.5 items-end">
+                        <div className="flex gap-1.5">
                           <button
-                            onClick={() => ajustar(a)}
+                            onClick={() => abrirCompra(a)}
                             disabled={ocupado}
-                            className="text-xs font-semibold text-amber-800 bg-amber-100 px-3 py-1.5 rounded-lg active:scale-95 disabled:opacity-50 whitespace-nowrap"
+                            className="text-xs font-bold bg-marron text-white px-3 py-2 rounded-lg active:scale-95 disabled:opacity-50 whitespace-nowrap"
+                            title="Registrar que compraste más"
                           >
-                            Ajustar
+                            🛒 Compré
                           </button>
-                        )}
-                        <button
-                          onClick={() => cambiarUso(a.id, a.nombre, false)}
-                          disabled={ocupado}
-                          className="text-[11px] font-semibold text-neutral-700 px-3 py-1 rounded-lg active:scale-95 disabled:opacity-50 whitespace-nowrap"
-                          title="Guardarlo en la biblioteca sin usarlo por ahora"
-                        >
-                          📚 A biblioteca
-                        </button>
+                          <button
+                            onClick={() => registrarConteo(a)}
+                            disabled={ocupado}
+                            className="text-xs font-bold text-black bg-neutral-200 px-3 py-2 rounded-lg active:scale-95 disabled:opacity-50 whitespace-nowrap"
+                            title="Anotar cuánto tienes de verdad"
+                          >
+                            ✍️ Conté
+                          </button>
+                        </div>
+                        <div className="flex gap-2 text-[11px]">
+                          <button
+                            onClick={() => abrirRecetas(a.idBiblioteca, a.nombre)}
+                            className="font-semibold text-neutral-700 underline decoration-neutral-300 active:scale-95 whitespace-nowrap"
+                            title="En qué productos se usa este insumo"
+                          >
+                            En qué se usa
+                          </button>
+                          <button
+                            onClick={() => cambiarUso(a.id, a.nombre, false)}
+                            disabled={ocupado}
+                            className="font-semibold text-neutral-700 underline decoration-neutral-300 active:scale-95 disabled:opacity-50 whitespace-nowrap"
+                            title="Guardarlo en el catálogo sin usarlo por ahora"
+                          >
+                            Ya no lo uso
+                          </button>
+                        </div>
                       </div>
                     </td>
                   </tr>

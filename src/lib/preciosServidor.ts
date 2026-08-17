@@ -19,6 +19,7 @@ import {
   validarEleccion,
 } from './opciones';
 import { claveLinea, nombreConTamano, parsearTamanos, precioDeTamano } from './tamanos';
+import { claveNombre } from './opcionesAgotadas';
 import {
   claveExtras,
   type Extra,
@@ -72,6 +73,21 @@ export async function validarItems(items: ItemEntrante[]): Promise<ResultadoVali
   const productos = await getSheetData('Productos', { crudo: true });
   const porId = new Map(productos.map((p) => [p.ID_Producto, p]));
 
+  // Productos que hoy no se pueden preparar. Sirve para frenar un combo
+  // que pide un jugo agotado: la tienda ya no deja elegirlo, pero quien
+  // dejó la ficha abierta desde antes sí podría mandarlo.
+  const agotados = new Set(
+    productos
+      .filter((p) => (p.Eliminado || '').toUpperCase() !== 'TRUE')
+      .filter((p) => {
+        if ((p.Oculto || '').toUpperCase() === 'TRUE') return true;
+        if ((p.Disponible ?? '').toString().toUpperCase() === 'FALSE') return true;
+        const ex = (p.Existencias ?? '').toString().trim();
+        return ex !== '' && (parseFloat(ex) || 0) <= 0;
+      })
+      .map((p) => claveNombre(p.Nombre))
+  );
+
   const validados: ItemValidado[] = [];
   for (const item of items) {
     const p = porId.get((item.id ?? '').toString());
@@ -117,6 +133,17 @@ export async function validarItems(items: ItemEntrante[]): Promise<ResultadoVali
       return { ok: false, error: `${revision.error} en "${p.Nombre}"` };
     }
     const eleccion = revision.eleccion;
+
+    // Lo elegido tiene que poder prepararse: de nada sirve aceptar un
+    // Combo 1 con jugo de mango si el mango se acabó hace dos horas.
+    for (const [grupo, valor] of Object.entries(eleccion)) {
+      if (agotados.has(claveNombre(valor))) {
+        return {
+          ok: false,
+          error: `Se nos acabó "${valor}" (${grupo.toLowerCase()}). Elige otra opción en "${p.Nombre}".`,
+        };
+      }
+    }
 
     // Toppings: son opcionales, pero el que se pida tiene que existir y
     // se cobra con el precio de la hoja, no con el que mande el navegador.

@@ -32,6 +32,14 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-17',
     tipo: 'arreglo',
+    titulo: 'Los combos ya respetan lo que se acabó',
+    detalle:
+      'Si un jugo o licuado se marca agotado, los combos que lo ofrecen dejan de darlo a elegir: al cliente le sale tachado con "hoy no hay" y no lo puede escoger. Si un combo se queda sin ninguna opción posible (por ejemplo, sin una sola bebida), el combo entero se sale del menú en vez de dejar que lo abran y descubran que no pueden elegir nada. En el mostrador la opción se te marca en rojo como "agotado", pero SÍ te deja usarla: tú sabes si de verdad queda. La liga es por el nombre, así que el producto dentro del combo debe llamarse igual que en el menú.',
+    donde: 'Tienda · Venta',
+  },
+  {
+    fecha: '2026-08-17',
+    tipo: 'arreglo',
     titulo: 'El pago con tarjeta ya queda registrado desde el principio',
     detalle:
       'Cuando alguien pedía con tarjeta, la app no anotaba nada hasta que Mercado Pago confirmara. Si esa confirmación no llegaba, el pedido se quedaba "sin registrar" para siempre — tienes 4 pedidos así, $220 sin poder saber cómo te pagaron. Ahora la forma de pago se anota al momento de hacer el pedido. Además, si el cobro con tarjeta no se puede abrir, al cliente se le avisa en vez de dejarlo creer que ya pagó. En Pedidos aparece un enlace "Ver en Mercado Pago" para llegar directo a ese cobro, y un botón para copiar el enlace de pago y reenviárselo a quien lo dejó a medias.',

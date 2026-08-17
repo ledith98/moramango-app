@@ -11,6 +11,7 @@ import {
 } from '@/lib/opciones';
 import { claveExtras, type Extra, parsearExtras, precioExtras, resumenExtras } from '@/lib/extras';
 import { claveCategoria, posicionCategoria } from '@/lib/categorias';
+import { claveNombre } from '@/lib/opcionesAgotadas';
 import { TicketBotones } from '../TicketBotones';
 import type { DatosTicket } from '@/lib/ticket';
 import { esBeneficioReactivacion, montoReactivacion } from '@/lib/beneficioCliente';
@@ -37,6 +38,8 @@ interface Producto {
   Opciones?: string;
   Extras?: string;
   Orden_Menu?: string;
+  Oculto?: string;
+  Existencias?: string;
 }
 
 interface ItemVenta {
@@ -189,6 +192,22 @@ export default function VentaPage() {
   // Suma todos los tamaños: el mismo jugo puede ir en 500 ml y en 1 litro
   const cantidadDe = (idProducto: string) =>
     items.filter((i) => i.id === idProducto).reduce((n, i) => n + i.cantidad, 0);
+
+  /**
+   * Productos que hoy no se pueden preparar. El mostrador ya tiene la
+   * lista completa (incluidos los ocultos), así que se calcula aquí sin
+   * pedirle nada más al servidor.
+   */
+  const agotados = new Set(
+    productos
+      .filter((p) => {
+        if ((p.Oculto || '').toUpperCase() === 'TRUE') return true;
+        if ((p.Disponible || '').toUpperCase() === 'FALSE') return true;
+        const ex = (p.Existencias ?? '').toString().trim();
+        return ex !== '' && (parseFloat(ex) || 0) <= 0;
+      })
+      .map((p) => claveNombre(p.Nombre))
+  );
 
   /**
    * Mismo acomodo que en Productos y en la tienda: por grupo y, dentro de
@@ -560,6 +579,9 @@ export default function VentaPage() {
                   <div className="flex flex-wrap gap-2">
                     {g.opciones.map((o) => {
                       const activo = elegido === o;
+                      // Se marca, pero NO se bloquea: en el mostrador tú
+                      // sabes si de verdad queda algo, y a veces sí.
+                      const agotada = agotados.has(claveNombre(o));
                       return (
                         <button
                           key={o}
@@ -570,10 +592,13 @@ export default function VentaPage() {
                           className={`px-3 py-2 rounded-xl border-2 text-sm font-semibold active:scale-95 ${
                             activo
                               ? 'border-black bg-neutral-100 text-neutral-900'
+                              : agotada
+                              ? 'border-red-200 bg-red-50 text-red-800'
                               : 'border-neutral-200 bg-white text-neutral-800'
                           }`}
                         >
                           {o}
+                          {agotada && <span className="block text-[10px] font-bold">agotado</span>}
                         </button>
                       );
                     })}

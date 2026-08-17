@@ -1003,6 +1003,8 @@ export default function Home() {
   const tamanosDetalle: Tamano[] = productoDetalle?.tamanos ?? [];
   const gruposDetalle: GrupoOpcion[] = productoDetalle?.opciones ?? [];
   const extrasDetalle: Extra[] = productoDetalle?.extras ?? [];
+  /** Opciones que hoy no se pueden preparar (el jugo se acabó, etc.) */
+  const agotadasDetalle: string[] = productoDetalle?.opcionesAgotadas ?? [];
   /** Grupos que todavía no contesta. Sin preselección, hay que exigirlo. */
   const faltanPorElegir = gruposDetalle
     .filter((g) => !opcionesElegidas[g.nombre])
@@ -2164,20 +2166,29 @@ export default function Home() {
                       <div className="flex flex-wrap gap-2">
                         {g.opciones.map((o) => {
                           const activo = elegido === o;
+                          const agotada = agotadasDetalle.includes(o);
                           return (
                             <button
                               key={o}
+                              disabled={agotada}
                               onClick={() => {
                                 setOpcionesElegidas((prev) => ({ ...prev, [g.nombre]: o }));
                                 setGrupoAbierto(null);
                               }}
                               className={`px-3.5 py-2 rounded-xl border-2 text-sm font-semibold transition-colors ${
-                                activo
+                                agotada
+                                  ? 'border-neutral-200 bg-neutral-100 text-neutral-500 line-through'
+                                  : activo
                                   ? 'border-marron bg-marron/10 text-neutral-900'
                                   : 'border-neutral-200 bg-white text-neutral-800'
                               }`}
                             >
                               {o}
+                              {agotada && (
+                                <span className="block text-[10px] font-bold no-underline">
+                                  hoy no hay
+                                </span>
+                              )}
                             </button>
                           );
                         })}

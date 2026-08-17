@@ -5,6 +5,7 @@ import { leerAjustes, posicionCategoria } from '@/lib/ajustes';
 import { estadoTienda } from '@/lib/horario';
 import { parsearTamanos } from '@/lib/tamanos';
 import { parsearOpciones } from '@/lib/opciones';
+import { agotadasDeGrupos, claveNombre, comboImposible } from '@/lib/opcionesAgotadas';
 import { parsearExtras } from '@/lib/extras';
 
 export async function GET() {
@@ -19,6 +20,21 @@ export async function GET() {
       leerAjustes(),
       getSheetData('Productos', { crudo: true }),
     ]);
+
+    // Qué productos NO se pueden preparar hoy. Se calcula sobre TODOS,
+    // incluidos los ocultos: un jugo sacado del menú tampoco se puede
+    // servir dentro de un combo, y desde la lista pública no se vería.
+    const agotados = new Set(
+      todos
+        .filter((p) => (p.Eliminado || '').toUpperCase() !== 'TRUE')
+        .filter((p) => {
+          if ((p.Oculto || '').toUpperCase() === 'TRUE') return true;
+          if ((p.Disponible ?? '').toString().toUpperCase() === 'FALSE') return true;
+          const ex = (p.Existencias ?? '').toString().trim();
+          return ex !== '' && (parseFloat(ex) || 0) <= 0;
+        })
+        .map((p) => claveNombre(p.Nombre))
+    );
 
     const publicos = todos
       // Tres estados, no dos:
@@ -43,6 +59,8 @@ export async function GET() {
         tamanos: parsearTamanos(p.Tamanos ?? ''),
         // Lo que el cliente elige dentro del producto: queso, sabor…
         opciones: parsearOpciones(p.Opciones ?? ''),
+        // Cuáles de esas opciones no se pueden preparar hoy
+        opcionesAgotadas: agotadasDeGrupos(parsearOpciones(p.Opciones ?? ''), agotados),
         // Toppings opcionales que suman al precio
         extras: parsearExtras(p.Extras ?? ''),
         // Existencias por producto: solo se usa en los de reventa (conchas,
@@ -51,8 +69,18 @@ export async function GET() {
         disponibles: (p.Existencias ?? '').toString().trim() === ''
           ? null
           : Math.max(0, Math.floor(parseFloat(p.Existencias) || 0)),
-        /** false = pausado a mano desde el panel, se ve pero no se vende */
-        disponible: (p.Disponible ?? '').toString().toUpperCase() !== 'FALSE',
+        /**
+         * false = pausado a mano desde el panel, se ve pero no se vende.
+         * Un combo también se apaga si algún grupo se quedó sin una sola
+         * opción posible: sin bebida no hay Combo 1, aunque el combo en sí
+         * esté marcado disponible.
+         */
+        disponible:
+          (p.Disponible ?? '').toString().toUpperCase() !== 'FALSE' &&
+          !comboImposible(
+            parsearOpciones(p.Opciones ?? ''),
+            agotadasDeGrupos(parsearOpciones(p.Opciones ?? ''), agotados)
+          ),
         orden: parseInt(p.Orden_Menu) || 999,
       }))
       // Primero manda el grupo (Combos, Comida salada…) y ya dentro de cada

@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-17',
+    tipo: 'arreglo',
+    titulo: 'Un litro ya descuenta el doble de insumo',
+    detalle:
+      'Al vender un jugo de 1 litro, el inventario descontaba la misma fruta que uno de 500 ml. Como casi ninguna receta estaba ligada todavía no se notaba, pero conforme las vayas vinculando el stock se iría desviando sin explicación. Ahora el tamaño se guarda con cada venta y descuenta lo que le toca: el litro cuenta como dos porciones de la receta. Si algún día usas tamaños con nombres que no dicen medida (como "Chico" y "Grande"), descuenta una porción y no se inventa proporciones.',
+    donde: 'Insumos',
+  },
+  {
+    fecha: '2026-08-17',
     tipo: 'nuevo',
     titulo: 'Avisos de cliente nuevo y de pago confirmado',
     detalle:

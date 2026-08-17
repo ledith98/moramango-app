@@ -16,6 +16,8 @@
  */
 
 import { ensureColumn, getSheetData, updateCell } from '@/lib/googleSheets';
+import { factorDeTamano } from './tamanoFactor';
+import { parsearTamanos } from './tamanos';
 import { consumoPorInsumo } from '@/lib/insumos';
 import { clavesDeInsumo, COL_ACT, estaEnUso, HOJA_ACTIVOS, HOJA_BIBLIOTECA } from '@/lib/inventario';
 import { leerRecetas } from '@/lib/recetario';
@@ -81,16 +83,24 @@ export async function moverStockDePedido(
     await moverExistenciasDeProducto(itemsPedido, signo);
 
     // 2) Insumos por receta (elaborados)
-    const [catalogo, biblioteca, activos] = await Promise.all([
+    const [catalogo, biblioteca, activos, productos] = await Promise.all([
       leerRecetas(),
       getSheetData(HOJA_BIBLIOTECA, { crudo: true }),
       getSheetData(HOJA_ACTIVOS, { crudo: true }),
+      getSheetData('Productos', { crudo: true }),
     ]);
+
+    // Tamaños de cada producto, para saber cuántas porciones vale lo que
+    // se vendió: la receta está escrita para el tamaño más chico.
+    const tamanosPorProducto = new Map(
+      productos.map((p) => [p.ID_Producto, parsearTamanos(p.Tamanos ?? '')])
+    );
 
     const consumo = consumoPorInsumo(
       itemsPedido.map((i) => ({
         idProducto: i.ID_Producto,
         cantidad: parseInt(i.Cantidad) || 1,
+        factor: factorDeTamano(tamanosPorProducto.get(i.ID_Producto) ?? [], i.Tamano ?? ''),
       })),
       catalogo
     );

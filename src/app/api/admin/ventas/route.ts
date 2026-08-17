@@ -298,7 +298,7 @@ export async function POST(req: NextRequest) {
     const item = itemsValidados[i];
     const idDetalle = `DET-${String(dtExistentes.length + i + 1).padStart(4, '0')}`;
 
-    await appendRow('DT PEDIDOS', [
+    const filaDetalle = await appendRow('DT PEDIDOS', [
       idDetalle,
       idPedido,
       item.id,
@@ -309,6 +309,14 @@ export async function POST(req: NextRequest) {
       item.precio * item.cantidad,
       '',
     ]);
+
+    // El tamaño va en su propia columna, no solo dentro del nombre: es lo
+    // que permite descontar el doble de fruta por un litro. Las filas
+    // viejas la dejan vacía y siguen contando como una porción.
+    if (item.tamano) {
+      const colTamano = await ensureColumn('DT PEDIDOS', 'Tamano');
+      await updateCell('DT PEDIDOS', filaDetalle, colTamano, item.tamano);
+    }
   }
 
   // La venta en mostrador consume igual que un pedido de la app

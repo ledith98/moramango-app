@@ -58,7 +58,7 @@ export function factorMerma(mermaPct: string | undefined): number {
  * Devuelve un Map cuya clave es el nombre normalizado del ingrediente.
  */
 export function consumoPorInsumo(
-  items: { idProducto: string; cantidad: number }[],
+  items: { idProducto: string; cantidad: number; factor?: number }[],
   catalogo: Record<string, string>[]
 ): Map<string, number> {
   const consumo = new Map<string, number>();
@@ -72,7 +72,10 @@ export function consumoPorInsumo(
       if (!clave) continue;
 
       const porUnidad = parseFloat(receta.Cantidad_Receta) || 0;
-      const total = porUnidad * item.cantidad * factorMerma(receta.Merma_Pct);
+      // `factor` es cuántas porciones vale el tamaño vendido: un litro son
+      // dos veces la receta de 500 ml. Sin tamaño vale 1 y no cambia nada.
+      const porciones = item.factor && item.factor > 0 ? item.factor : 1;
+      const total = porUnidad * item.cantidad * porciones * factorMerma(receta.Merma_Pct);
       if (total <= 0) continue;
 
       consumo.set(clave, (consumo.get(clave) || 0) + total);

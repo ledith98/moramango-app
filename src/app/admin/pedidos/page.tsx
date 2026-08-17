@@ -54,6 +54,15 @@ interface Detalle {
 }
 
 const FLUJO = ['Recibido', 'En preparación', 'Listo para recoger', 'Entregado'];
+const METODOS_FILTRO = [
+  'Todos',
+  'Efectivo',
+  'Terminal',
+  'Transferencia',
+  METODO_PAGO_EN_LINEA,
+  'Sin registrar',
+];
+
 const ESTADOS_FILTRO = ['Todos', ...FLUJO, 'Cancelado'];
 
 /** YYYY-MM-DD de hoy en Monterrey, desplazado N días hacia atrás. */
@@ -147,6 +156,7 @@ export default function PedidosPage() {
   const [desde, setDesde] = useState(fechaHoyMTY());
   const [hasta, setHasta] = useState(fechaHoyMTY());
   const [estadoFiltro, setEstadoFiltro] = useState('Todos');
+  const [metodoFiltro, setMetodoFiltro] = useState('Todos');
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [cargando, setCargando] = useState(true);
   const [detalle, setDetalle] = useState<Detalle | null>(null);
@@ -161,11 +171,12 @@ export default function PedidosPage() {
     setCargando(true);
     const params = new URLSearchParams({ desde, hasta });
     if (estadoFiltro !== 'Todos') params.set('estado', estadoFiltro);
+    if (metodoFiltro !== 'Todos') params.set('metodo', metodoFiltro);
     fetch(`/api/admin/pedidos?${params}`)
       .then((res) => res.json())
       .then((data) => setPedidos(data.pedidos || []))
       .finally(() => setCargando(false));
-  }, [desde, hasta, estadoFiltro]);
+  }, [desde, hasta, estadoFiltro, metodoFiltro]);
 
   useEffect(() => {
     cargarPedidos();
@@ -231,6 +242,14 @@ export default function PedidosPage() {
       setTimeout(() => setLinkCopiado(false), 2000);
     } catch {}
   };
+
+  /**
+   * Cobros iniciados que nadie confirmó. Se sacan del listado que ya está
+   * en pantalla, así que respetan el rango de fechas que se esté viendo.
+   */
+  const porConfirmar = pedidos.filter(
+    (p) => p.Estado_Pago === 'Pendiente' && p.Estado !== 'Cancelado'
+  );
 
   const cambiarMetodo = async (idPedido: string, metodoPago: string) => {
     setActualizando(true);
@@ -342,12 +361,48 @@ export default function PedidosPage() {
               </option>
             ))}
           </select>
+          <label className="text-sm font-semibold text-neutral-700 ml-2">Cobro</label>
+          <select
+            value={metodoFiltro}
+            onChange={(e) => setMetodoFiltro(e.target.value)}
+            className="bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-black"
+          >
+            {METODOS_FILTRO.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
           <span className="text-xs text-neutral-700 ml-auto">
             {pedidos.length} pedido{pedidos.length === 1 ? '' : 's'}
             {desde !== hasta && ` · $${totalRango.toFixed(2)} en total`}
           </span>
         </div>
       </div>
+
+      {/* Cobros que se iniciaron y nadie confirmó. Van arriba porque es
+          dinero que puede quedarse sin cobrar sin que nadie lo note. */}
+      {porConfirmar.length > 0 && (
+        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex flex-wrap items-center gap-3">
+          <span className="text-xl leading-none">💸</span>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-amber-900">
+              {porConfirmar.length} cobro{porConfirmar.length === 1 ? '' : 's'} por confirmar ·{' '}
+              ${porConfirmar.reduce((s, p) => s + (parseFloat(p.Total_Final) || 0), 0).toFixed(2)}
+            </p>
+            <p className="text-xs text-amber-900">
+              El cliente dijo que pagaría por transferencia o tarjeta. Revisa que el dinero haya
+              caído y márcalo como recibido.
+            </p>
+          </div>
+          <button
+            onClick={() => abrirDetalle(porConfirmar[0].ID_Pedido)}
+            className="shrink-0 bg-amber-500 text-white text-sm font-bold px-4 py-2 rounded-xl active:scale-95"
+          >
+            Revisar el primero
+          </button>
+        </div>
+      )}
 
       {cargando ? (
         <p className="text-neutral-700 animate-pulse">Cargando pedidos...</p>
@@ -572,7 +627,11 @@ export default function PedidosPage() {
 
                 <div className="p-5 border-t border-neutral-100 shrink-0 space-y-3">
                   <div>
-                    <p className="text-xs font-semibold text-neutral-700 mb-2">Método de pago</p>
+                    <p className="text-xs font-semibold text-neutral-700">Método de pago</p>
+                    <p className="text-[11px] text-neutral-600 mb-2">
+                      ¿Te equivocaste al registrarlo? Tócale otro y se corrige — no hace falta
+                      cancelar la venta.
+                    </p>
                     <div className="flex flex-wrap gap-2">
                       {['Efectivo', 'Terminal', 'Transferencia', METODO_PAGO_EN_LINEA].map((m) => {
                         // Los pedidos viejos con 'Mercado Pago' cuentan como 'Pago en línea'

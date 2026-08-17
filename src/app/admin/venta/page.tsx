@@ -89,6 +89,8 @@ export default function VentaPage() {
   /** Grupo que se está reabriendo para cambiar la respuesta */
   const [grupoAbierto, setGrupoAbierto] = useState<string | null>(null);
   /** Descuento fuera de lo normal, a criterio de quien cobra */
+  /** Transferencia: si ya se vio el dinero en la cuenta al cobrar */
+  const [transferenciaRecibida, setTransferenciaRecibida] = useState(false);
   const [descuentoManual, setDescuentoManual] = useState('');
   const [motivoDescuento, setMotivoDescuento] = useState('');
   const [cargando, setCargando] = useState(true);
@@ -186,6 +188,7 @@ export default function VentaPage() {
     setAplicarBeneficio(false);
     setDescuentoManual('');
     setMotivoDescuento('');
+    setTransferenciaRecibida(false);
     setArticuloGratisId('');
   };
 
@@ -522,7 +525,9 @@ export default function VentaPage() {
 
     setRegistrando(true);
     try {
-      await registrarVenta();
+      await registrarVenta(
+        metodoPago === 'Transferencia' && transferenciaRecibida ? 'Pagado' : undefined
+      );
     } catch (err: any) {
       setError(err.message || 'Error al registrar la venta');
     } finally {
@@ -1073,6 +1078,27 @@ export default function VentaPage() {
               ))}
             </div>
           </div>
+
+          {/* Transferencia: ¿ya cayó el dinero o queda pendiente de revisar? */}
+          {metodoPago === 'Transferencia' && (
+            <label className="flex items-start gap-3 bg-neutral-50 border border-neutral-200 rounded-xl p-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={transferenciaRecibida}
+                onChange={(e) => setTransferenciaRecibida(e.target.checked)}
+                className="mt-0.5 w-5 h-5 accent-black"
+              />
+              <span>
+                <span className="font-semibold text-neutral-900 block">
+                  Ya vi la transferencia en mi cuenta
+                </span>
+                <span className="text-xs text-neutral-700">
+                  Si no la marcas, la venta queda como <b>cobro por confirmar</b> y te aparece
+                  arriba en Pedidos hasta que la des por recibida.
+                </span>
+              </span>
+            </label>
+          )}
 
           {/* Cambio en efectivo: con cuánto pagó → cuánto se le regresa */}
           {metodoPago === 'Efectivo' && (

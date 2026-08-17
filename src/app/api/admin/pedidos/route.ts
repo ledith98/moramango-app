@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSheetData, findRow, updateCell, ensureColumn } from '@/lib/googleSheets';
 import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
-import { METODO_PAGO_EN_LINEA } from '@/lib/negocio';
+import { METODO_PAGO_EN_LINEA, normalizarMetodoPago } from '@/lib/negocio';
 import { getAdminSession } from '@/lib/roles';
 import { moverStockDePedido } from '@/lib/stock';
 import { revertirLealtad } from '@/lib/lealtad';
@@ -42,6 +42,9 @@ export async function GET(req: NextRequest) {
   let hasta = searchParams.get('hasta') || fechaUnica || desde;
   if (hasta < desde) [desde, hasta] = [hasta, desde];
   const estado = searchParams.get('estado');
+  // Filtro por forma de cobro. 'Sin registrar' son los que aún no tienen
+  // ninguna: casi siempre pedidos de la app que se pagan al recoger.
+  const metodo = searchParams.get('metodo');
 
   const [pedidos, usuarios] = await Promise.all([
     getSheetData('PEDIDOS'),
@@ -54,6 +57,11 @@ export async function GET(req: NextRequest) {
     .map((p) => ({ pedido: p, info: parsearFechaHora(p.Fecha_Hora) }))
     .filter(({ info }) => info && info.fechaISO >= desde && info.fechaISO <= hasta)
     .filter(({ pedido }) => !estado || pedido.Estado === estado)
+    .filter(({ pedido }) => {
+      if (!metodo) return true;
+      const m = normalizarMetodoPago(pedido.Metodo_Pago);
+      return metodo === 'Sin registrar' ? !m : m === metodo;
+    })
     .sort((a, b) => (b.info!.timestamp - a.info!.timestamp))
     .map(({ pedido, info }) => ({
       ...pedido,

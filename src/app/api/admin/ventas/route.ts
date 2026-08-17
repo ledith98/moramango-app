@@ -263,10 +263,22 @@ export async function POST(req: NextRequest) {
     await updateCell('PEDIDOS', filaPedido, colCambio, Math.round((parseFloat(cambio) || 0) * 100) / 100);
   }
 
-  // Cobro ya aprobado (ej. terminal Point): marcar el pago como confirmado
-  if (estadoPago === 'Pagado') {
+  // Estado del cobro.
+  //
+  // Efectivo y terminal se cobran en el momento, así que no hace falta
+  // marcar nada. La transferencia es la que se puede quedar sin llegar:
+  // si al registrar la venta no se confirmó que el dinero cayó, queda
+  // 'Pendiente' para que salga en el aviso de Pedidos y no se pierda de
+  // vista. Marcarla como recibida ahí mismo la deja en 'Pagado'.
+  const estadoCobro =
+    estadoPago === 'Pagado'
+      ? 'Pagado'
+      : metodoPago === 'Transferencia'
+      ? 'Pendiente'
+      : '';
+  if (estadoCobro) {
     const colEstadoPago = await ensureColumn('PEDIDOS', 'Estado_Pago');
-    await updateCell('PEDIDOS', filaPedido, colEstadoPago, 'Pagado');
+    await updateCell('PEDIDOS', filaPedido, colEstadoPago, estadoCobro);
   }
 
   // Detalle de items

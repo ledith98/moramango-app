@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-17',
+    tipo: 'nuevo',
+    titulo: 'Las transferencias ya no se te pierden',
+    detalle:
+      'Al cobrar con transferencia en el mostrador aparece una casilla: "Ya vi la transferencia en mi cuenta". Si no la marcas, esa venta queda como cobro por confirmar y te sale un aviso arriba en Pedidos, con cuántos son y cuánto suman, hasta que la des por recibida. Antes ese dinero no quedaba en ningún radar. También hay filtro por forma de cobro en Pedidos (efectivo, terminal, transferencia, pago en línea o sin registrar), y al abrir un pedido se aclara que el método se puede corregir ahí mismo sin cancelar la venta.',
+    donde: 'Venta · Pedidos',
+  },
+  {
+    fecha: '2026-08-17',
     tipo: 'arreglo',
     titulo: 'Los combos ya respetan lo que se acabó',
     detalle:

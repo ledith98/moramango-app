@@ -32,6 +32,14 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-17',
     tipo: 'arreglo',
+    titulo: 'El pago con tarjeta ya queda registrado desde el principio',
+    detalle:
+      'Cuando alguien pedía con tarjeta, la app no anotaba nada hasta que Mercado Pago confirmara. Si esa confirmación no llegaba, el pedido se quedaba "sin registrar" para siempre — tienes 4 pedidos así, $220 sin poder saber cómo te pagaron. Ahora la forma de pago se anota al momento de hacer el pedido. Además, si el cobro con tarjeta no se puede abrir, al cliente se le avisa en vez de dejarlo creer que ya pagó. En Pedidos aparece un enlace "Ver en Mercado Pago" para llegar directo a ese cobro, y un botón para copiar el enlace de pago y reenviárselo a quien lo dejó a medias.',
+    donde: 'Pedidos · Tienda',
+  },
+  {
+    fecha: '2026-08-17',
+    tipo: 'arreglo',
     titulo: 'Un pedido cancelado ya no cuenta para el premio',
     detalle:
       'Al cancelar un pedido, la compra le seguía contando al cliente para su 15% y su artículo gratis. Se podía pedir y cancelar cinco veces y ganarse el descuento sin comprar nada. Ahora al cancelar se le descuenta ese avance, y si ese pedido fue justo el que le dio el premio, el premio se retira. Si el pedido cancelado iba a usar un premio suyo, se le devuelve para que no lo pierda. También se corrigieron los 13 cancelados que ya existían: se ajustó el avance de 8 clientes, pero los premios que ya tenían se les respetaron.',

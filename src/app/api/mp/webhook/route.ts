@@ -16,7 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ensureColumn, findRow, updateCell } from '@/lib/googleSheets';
 import { obtenerPago } from '@/lib/mercadoPago';
-import { METODO_PAGO_EN_LINEA } from '@/lib/negocio';
+import { METODO_PAGO_EN_LINEA, URL_PAGO_MP } from '@/lib/negocio';
 import { enviarTelegram } from '@/lib/telegram';
 
 export async function POST(req: NextRequest) {
@@ -57,6 +57,11 @@ export async function POST(req: NextRequest) {
     const colMetodo = await ensureColumn('PEDIDOS', 'Metodo_Pago');
     await updateCell('PEDIDOS', pedidoRow.rowIndex, colMetodo, METODO_PAGO_EN_LINEA);
 
+    // Folio del pago en Mercado Pago: es lo que permite encontrarlo en su
+    // app cuando hay que cuadrar el dinero o hacer un reembolso.
+    const colFolio = await ensureColumn('PEDIDOS', 'MP_Folio');
+    await updateCell('PEDIDOS', pedidoRow.rowIndex, colFolio, idPago);
+
     // Segundo aviso: el primero salió al crear el pedido diciendo que el
     // pago estaba pendiente; este confirma que el dinero sí entró.
     if (!yaEstabaPagado) {
@@ -64,7 +69,9 @@ export async function POST(req: NextRequest) {
       await enviarTelegram(
         `✅ <b>Pago confirmado</b> — ${pago.external_reference}\n` +
           `👤 ${pedidoRow.data.Nombre_Cliente_Snap || 'Cliente'}\n` +
-          `💳 ${METODO_PAGO_EN_LINEA} — <b>$${total.toFixed(2)}</b>`
+          `💳 ${METODO_PAGO_EN_LINEA} — <b>$${total.toFixed(2)}</b>
+` +
+          `🔗 <a href="${URL_PAGO_MP}${idPago}">Ver el pago en Mercado Pago</a>`
       );
     }
 

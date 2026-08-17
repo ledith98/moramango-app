@@ -906,6 +906,9 @@ export default function Home() {
           window.location.href = data.checkoutUrl;
           return;
         }
+        // Eligió tarjeta pero el cobro no se pudo abrir: hay que decírselo,
+        // porque si no cree que ya pagó y llega al local sin pagar.
+        if (data.avisoPago) alert(data.avisoPago);
 
         setPedidoPorTransferencia(fueTransferencia);
         setPedidoConfirmado(data.idPedido);

@@ -8,6 +8,7 @@ import {
   METODO_PAGO_EN_LINEA,
   normalizarMetodoPago,
   TRANSFERENCIA_HABILITADA,
+  URL_PAGO_MP,
 } from '@/lib/negocio';
 import { TicketBotones } from '../TicketBotones';
 import type { DatosTicket } from '@/lib/ticket';
@@ -30,6 +31,10 @@ interface Pedido {
   Origen_Venta: string;
   Metodo_Pago?: string;
   Estado_Pago?: string;
+  /** Folio del pago en Mercado Pago, para poder verlo allá */
+  MP_Folio?: string;
+  /** Enlace de cobro, por si el cliente dejó el pago a medias */
+  Link_Pago?: string;
   /** Fecha en que el cliente avisó desde la app que ya está en el local */
   Aviso_Llegada?: string;
 }
@@ -215,6 +220,16 @@ export default function PedidosPage() {
   const cancelarPedido = (idPedido: string) => {
     if (!confirm(`¿Cancelar el pedido ${idPedido}? Esta acción no se puede deshacer.`)) return;
     cambiarEstado(idPedido, 'Cancelado');
+  };
+
+  /** Para reenviarle el cobro por WhatsApp a quien dejó el pago a medias. */
+  const [linkCopiado, setLinkCopiado] = useState(false);
+  const copiarLinkPago = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setLinkCopiado(true);
+      setTimeout(() => setLinkCopiado(false), 2000);
+    } catch {}
   };
 
   const cambiarMetodo = async (idPedido: string, metodoPago: string) => {
@@ -441,6 +456,25 @@ export default function PedidosPage() {
                           </span>
                         )}
                       </div>
+                      {detalle.pedido.MP_Folio && (
+                        <a
+                          href={`${URL_PAGO_MP}${detalle.pedido.MP_Folio}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800"
+                          title={`Folio ${detalle.pedido.MP_Folio}`}
+                        >
+                          🔗 Ver en Mercado Pago
+                        </a>
+                      )}
+                      {detalle.pedido.Link_Pago && detalle.pedido.Estado_Pago !== 'Pagado' && (
+                        <button
+                          onClick={() => copiarLinkPago(detalle.pedido.Link_Pago!)}
+                          className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800"
+                        >
+                          {linkCopiado ? '✓ Enlace copiado' : '📋 Copiar enlace de cobro'}
+                        </button>
+                      )}
                       {detalle.pedido.Estado_Pago === 'Pagado' && (
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
                           ✅ Pagado

@@ -22,6 +22,7 @@ import { appendRow, ensureColumn, findRow, getSheetData, updateCell } from '@/li
 import { actualizarLealtad, beneficioVigente, descuentoPorBeneficio } from '@/lib/lealtad';
 import { parsearFechaHora } from '@/lib/pedidoFecha';
 import { baseUrlDesdeRequest, crearPreferencia, mpConfigurado } from '@/lib/mercadoPago';
+import { METODO_PAGO_EN_LINEA } from '@/lib/negocio';
 import { enviarTelegram } from '@/lib/telegram';
 import { moverStockDePedido } from '@/lib/stock';
 import { leerAjustes } from '@/lib/ajustes';
@@ -255,17 +256,30 @@ export async function POST(req: NextRequest) {
     console.error('Error enviando aviso a Telegram:', error);
   }
 
-  // 5. Pago por transferencia — el cliente ve la CLABE en la tienda y
-  // transfiere; queda 'Pendiente' hasta que el admin confirme que llegó.
-  if (esTransferencia) {
-    try {
-      const colMetodo = await ensureColumn('PEDIDOS', 'Metodo_Pago');
-      await updateCell('PEDIDOS', filaPedido, colMetodo, 'Transferencia');
-      const colEstadoPago = await ensureColumn('PEDIDOS', 'Estado_Pago');
+  // 5. Cómo dijo el cliente que va a pagar. Se anota SIEMPRE al crear el
+  // pedido, no solo en transferencia: el pago en línea solo se anotaba
+  // cuando Mercado Pago confirmaba, así que un pago que nunca se confirmó
+  // dejaba el pedido en "Sin registrar" para siempre y no había manera de
+  // saber cómo se había intentado pagar.
+  const metodoElegido = esTransferencia
+    ? 'Transferencia'
+    : pagoEnLinea
+    ? METODO_PAGO_EN_LINEA
+    : ''; // "al recoger": todavía no se sabe si pagará en efectivo o terminal
+  try {
+    const [colMetodo, colEstadoPago] = await Promise.all([
+      ensureColumn('PEDIDOS', 'Metodo_Pago'),
+      ensureColumn('PEDIDOS', 'Estado_Pago'),
+    ]);
+    if (metodoElegido) {
+      await updateCell('PEDIDOS', filaPedido, colMetodo, metodoElegido);
+      // "Pendiente" solo si dijo que pagaría ANTES de recoger. A quien
+      // paga al recoger no se le marca: en "Mis pedidos" eso le saca un
+      // botón de "pagar ahora" que nunca pidió.
       await updateCell('PEDIDOS', filaPedido, colEstadoPago, 'Pendiente');
-    } catch (error) {
-      console.error('Error marcando transferencia:', error);
     }
+  } catch (error) {
+    console.error('Error anotando la forma de pago:', error);
   }
 
   // 6. Pago en línea (opcional) — si falla, el pedido ya quedó creado y
@@ -281,10 +295,21 @@ export async function POST(req: NextRequest) {
       });
 
       if (preferencia) {
-        const colEstadoPago = await ensureColumn('PEDIDOS', 'Estado_Pago');
-        await updateCell('PEDIDOS', filaPedido, colEstadoPago, 'Pendiente');
+        // Se guarda el enlace de cobro para poder reenviárselo al cliente
+        // si abandona el pago a medias, sin tener que rehacer el pedido.
+        const colLink = await ensureColumn('PEDIDOS', 'Link_Pago');
+        await updateCell('PEDIDOS', filaPedido, colLink, preferencia.checkoutUrl);
         return NextResponse.json({ success: true, idPedido, checkoutUrl: preferencia.checkoutUrl });
       }
+      // Sin preferencia el cliente NO puede pagar en línea: se le avisa en
+      // vez de mandarlo a la pantalla de "pedido recibido" creyendo que ya
+      // quedó, para que pague al recoger a sabiendas.
+      console.error('MP no devolvió enlace de cobro para', idPedido);
+      return NextResponse.json({
+        success: true,
+        idPedido,
+        avisoPago: 'No pudimos abrir el pago con tarjeta. Tu pedido quedó registrado; puedes pagarlo al recogerlo.',
+      });
     } catch (error) {
       console.error('Error iniciando pago en línea:', error);
     }

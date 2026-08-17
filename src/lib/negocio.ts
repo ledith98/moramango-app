@@ -19,6 +19,15 @@ export const METODO_PAGO_EN_LINEA = 'Pago en línea';
 // sobreescribe sin tocar código.
 export const SITIO_WEB = process.env.NEXT_PUBLIC_SITIO_WEB || 'moramango.vercel.app';
 
+/**
+ * Página del pago dentro de Mercado Pago. Se le pega el folio del pago.
+ *
+ * Sirve para cuadrar el dinero y para reembolsar: el reembolso SIEMPRE se
+ * hace desde Mercado Pago, nunca desde este panel.
+ */
+export const URL_PAGO_MP =
+  process.env.NEXT_PUBLIC_MP_URL_PAGO || 'https://www.mercadopago.com.mx/activities/detail/';
+
 export const normalizarMetodoPago = (m: string | undefined | null): string =>
   m === 'Mercado Pago' ? METODO_PAGO_EN_LINEA : (m || '');
 

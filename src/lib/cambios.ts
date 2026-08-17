@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-17',
+    tipo: 'mejora',
+    titulo: 'Insumos: contar el local y ver lo comprado',
+    detalle:
+      'Dos cosas nuevas. Un botón "✍️ Contar el local": te lista todos tus insumos, anotas cuánto tienes de cada uno y se guarda todo junto — mientras escribes te va diciendo si sobra o falta contra lo que el sistema creía. Antes había que abrir insumo por insumo. Y una pestaña "🧾 Lo que he comprado" con todas tus compras juntas, de la más reciente a la más vieja, con cuánto llevas gastado; antes solo se veían una por una dentro de cada insumo. Las pestañas se renombraron a "Lo que hay hoy", "Lo que he comprado" y "Catálogo".',
+    donde: 'Insumos',
+  },
+  {
+    fecha: '2026-08-17',
     tipo: 'arreglo',
     titulo: 'Un litro ya descuenta el doble de insumo',
     detalle:

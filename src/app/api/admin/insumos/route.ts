@@ -19,7 +19,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { appendRow, getSheetData, updateCell, updateCells } from '@/lib/googleSheets';
+import { appendRow, getSheetData, updateCeldas, updateCell, updateCells } from '@/lib/googleSheets';
 import { consumoPorInsumo, fechaCompraDesdeISO } from '@/lib/insumos';
 import {
   aUnidadesReceta,
@@ -48,6 +48,34 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
   await prepararInventario();
+
+  // ── Todo lo comprado, para tenerlo a la vista ──
+  //
+  // El historial por insumo ya existía, pero para saber "cuánto llevo
+  // gastado" había que abrir uno por uno. Esto devuelve las compras de
+  // todos juntas, de la más reciente a la más vieja.
+  if (new URL(req.url).searchParams.get('compras')) {
+    const compras = await getSheetData(HOJA_COMPRAS, { crudo: true });
+    const lista = compras
+      .map((c, i) => ({ c, fila: i + 2 }))
+      .filter(({ c }) => (c.Nombre || '').trim() || (c.ID_Biblioteca || '').trim())
+      .map(({ c, fila }) => ({
+        fila,
+        fecha: (c.Fecha || '').toString(),
+        fechaISO: parsearFechaHora(c.Fecha)?.fechaISO ?? (c.Fecha || '').toString().slice(0, 10),
+        idBiblioteca: c.ID_Biblioteca,
+        nombre: c.Nombre || c.ID_Biblioteca,
+        cantidad: parseFloat(c.Cantidad_Compra) || 0,
+        unidad: c.Unidad_Compra || '',
+        total: parseFloat(c.Precio_Total) || 0,
+      }))
+      .sort((a, b) => (b.fechaISO || '').localeCompare(a.fechaISO || ''));
+
+    return NextResponse.json({
+      compras: lista,
+      gastoTotal: redondear(lista.reduce((s, c) => s + c.total, 0), 2),
+    });
+  }
 
   // ── Historial de precios de un insumo ──
   const historialId = new URL(req.url).searchParams.get('historial');
@@ -186,11 +214,47 @@ export async function PATCH(req: NextRequest) {
   }
   await prepararInventario();
 
-  const { id, accion, cantidadCompra, precioTotal, cantidad, valor, fechaISO, fila } =
+  const { id, accion, cantidadCompra, precioTotal, cantidad, valor, fechaISO, fila, lecturas } =
     await req.json();
-  const ACCIONES = ['compra', 'conteo', 'ajustar', 'status', 'uso', 'stock', 'fechaCompra', 'borrarCompra'];
+  const ACCIONES = ['compra', 'conteo', 'ajustar', 'status', 'uso', 'stock', 'fechaCompra', 'borrarCompra', 'conteoRapido'];
   if (!accion || !ACCIONES.includes(accion)) {
     return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 });
+  }
+
+  // ── Conteo de varios insumos de un jalón ──
+  //
+  // Contar el local abriendo insumo por insumo son tres toques por cada
+  // uno y ~60 insumos. Aquí llega la lista completa de lo que hay y se
+  // guarda en un solo viaje: el conteo queda registrado con su fecha Y el
+  // stock se iguala a lo contado, que es lo que significa "esto es lo que
+  // hay". No se toca lo que no se capturó.
+  if (accion === 'conteoRapido') {
+    if (!Array.isArray(lecturas) || lecturas.length === 0) {
+      return NextResponse.json({ error: 'No llegó ningún conteo' }, { status: 400 });
+    }
+    const activosHoja = await getSheetData(HOJA_ACTIVOS, { crudo: true });
+    const filaPorId = new Map(activosHoja.map((a, i) => [a.ID_Biblioteca, i + 2]));
+    const fechaHoy = fechaHoyMTY();
+
+    const cambios: { fila: number; col: number; valor: string | number }[] = [];
+    let contados = 0;
+    for (const l of lecturas as { id?: string; cantidad?: unknown }[]) {
+      const filaA = filaPorId.get((l?.id ?? '').toString());
+      const num = parseFloat((l?.cantidad ?? '').toString().replace(',', '.'));
+      if (!filaA || isNaN(num) || num < 0) continue;
+      const v = redondear(num, 3);
+      cambios.push(
+        { fila: filaA, col: COL_ACT.stock, valor: v },
+        { fila: filaA, col: COL_ACT.conteoFisico, valor: v },
+        { fila: filaA, col: COL_ACT.fechaConteo, valor: fechaHoy }
+      );
+      contados += 1;
+    }
+    if (cambios.length === 0) {
+      return NextResponse.json({ error: 'Ninguna cantidad era válida' }, { status: 400 });
+    }
+    await updateCeldas(HOJA_ACTIVOS, cambios);
+    return NextResponse.json({ success: true, contados });
   }
 
   // ── Borrar una compra del historial ──

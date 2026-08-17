@@ -50,6 +50,17 @@ interface ProductoConReceta {
   ingredientes: IngredienteReceta[];
 }
 
+interface CompraRegistrada {
+  fila: number;
+  fecha: string;
+  fechaISO: string;
+  idBiblioteca: string;
+  nombre: string;
+  cantidad: number;
+  unidad: string;
+  total: number;
+}
+
 interface ItemActivo {
   id: string;
   idBiblioteca: string;
@@ -149,7 +160,14 @@ const inputCls =
   'w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-marron';
 
 export default function InsumosPage() {
-  const [pestana, setPestana] = useState<'biblioteca' | 'activos'>('activos');
+  const [pestana, setPestana] = useState<'biblioteca' | 'activos' | 'compras'>('activos');
+  /** Modo "voy a contar el local": se escriben las cantidades y se guardan juntas */
+  const [contando, setContando] = useState(false);
+  const [lecturas, setLecturas] = useState<Record<string, string>>({});
+  const [guardandoConteo, setGuardandoConteo] = useState(false);
+  const [compras, setCompras] = useState<CompraRegistrada[]>([]);
+  const [gastoTotal, setGastoTotal] = useState(0);
+  const [cargandoCompras, setCargandoCompras] = useState(false);
   const [biblioteca, setBiblioteca] = useState<ItemBiblioteca[]>([]);
   const [activos, setActivos] = useState<ItemActivo[]>([]);
   const [categoriasEnUso, setCategoriasEnUso] = useState<string[]>([]);
@@ -179,6 +197,51 @@ export default function InsumosPage() {
   const [productosCat, setProductosCat] = useState<ProductoConReceta[]>([]);
   const [seleccion, setSeleccion] = useState<string[]>([]);
   const [buscaProducto, setBuscaProducto] = useState('');
+
+  /** Todo lo comprado, para la pestaña de compras. */
+  const cargarCompras = useCallback(async () => {
+    setCargandoCompras(true);
+    try {
+      const r = await fetch('/api/admin/insumos?compras=1');
+      const d = await r.json();
+      setCompras(d.compras ?? []);
+      setGastoTotal(d.gastoTotal ?? 0);
+    } finally {
+      setCargandoCompras(false);
+    }
+  }, []);
+
+  /** Guarda de un jalón lo que se contó en el local. */
+  const guardarConteo = async () => {
+    const items = Object.entries(lecturas)
+      .filter(([, v]) => v.trim() !== '')
+      .map(([id, v]) => ({ id, cantidad: v }));
+    if (items.length === 0) {
+      alert('No capturaste ninguna cantidad.');
+      return;
+    }
+    if (!confirm(`¿Guardar el conteo de ${items.length} insumo${items.length === 1 ? '' : 's'}?
+
+El stock quedará igual a lo que contaste.`)) return;
+    setGuardandoConteo(true);
+    try {
+      const r = await fetch('/api/admin/insumos', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'conteoRapido', lecturas: items }),
+      });
+      const d = await r.json();
+      if (!r.ok) {
+        alert(d.error || 'No se pudo guardar el conteo');
+        return;
+      }
+      setLecturas({});
+      setContando(false);
+      await cargar();
+    } finally {
+      setGuardandoConteo(false);
+    }
+  };
 
   const cargar = useCallback(async () => {
     try {
@@ -530,13 +593,18 @@ export default function InsumosPage() {
       <div className="flex gap-1 bg-neutral-100 p-1 rounded-2xl mb-4 w-fit">
         {(
           [
-            ['activos', `🧊 Insumos activos (${activos.length})`],
-            ['biblioteca', `📚 Biblioteca (${biblioteca.length})`],
+            ['activos', `🧊 Lo que hay hoy (${activos.length})`],
+            ['compras', '🧾 Lo que he comprado'],
+            ['biblioteca', `📚 Catálogo (${biblioteca.length})`],
           ] as const
         ).map(([valor, etiqueta]) => (
           <button
             key={valor}
-            onClick={() => setPestana(valor)}
+            onClick={() => {
+              setPestana(valor);
+              // Las compras se piden solo al entrar: es otra hoja del Excel
+              if (valor === 'compras' && compras.length === 0) cargarCompras();
+            }}
             className={`px-4 py-2 rounded-xl text-sm font-semibold transition ${
               pestana === valor ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-700'
             }`}
@@ -544,11 +612,23 @@ export default function InsumosPage() {
             {etiqueta}
           </button>
         ))}
+
+        {/* Contar el local sin abrir insumo por insumo */}
+        {pestana === 'activos' && !contando && activos.length > 0 && (
+          <button
+            onClick={() => setContando(true)}
+            className="ml-2 px-4 py-2 rounded-xl text-sm font-semibold bg-marron text-white active:scale-95"
+          >
+            ✍️ Contar el local
+          </button>
+        )}
       </div>
 
       <p className="text-xs text-neutral-700 mb-4">
         {pestana === 'activos'
-          ? 'Lo que usas hoy: stock, consumo y compras. Con "📚 A biblioteca" lo guardas sin borrarlo.'
+          ? 'Lo que tienes en el local ahora: cuánto queda, cuánto se gasta al día y qué hay que comprar.'
+          : pestana === 'compras'
+          ? 'Todo lo que has comprado, de lo más reciente a lo más viejo, y cuánto llevas gastado.'
           : 'Tu catálogo completo, incluidos los insumos guardados para después. Con "🧊 Usar ahora" vuelven a la operación diaria.'}
       </p>
 
@@ -581,7 +661,119 @@ export default function InsumosPage() {
         </select>
       </div>
 
-      {pestana === 'activos' ? (
+      {pestana === 'compras' ? (
+        <div className="space-y-3">
+          <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-4 flex flex-wrap items-center gap-3">
+            <div>
+              <p className="text-xs text-neutral-700 font-medium uppercase tracking-wide">
+                Total comprado
+              </p>
+              <p className="text-2xl font-bold text-neutral-900">${gastoTotal.toFixed(2)}</p>
+            </div>
+            <div className="ml-auto text-right">
+              <p className="text-xs text-neutral-700 font-medium uppercase tracking-wide">
+                Compras registradas
+              </p>
+              <p className="text-2xl font-bold text-neutral-900">{compras.length}</p>
+            </div>
+          </div>
+
+          {cargandoCompras ? (
+            <p className="text-neutral-700 animate-pulse">Cargando compras…</p>
+          ) : compras.length === 0 ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-800">
+              Todavía no hay compras registradas. Se van guardando solas cada vez que le pones
+              &ldquo;+ Compra&rdquo; a un insumo en la pestaña de al lado.
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden divide-y divide-neutral-100">
+              {compras
+                .filter((c) => !busqueda.trim() || c.nombre.toLowerCase().includes(busqueda.trim().toLowerCase()))
+                .map((c) => (
+                  <div key={c.fila} className="flex items-center gap-3 p-3.5">
+                    <span className="text-xs text-neutral-700 font-mono w-20 shrink-0">
+                      {c.fechaISO ? c.fechaISO.slice(5) : '—'}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-neutral-900 truncate">{c.nombre}</p>
+                      <p className="text-xs text-neutral-700">
+                        {c.cantidad} {c.unidad}
+                      </p>
+                    </div>
+                    <span className="font-bold text-neutral-900 tabular-nums shrink-0">
+                      ${c.total.toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+            </div>
+          )}
+        </div>
+      ) : pestana === 'activos' && contando ? (
+        <div className="space-y-3">
+          <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-4">
+            <h2 className="font-bold text-neutral-900">✍️ Contando el local</h2>
+            <p className="text-sm text-neutral-700 mt-1">
+              Anota cuánto tienes de cada cosa. Lo que dejes vacío no se toca. Al guardar, el
+              sistema se queda con lo que contaste.
+            </p>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden divide-y divide-neutral-100">
+            {activosFiltrados.map((a) => {
+              const escrito = lecturas[a.id] ?? '';
+              const n = parseFloat(escrito.replace(',', '.'));
+              const dif = escrito.trim() !== '' && !isNaN(n) ? n - a.stockActual : null;
+              return (
+                <div key={a.id} className="flex items-center gap-3 p-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-neutral-900 truncate">{a.nombre}</p>
+                    <p className="text-xs text-neutral-700">
+                      el sistema dice {a.stockActual} {a.unidadReceta}
+                      {dif !== null && dif !== 0 && (
+                        <span className={dif > 0 ? 'text-green-700 font-bold' : 'text-red-700 font-bold'}>
+                          {' '}· {dif > 0 ? 'sobran' : 'faltan'} {Math.abs(Math.round(dif * 1000) / 1000)}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    inputMode="decimal"
+                    value={escrito}
+                    onChange={(e) => setLecturas((prev) => ({ ...prev, [a.id]: e.target.value }))}
+                    placeholder="—"
+                    className="w-24 shrink-0 bg-neutral-50 border border-neutral-200 rounded-xl px-2 py-2 text-right text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-marron"
+                  />
+                  <span className="text-xs text-neutral-700 w-10 shrink-0">{a.unidadReceta}</span>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="sticky bottom-3 flex gap-2 bg-white/95 backdrop-blur border border-neutral-200 rounded-2xl p-3 shadow-lg">
+            <button
+              onClick={() => {
+                setContando(false);
+                setLecturas({});
+              }}
+              className="flex-1 border border-neutral-200 text-neutral-700 font-semibold py-3 rounded-xl active:scale-95"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={guardarConteo}
+              disabled={guardandoConteo}
+              className="flex-1 bg-marron text-white font-bold py-3 rounded-xl active:scale-95 disabled:opacity-50"
+            >
+              {guardandoConteo
+                ? 'Guardando…'
+                : `Guardar ${Object.values(lecturas).filter((v) => v.trim() !== '').length} conteo(s)`}
+            </button>
+          </div>
+        </div>
+      ) : pestana === 'activos' ? (
         <>
           {alertas.length > 0 && (
             <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-4 mb-4">

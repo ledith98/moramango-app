@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-18',
+    tipo: 'nuevo',
+    titulo: 'Los combos se arman con productos, no con ingredientes',
+    detalle:
+      'En Recetario, al abrir un combo ahora puedes elegir entre "un ingrediente" o "un producto del menú". Para el Combo 1 dices que lleva un sándwich y un jugo, y el costo se saca solo sumando lo que cuesta cada uno — con eso te aparece el % de ganancia sobre tu precio. Antes había que recapturar los ingredientes del sándwich Y los del jugo dentro del combo, y si cambiabas la receta del sándwich el combo se quedaba con el costo viejo. Otra cosa importante: al vender un combo ahora sí se descuenta el inventario de todo lo que lleva.',
+    donde: 'Recetario',
+  },
+  {
+    fecha: '2026-08-18',
     tipo: 'mejora',
     titulo: 'Registrar compras y conteos ahora se explica solo',
     detalle:

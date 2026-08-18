@@ -13,6 +13,9 @@ import { useCallback, useEffect, useState } from 'react';
 
 interface LineaReceta {
   id: string;
+  /** 'producto' = este renglon es otro producto del menu (combos) */
+  tipo?: 'insumo' | 'producto';
+  idComponente?: string;
   idBiblioteca: string;
   insumo: string;
   unidad: string;
@@ -52,6 +55,9 @@ export default function RecetarioPage() {
 
   // Alta de un insumo dentro de una receta
   const [nuevoInsumo, setNuevoInsumo] = useState('');
+  /** Un renglon puede ser un insumo o, en los combos, otro producto */
+  const [modoAgregar, setModoAgregar] = useState<'insumo' | 'producto'>('insumo');
+  const [nuevoComponente, setNuevoComponente] = useState('');
   const [nuevaCantidad, setNuevaCantidad] = useState('');
   const [error, setError] = useState('');
 
@@ -86,12 +92,19 @@ export default function RecetarioPage() {
   }
 
   async function agregar(idProducto: string) {
-    if (!nuevoInsumo) return setError('Elige un insumo');
+    const esProducto = modoAgregar === 'producto';
+    if (esProducto && !nuevoComponente) return setError('Elige el producto');
+    if (!esProducto && !nuevoInsumo) return setError('Elige el ingrediente');
     const cant = parseFloat(nuevaCantidad.replace(',', '.'));
-    if (isNaN(cant) || cant <= 0) return setError('Escribe cuánto lleva');
-    const ok = await llamar('POST', { idProducto, idBiblioteca: nuevoInsumo, cantidad: cant });
+    if (isNaN(cant) || cant <= 0) return setError('Escribe cuántos lleva');
+    const ok = await llamar('POST', {
+      idProducto,
+      ...(esProducto ? { idComponente: nuevoComponente } : { idBiblioteca: nuevoInsumo }),
+      cantidad: cant,
+    });
     if (ok) {
       setNuevoInsumo('');
+      setNuevoComponente('');
       setNuevaCantidad('');
     }
   }
@@ -185,7 +198,17 @@ export default function RecetarioPage() {
                     {p.lineas.length === 0 ? (
                       <span className="text-amber-700 font-semibold">Sin receta</span>
                     ) : (
-                      `${p.lineas.length} insumo${p.lineas.length === 1 ? '' : 's'}`
+                      (() => {
+                          const prods = p.lineas.filter((l) => l.tipo === 'producto').length;
+                          const ings = p.lineas.length - prods;
+                          // Un combo se describe por sus productos, no por 'insumos'
+                          return [
+                            prods > 0 ? `${prods} producto${prods === 1 ? '' : 's'}` : '',
+                            ings > 0 ? `${ings} ingrediente${ings === 1 ? '' : 's'}` : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' + ');
+                        })()
                     )}
                     {' · '}
                     {p.categoria}
@@ -213,7 +236,8 @@ export default function RecetarioPage() {
                 <div className="border-t border-neutral-100 p-4 space-y-2">
                   {p.lineas.length === 0 && (
                     <p className="text-sm text-neutral-600">
-                      Todavía no tiene ingredientes. Agrega el primero abajo.
+                      Todavía no tiene receta. Si es un combo, agrégale los productos que lo
+                      forman; si no, sus ingredientes.
                     </p>
                   )}
 
@@ -224,8 +248,16 @@ export default function RecetarioPage() {
                     >
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-neutral-900">
+                          {l.tipo === 'producto' && (
+                            <span
+                              className="text-[10px] font-bold bg-marron/10 text-marron px-1.5 py-0.5 rounded mr-1.5"
+                              title="Es otro producto del menú, no un ingrediente"
+                            >
+                              PRODUCTO
+                            </span>
+                          )}
                           {l.insumo}
-                          {l.huerfano && <span className="text-red-600"> (falta el insumo)</span>}
+                          {l.huerfano && <span className="text-red-600"> (ya no existe)</span>}
                         </p>
                         {l.nota && <p className="text-[11px] text-amber-700">📝 {l.nota}</p>}
                       </div>
@@ -252,38 +284,118 @@ export default function RecetarioPage() {
                     </div>
                   ))}
 
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    <select
-                      value={nuevoInsumo}
-                      onChange={(e) => setNuevoInsumo(e.target.value)}
-                      className="flex-1 min-w-[160px] bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-marron"
-                    >
-                      <option value="">+ Agregar insumo…</option>
-                      {insumos
-                        .filter((i) => !p.lineas.some((l) => l.idBiblioteca === i.id))
-                        .map((i) => (
-                          <option key={i.id} value={i.id}>
-                            {i.nombre} ({i.unidad}){i.tienePrecio ? '' : ' — sin precio'}
-                          </option>
-                        ))}
-                    </select>
-                    <input
-                      value={nuevaCantidad}
-                      onChange={(e) => setNuevaCantidad(e.target.value)}
-                      inputMode="decimal"
-                      placeholder="Cantidad"
-                      className="w-28 bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-marron"
-                    />
-                    <span className="self-center text-sm text-neutral-700 text-neutral-900">
-                      {insumos.find((i) => i.id === nuevoInsumo)?.unidad || ''}
-                    </span>
-                    <button
-                      onClick={() => agregar(p.id)}
-                      disabled={ocupado}
-                      className="bg-marron text-white text-sm font-semibold px-4 py-2 rounded-xl active:scale-95 disabled:opacity-50"
-                    >
-                      Agregar
-                    </button>
+                  {/* Dos maneras de armar la receta.
+                      Un combo se declara con los PRODUCTOS que lo forman;
+                      recapturar los ingredientes del sándwich y del jugo
+                      dentro del combo es duplicar trabajo, y cuando cambie
+                      la receta del sándwich el combo se queda viejo. */}
+                  <div className="pt-2 space-y-2">
+                    <div className="flex gap-1 bg-neutral-100 p-1 rounded-xl w-fit">
+                      {(
+                        [
+                          ['insumo', '🥭 Un ingrediente'],
+                          ['producto', '🍽️ Un producto del menú'],
+                        ] as const
+                      ).map(([v, etiqueta]) => (
+                        <button
+                          key={v}
+                          onClick={() => {
+                            setModoAgregar(v);
+                            setNuevoInsumo('');
+                            setNuevoComponente('');
+                            setError('');
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                            modoAgregar === v
+                              ? 'bg-white text-neutral-900 shadow-sm'
+                              : 'text-neutral-700'
+                          }`}
+                        >
+                          {etiqueta}
+                        </button>
+                      ))}
+                    </div>
+
+                    {modoAgregar === 'producto' &&
+                      (() => {
+                        const disponibles = items.filter(
+                          (o) => o.id !== p.id && !p.lineas.some((l) => l.idComponente === o.id)
+                        );
+                        // Un selector vacio sin explicacion deja a la
+                        // persona esperando una lista que no va a llegar
+                        return disponibles.length === 0 ? (
+                          <p className="text-xs text-amber-700">
+                            Ya le agregaste todos los productos que se pueden. Un producto no puede
+                            llevarse a sí mismo ni repetirse.
+                          </p>
+                        ) : (
+                          <p className="text-xs text-neutral-700">
+                            Para combos: elige de qué productos se compone y el costo se saca solo
+                            sumando lo que cuesta cada uno.
+                          </p>
+                        );
+                      })()}
+
+                    <div className="flex flex-wrap gap-2">
+                      {modoAgregar === 'insumo' ? (
+                        <select
+                          value={nuevoInsumo}
+                          onChange={(e) => setNuevoInsumo(e.target.value)}
+                          className="flex-1 min-w-[160px] bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-marron"
+                        >
+                          <option value="">Elige el ingrediente…</option>
+                          {insumos
+                            .filter((i) => !p.lineas.some((l) => l.idBiblioteca === i.id))
+                            .map((i) => (
+                              <option key={i.id} value={i.id}>
+                                {i.nombre} ({i.unidad}){i.tienePrecio ? '' : ' — sin precio'}
+                              </option>
+                            ))}
+                        </select>
+                      ) : (
+                        <select
+                          value={nuevoComponente}
+                          onChange={(e) => setNuevoComponente(e.target.value)}
+                          className="flex-1 min-w-[160px] bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-marron"
+                        >
+                          <option value="">Elige el producto…</option>
+                          {items
+                            .filter(
+                              (o) =>
+                                o.id !== p.id &&
+                                !p.lineas.some((l) => l.idComponente === o.id)
+                            )
+                            .map((o) => (
+                              <option key={o.id} value={o.id}>
+                                {o.nombre}
+                                {o.costoTotal !== null
+                                  ? ` — cuesta $${o.costoTotal.toFixed(2)}`
+                                  : ' — sin receta todavía'}
+                              </option>
+                            ))}
+                        </select>
+                      )}
+
+                      <input
+                        value={nuevaCantidad}
+                        onChange={(e) => setNuevaCantidad(e.target.value)}
+                        inputMode="decimal"
+                        placeholder={modoAgregar === 'producto' ? 'Cuántos' : 'Cantidad'}
+                        className="w-28 bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-marron"
+                      />
+                      <span className="self-center text-sm text-neutral-900">
+                        {modoAgregar === 'producto'
+                          ? 'piezas'
+                          : insumos.find((i) => i.id === nuevoInsumo)?.unidad || ''}
+                      </span>
+                      <button
+                        onClick={() => agregar(p.id)}
+                        disabled={ocupado}
+                        className="bg-marron text-white text-sm font-semibold px-4 py-2 rounded-xl active:scale-95 disabled:opacity-50"
+                      >
+                        Agregar
+                      </button>
+                    </div>
                   </div>
                   {error && <p className="text-sm text-red-600">{error}</p>}
                 </div>

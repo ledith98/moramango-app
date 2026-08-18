@@ -38,6 +38,7 @@ export async function GET() {
   ]);
 
   const bibPorId = new Map(vivos(biblioteca).map((b) => [b.ID_Biblioteca, b]));
+  const prodPorId = new Map(productos.map((p) => [p.ID_Producto, p]));
 
   const lineasPorProducto = new Map<string, Record<string, string>[]>();
   for (const r of recetario) {
@@ -46,19 +47,83 @@ export async function GET() {
     lineasPorProducto.get(r.ID_Producto)!.push(r);
   }
 
+  /** Lo que cuesta un insumo por unidad de receta, según su última compra. */
+  function costoDeInsumo(idBiblioteca: string): number | null {
+    const bib = bibPorId.get(idBiblioteca);
+    if (!bib) return null;
+    return costoPorUnidadReceta(
+      parseFloat(bib.Ultimo_Precio_Compra ?? '') || 0,
+      parseFloat(bib.Equivalencia ?? '') || 1
+    );
+  }
+
+  /**
+   * Lo que cuesta preparar un producto.
+   *
+   * Un combo se declara como "un sándwich + un jugo", así que su costo es
+   * la suma de lo que cuesta cada uno — y si mañana cambia la receta del
+   * sándwich, el combo se actualiza solo.
+   *
+   * Devuelve null si falta algún precio: un costo a medias engaña más de
+   * lo que ayuda, porque el margen saldría mejor de lo que es.
+   */
+  function costoDeProducto(idProducto: string, visitados = new Set<string>()): number | null {
+    // Referencia circular (alguien puso que el combo se lleva a sí mismo)
+    if (visitados.has(idProducto) || visitados.size > 4) return null;
+    const propios = new Set(visitados);
+    propios.add(idProducto);
+
+    const lineas = lineasPorProducto.get(idProducto) ?? [];
+    if (lineas.length === 0) return null;
+
+    let total = 0;
+    for (const r of lineas) {
+      const cantidad = parseFloat(r.Cantidad) || 0;
+      if (r.ID_Componente) {
+        const costoComp = costoDeProducto(r.ID_Componente, propios);
+        if (costoComp === null) return null;
+        total += cantidad * costoComp;
+      } else {
+        const unitario = costoDeInsumo(r.ID_Biblioteca);
+        if (unitario === null) return null;
+        total += cantidad * factorMerma(r.Merma_Pct) * unitario;
+      }
+    }
+    return redondear(total, 2);
+  }
+
   const items = productos
     .filter((p) => p.ID_Producto && (p.Eliminado || '').toUpperCase() !== 'TRUE')
     .map((p) => {
       const lineas = (lineasPorProducto.get(p.ID_Producto) ?? []).map((r) => {
-        const bib = bibPorId.get(r.ID_Biblioteca);
         const cantidad = parseFloat(r.Cantidad) || 0;
-        const equivalencia = parseFloat(bib?.Equivalencia ?? '') || 1;
-        const ultimoPrecio = parseFloat(bib?.Ultimo_Precio_Compra ?? '') || 0;
-        const costoUnidad = costoPorUnidadReceta(ultimoPrecio, equivalencia);
 
+        // Renglón que apunta a otro producto: así se arman los combos
+        if (r.ID_Componente) {
+          const comp = prodPorId.get(r.ID_Componente);
+          const costoComp = costoDeProducto(r.ID_Componente, new Set([p.ID_Producto]));
+          return {
+            id: r.ID_Linea,
+            tipo: 'producto' as const,
+            idBiblioteca: '',
+            idComponente: r.ID_Componente,
+            insumo: comp?.Nombre ?? '(producto eliminado)',
+            unidad: cantidad === 1 ? 'pieza' : 'piezas',
+            cantidad,
+            merma: '',
+            nota: r.Notas || '',
+            costo: costoComp !== null ? redondear(cantidad * costoComp, 2) : null,
+            huerfano: !comp,
+          };
+        }
+
+        const bib = bibPorId.get(r.ID_Biblioteca);
+        const costoUnidad = costoDeInsumo(r.ID_Biblioteca);
         return {
           id: r.ID_Linea,
+          tipo: 'insumo' as const,
           idBiblioteca: r.ID_Biblioteca,
+          idComponente: '',
           // Nombre y unidad se resuelven al leer: renombrar un insumo
           // nunca rompe una receta, porque el vínculo es por ID
           insumo: bib?.Nombre ?? '(insumo eliminado)',
@@ -74,7 +139,6 @@ export async function GET() {
         };
       });
 
-      const conCosto = lineas.filter((l) => l.costo !== null);
       return {
         id: p.ID_Producto,
         nombre: p.Nombre || '',
@@ -82,12 +146,7 @@ export async function GET() {
         precio: parseFloat(p.Precio_Venta) || 0,
         emoji: (p.Emoji || '').trim(),
         lineas,
-        // Solo se muestra si TODOS los insumos tienen precio; un costo
-        // a medias engaña más de lo que ayuda
-        costoTotal:
-          lineas.length > 0 && conCosto.length === lineas.length
-            ? redondear(conCosto.reduce((s, l) => s + (l.costo ?? 0), 0), 2)
-            : null,
+        costoTotal: costoDeProducto(p.ID_Producto),
       };
     });
 
@@ -108,8 +167,8 @@ export async function POST(req: NextRequest) {
   }
   await prepararRecetario();
 
-  const { idProducto, idBiblioteca, cantidad } = await req.json();
-  if (!idProducto || !idBiblioteca) {
+  const { idProducto, idBiblioteca, idComponente, cantidad } = await req.json();
+  if (!idProducto || (!idBiblioteca && !idComponente)) {
     return NextResponse.json({ error: 'Faltan datos' }, { status: 400 });
   }
   const cant = parseFloat(cantidad);
@@ -117,18 +176,66 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'La cantidad debe ser mayor a 0' }, { status: 400 });
   }
 
-  const recetario = await getSheetData(HOJA_RECETARIO, { crudo: true });
-
-  // Un insumo repetido en la misma receta partiría el consumo en dos
-  if (recetario.some((r) => r.ID_Producto === idProducto && r.ID_Biblioteca === idBiblioteca)) {
+  // Un producto no puede llevarse a sí mismo: el costo no terminaría de
+  // calcularse nunca.
+  if (idComponente && idComponente === idProducto) {
     return NextResponse.json(
-      { error: 'Ese insumo ya está en la receta. Edita su cantidad.' },
+      { error: 'Un producto no puede llevarse a sí mismo' },
       { status: 400 }
     );
   }
 
+  const recetario = await getSheetData(HOJA_RECETARIO, { crudo: true });
+
+  // Repetir el mismo renglón partiría el consumo en dos
+  const yaEsta = recetario.some(
+    (r) =>
+      r.ID_Producto === idProducto &&
+      (idComponente ? r.ID_Componente === idComponente : r.ID_Biblioteca === idBiblioteca)
+  );
+  if (yaEsta) {
+    return NextResponse.json(
+      {
+        error: idComponente
+          ? 'Ese producto ya está en el combo. Edita su cantidad.'
+          : 'Ese insumo ya está en la receta. Edita su cantidad.',
+      },
+      { status: 400 }
+    );
+  }
+
+  // Referencia circular en cadena: el combo A lleva B, y B ya lleva A.
+  if (idComponente) {
+    const porProducto = new Map<string, string[]>();
+    for (const r of recetario) {
+      if (!r.ID_Producto || !r.ID_Componente) continue;
+      if (!porProducto.has(r.ID_Producto)) porProducto.set(r.ID_Producto, []);
+      porProducto.get(r.ID_Producto)!.push(r.ID_Componente);
+    }
+    const alcanza = (desde: string, buscado: string, visto = new Set<string>()): boolean => {
+      if (desde === buscado) return true;
+      if (visto.has(desde)) return false;
+      visto.add(desde);
+      return (porProducto.get(desde) ?? []).some((h) => alcanza(h, buscado, visto));
+    };
+    if (alcanza(idComponente, idProducto)) {
+      return NextResponse.json(
+        { error: 'Eso haría un círculo: ese producto ya contiene a este' },
+        { status: 400 }
+      );
+    }
+  }
+
   const idLinea = `REC-${String(recetario.length + 1).padStart(4, '0')}`;
-  await appendRow(HOJA_RECETARIO, [idLinea, idProducto, idBiblioteca, cant, '', '']);
+  await appendRow(HOJA_RECETARIO, [
+    idLinea,
+    idProducto,
+    idBiblioteca || '',
+    cant,
+    '',
+    '',
+    idComponente || '',
+  ]);
 
   return NextResponse.json({ success: true, id: idLinea });
 }

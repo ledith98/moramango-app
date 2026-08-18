@@ -34,6 +34,11 @@ export const COLS_RECETARIO = [
   'Cantidad',
   'Merma_Pct',
   'Notas',
+  // Un renglon puede ser OTRO PRODUCTO en vez de un insumo: es como se
+  // arma un combo. Con esto el Combo 1 se declara "un sandwich + un
+  // jugo" en vez de recapturar los ingredientes de los dos, y cuando
+  // cambie la receta del sandwich el combo se entera solo.
+  'ID_Componente',
 ];
 
 // Columnas 1-based para updateCell
@@ -43,6 +48,7 @@ export const COL_REC = {
   cantidad: 4,
   merma: 5,
   notas: 6,
+  idComponente: 7,
 } as const;
 
 export async function prepararRecetario(): Promise<void> {
@@ -50,9 +56,61 @@ export async function prepararRecetario(): Promise<void> {
 }
 
 /**
+ * Máximo de niveles al desarmar un combo. Un combo que lleva un combo que
+ * lleva un combo ya no es un menú, es un error de captura.
+ */
+const PROFUNDIDAD_MAX = 4;
+
+/**
+ * Desarma los renglones que apuntan a otro producto hasta quedarse solo
+ * con insumos.
+ *
+ * El Combo 1 declara "1 sándwich + 1 jugo"; para descontar inventario hay
+ * que saber que eso son 60 g de jamón, 40 g de queso, 240 g de mango…
+ * Esta función hace esa traducción, multiplicando por la cantidad de cada
+ * nivel: 2 combos que llevan 1 jugo cada uno son 2 jugos.
+ *
+ * `visitados` corta las referencias circulares. Si alguien pone que el
+ * Combo 1 lleva Combo 1, sin esto el cálculo no terminaría nunca.
+ */
+function insumosDe(
+  idProducto: string,
+  factor: number,
+  porProducto: Map<string, Record<string, string>[]>,
+  visitados: Set<string>,
+  nivel = 0
+): { idBiblioteca: string; cantidad: number; merma: string }[] {
+  if (nivel >= PROFUNDIDAD_MAX || visitados.has(idProducto)) return [];
+  const propios = new Set(visitados);
+  propios.add(idProducto);
+
+  const salida: { idBiblioteca: string; cantidad: number; merma: string }[] = [];
+  for (const r of porProducto.get(idProducto) ?? []) {
+    const cantidad = (parseFloat(r.Cantidad) || 0) * factor;
+    if (cantidad <= 0) continue;
+
+    if (r.ID_Componente) {
+      salida.push(
+        ...insumosDe(r.ID_Componente, cantidad, porProducto, propios, nivel + 1)
+      );
+    } else if (r.ID_Biblioteca) {
+      salida.push({
+        idBiblioteca: r.ID_Biblioteca,
+        cantidad,
+        merma: r.Merma_Pct || '',
+      });
+    }
+  }
+  return salida;
+}
+
+/**
  * Traduce el Recetario al formato que ya entienden consumoPorInsumo y
  * disponibilidadPorProducto, que trabajan con las columnas de Catalogo.
  * Así el recetario nuevo se enchufa sin reescribir esos cálculos.
+ *
+ * Los combos se desarman aquí: quien consume esto ve solo insumos, sin
+ * enterarse de que un producto podía estar hecho de otros.
  */
 export function recetarioComoCatalogo(
   recetario: Record<string, string>[],
@@ -60,17 +118,29 @@ export function recetarioComoCatalogo(
 ): Record<string, string>[] {
   const nombrePorId = new Map(biblioteca.map((b) => [b.ID_Biblioteca, b.Nombre || '']));
 
-  return recetario
-    .filter((r) => r.ID_Producto && r.ID_Biblioteca)
-    .map((r) => ({
-      ID_Producto: r.ID_Producto,
+  const porProducto = new Map<string, Record<string, string>[]>();
+  for (const r of recetario) {
+    if (!r.ID_Producto) continue;
+    if (!porProducto.has(r.ID_Producto)) porProducto.set(r.ID_Producto, []);
+    porProducto.get(r.ID_Producto)!.push(r);
+  }
+
+  const salida: Record<string, string>[] = [];
+  for (const idProducto of porProducto.keys()) {
+    for (const l of insumosDe(idProducto, 1, porProducto, new Set())) {
       // El vínculo real es por ID; el nombre se resuelve al leer, así que
       // renombrar un insumo nunca rompe una receta.
-      Ingrediente: nombrePorId.get(r.ID_Biblioteca) ?? '',
-      Cantidad_Receta: r.Cantidad || '0',
-      Merma_Pct: r.Merma_Pct || '',
-    }))
-    .filter((r) => r.Ingrediente);
+      const nombre = nombrePorId.get(l.idBiblioteca) ?? '';
+      if (!nombre) continue;
+      salida.push({
+        ID_Producto: idProducto,
+        Ingrediente: nombre,
+        Cantidad_Receta: String(l.cantidad),
+        Merma_Pct: l.merma,
+      });
+    }
+  }
+  return salida;
 }
 
 /**

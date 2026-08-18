@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-18',
+    tipo: 'mejora',
+    titulo: 'En Pedidos ya se ve con qué te pagaron cada uno',
+    detalle:
+      'Cada pedido de la lista trae ahora su forma de cobro al lado del número: 💵 Efectivo, 💳 Terminal, 📲 Transferencia, 🛍️ Pago en línea, o "sin registrar" si le falta. Antes había que abrir uno por uno para saberlo. Junto con el filtro de Cobro que ya estaba, puedes dejar en pantalla solo los de terminal y ver de un vistazo cuáles son y cuánto suman.',
+    donde: 'Pedidos',
+  },
+  {
+    fecha: '2026-08-18',
     tipo: 'nuevo',
     titulo: 'Ventas fiadas y buscador de clientes en Pedidos',
     detalle:

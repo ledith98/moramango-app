@@ -475,7 +475,27 @@ export default function PedidosPage() {
                   )}
                   {p.Nombre_Cliente_Snap}
                 </p>
-                <p className="text-xs text-neutral-700 font-mono">{p.ID_Pedido}</p>
+                <p className="text-xs text-neutral-700 font-mono flex items-center gap-1.5 flex-wrap">
+                  <span>{p.ID_Pedido}</span>
+                  {/* Con qué se pagó, a la vista en la lista. Antes había
+                      que abrir cada pedido para saberlo, así que cuadrar
+                      el día contra la terminal era abrir uno por uno. */}
+                  {(() => {
+                    const m = normalizarMetodoPago(p.Metodo_Pago);
+                    if (!m) {
+                      return (
+                        <span className="font-sans text-[10px] font-semibold px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600">
+                          sin registrar
+                        </span>
+                      );
+                    }
+                    return (
+                      <span className="font-sans text-[10px] font-semibold px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-700">
+                        {iconoMetodo(m)} {m}
+                      </span>
+                    );
+                  })()}
+                </p>
               </div>
               <span className="font-bold text-neutral-900 shrink-0">${parseFloat(p.Total_Final || '0').toFixed(2)}</span>
               <div className="flex flex-col items-end gap-1 shrink-0">

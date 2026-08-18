@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-18',
+    tipo: 'mejora',
+    titulo: 'Registrar compras y conteos ahora se explica solo',
+    detalle:
+      'Contar abría una cajita gris del navegador, sin unidades ni contexto. Ahora las dos son ventanas que te dicen lo que va a pasar mientras escribes. Al registrar una compra ves la conversión completa: "5 kg son 5000 g", "tu inventario pasa de 2400 a 7400 g" y "te sale a $56 por kg, subió 12% contra la vez pasada" — así te enteras si te subieron el precio en el momento, no al cerrar el mes. Al contar te dice si sobran o faltan y por qué puede ser (merma, algo que se tiró, una compra sin capturar), y te aclara que tu inventario queda en lo que contaste.',
+    donde: 'Insumos',
+  },
+  {
+    fecha: '2026-08-18',
     tipo: 'arreglo',
     titulo: 'Insumos ya se ve completo, sin nada cortado',
     detalle:

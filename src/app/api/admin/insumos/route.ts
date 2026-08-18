@@ -187,6 +187,9 @@ export async function GET(req: NextRequest) {
         unidadReceta: bib.Unidad_Receta || '',
         equivalencia,
         costoPorUnidadReceta: costoPorUnidadReceta(ultimoPrecio, equivalencia),
+        // Para comparar al registrar la compra: si el precio subio,
+        // conviene enterarse en el momento y no al cerrar el mes.
+        ultimoPrecioCompra: redondear(ultimoPrecio, 2),
         categoria: bib.Categoria || '',
         proveedor: bib.Proveedor || '',
         stockActual: redondear(stock, 3),

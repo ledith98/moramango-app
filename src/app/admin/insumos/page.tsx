@@ -83,6 +83,8 @@ interface ItemActivo {
   conteoFisico: number | null;
   fechaConteo: string;
   diferencia: number | null;
+  /** Precio de la ultima compra, para comparar al registrar una nueva */
+  ultimoPrecioCompra: number;
 }
 
 interface CompraHistorial {
@@ -188,6 +190,8 @@ export default function InsumosPage() {
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [modalInsumo, setModalInsumo] = useState(false);
   const [compraDe, setCompraDe] = useState<ItemActivo | null>(null);
+  const [conteoDe, setConteoDe] = useState<ItemActivo | null>(null);
+  const [conteoCantidad, setConteoCantidad] = useState('');
   const [compraCantidad, setCompraCantidad] = useState('');
   const [compraPrecio, setCompraPrecio] = useState('');
   const [historial, setHistorial] = useState<CompraHistorial[] | null>(null);
@@ -373,28 +377,41 @@ El stock quedará igual a lo que contaste.`)) return;
    * su fecha Y el stock queda en lo contado, que es lo que la persona
    * quiere decir cuando cuenta.
    */
-  async function registrarConteo(a: ItemActivo) {
-    const valor = prompt(
-      `¿Cuánto tienes de ${a.nombre}? (en ${a.unidadReceta})
+  /**
+   * Abre el conteo. Antes era un prompt() del navegador: una cajita gris
+   * sin unidades, sin decir contra qué se compara ni qué va a pasar al
+   * aceptar. Ahora es una ventana que lo explica mientras se escribe.
+   */
+  function abrirConteo(a: ItemActivo) {
+    setConteoDe(a);
+    setConteoCantidad('');
+    setError('');
+  }
 
-El sistema cree que hay ${a.stockActual}.`,
-      String(a.stockActual)
-    );
-    if (valor === null) return;
-    const num = parseFloat(valor.replace(',', '.'));
-    if (isNaN(num) || num < 0) return alert('Cantidad inválida');
+  async function guardarConteoDeUno() {
+    if (!conteoDe) return;
+    const num = parseFloat(conteoCantidad.replace(',', '.'));
+    if (isNaN(num) || num < 0) {
+      setError('Escribe cuánto tienes');
+      return;
+    }
     setOcupado(true);
+    setError('');
     try {
       const r = await fetch('/api/admin/insumos', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accion: 'conteoRapido', lecturas: [{ id: a.id, cantidad: num }] }),
+        body: JSON.stringify({
+          accion: 'conteoRapido',
+          lecturas: [{ id: conteoDe.id, cantidad: num }],
+        }),
       });
       const d = await r.json();
       if (!r.ok) {
-        alert(d.error || 'No se pudo guardar');
+        setError(d.error || 'No se pudo guardar');
         return;
       }
+      setConteoDe(null);
       await cargar();
     } finally {
       setOcupado(false);
@@ -942,7 +959,7 @@ El sistema cree que hay ${a.stockActual}.`,
                           🛒 Compré
                         </button>
                         <button
-                          onClick={() => registrarConteo(a)}
+                          onClick={() => abrirConteo(a)}
                           disabled={ocupado}
                           className="flex-1 bg-neutral-200 text-black text-sm font-bold py-2.5 rounded-xl active:scale-95 disabled:opacity-50"
                         >
@@ -1265,51 +1282,202 @@ El sistema cree que hay ${a.stockActual}.`,
       )}
 
       {/* ── Modal: registrar compra ── */}
-      {compraDe && (
-        <Modal titulo={`Compra de ${compraDe.nombre}`} onCerrar={() => setCompraDe(null)}>
-          <label className="block text-xs font-semibold text-neutral-700 mb-1">
-            ¿Cuánto compraste? (en {compraDe.unidadCompra || 'unidades'})
-          </label>
-          <input
-            type="number"
-            inputMode="decimal"
-            value={compraCantidad}
-            onChange={(e) => setCompraCantidad(e.target.value)}
-            className={inputCls}
-            autoFocus
-          />
+      {/* ── Registrar una compra ──
+          La confusión de fondo: se compra por kilo/litro/caja pero el
+          inventario vive en gramos/ml. Si no se ve la conversión mientras
+          se escribe, el número final parece salido de la nada. */}
+      {compraDe && (() => {
+        const cant = parseFloat(compraCantidad.replace(',', '.')) || 0;
+        const entra = cant * compraDe.equivalencia;
+        const queda = compraDe.stockActual + entra;
+        const pagado = parseFloat(compraPrecio.replace(',', '.')) || 0;
+        const porUnidad = cant > 0 && pagado > 0 ? pagado / cant : 0;
+        const antes = compraDe.ultimoPrecioCompra || 0;
+        const dif = porUnidad > 0 && antes > 0 ? ((porUnidad - antes) / antes) * 100 : null;
 
-          <label className="block text-xs font-semibold text-neutral-700 mb-1 mt-3">
-            ¿Cuánto pagaste en total? ($)
-          </label>
-          <input
-            type="number"
-            inputMode="decimal"
-            value={compraPrecio}
-            onChange={(e) => setCompraPrecio(e.target.value)}
-            placeholder="Opcional — actualiza el costo"
-            className={inputCls}
-          />
+        return (
+          <Modal titulo={`🛒 Compré ${compraDe.nombre}`} onCerrar={() => setCompraDe(null)}>
+            <p className="text-sm text-neutral-700 mb-4">
+              Ahorita tienes{' '}
+              <b className="text-neutral-900">
+                {compraDe.stockActual} {compraDe.unidadReceta}
+              </b>
+              .
+            </p>
 
-          <p className="text-xs text-neutral-700 mt-3 bg-neutral-50 rounded-xl p-3">
-            Se sumarán{' '}
-            <strong>
-              {(parseFloat(compraCantidad) || 0) * compraDe.equivalencia} {compraDe.unidadReceta}
-            </strong>{' '}
-            al stock (1 {compraDe.unidadCompra} = {compraDe.equivalencia} {compraDe.unidadReceta}).
-          </p>
+            <label className="block text-sm font-semibold text-neutral-800 mb-1">
+              ¿Cuántos {compraDe.unidadCompra || 'paquetes'} compraste?
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="any"
+                value={compraCantidad}
+                onChange={(e) => setCompraCantidad(e.target.value)}
+                className={inputCls}
+                autoFocus
+              />
+              <span className="text-sm font-bold text-neutral-700 whitespace-nowrap">
+                {compraDe.unidadCompra}
+              </span>
+            </div>
 
-          {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
+            <label className="block text-sm font-semibold text-neutral-800 mb-1 mt-4">
+              ¿Cuánto pagaste en total?{' '}
+              <span className="font-normal text-neutral-600">(opcional)</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <span className="text-lg font-bold text-neutral-700">$</span>
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="any"
+                value={compraPrecio}
+                onChange={(e) => setCompraPrecio(e.target.value)}
+                placeholder="Por todo lo que compraste"
+                className={inputCls}
+              />
+            </div>
 
-          <button
-            onClick={registrarCompra}
-            disabled={ocupado}
-            className="w-full bg-marron text-white font-semibold py-3 rounded-xl mt-4 active:scale-95 disabled:opacity-50"
-          >
-            {ocupado ? 'Guardando…' : 'Registrar compra'}
-          </button>
-        </Modal>
-      )}
+            {/* Lo que va a pasar, en palabras */}
+            {cant > 0 && (
+              <div className="mt-4 bg-neutral-50 border border-neutral-200 rounded-2xl p-4 space-y-2">
+                <p className="text-sm text-neutral-800">
+                  {cant} {compraDe.unidadCompra} son{' '}
+                  <b>
+                    {Math.round(entra * 1000) / 1000} {compraDe.unidadReceta}
+                  </b>
+                  <span className="text-neutral-600">
+                    {' '}
+                    (1 {compraDe.unidadCompra} = {compraDe.equivalencia} {compraDe.unidadReceta})
+                  </span>
+                </p>
+                <p className="text-sm text-neutral-800">
+                  Tu inventario pasa de {compraDe.stockActual} a{' '}
+                  <b className="text-green-700">
+                    {Math.round(queda * 1000) / 1000} {compraDe.unidadReceta}
+                  </b>
+                </p>
+                {porUnidad > 0 && (
+                  <p className="text-sm text-neutral-800">
+                    Te sale a <b>${(Math.round(porUnidad * 100) / 100).toFixed(2)}</b> por{' '}
+                    {compraDe.unidadCompra}
+                    {dif !== null && Math.abs(dif) >= 1 && (
+                      <span
+                        className={`font-bold ${dif > 0 ? 'text-red-600' : 'text-green-700'}`}
+                      >
+                        {' '}
+                        · {dif > 0 ? 'subió' : 'bajó'} {Math.abs(Math.round(dif))}% contra la vez
+                        pasada (${antes})
+                      </span>
+                    )}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
+
+            <button
+              onClick={registrarCompra}
+              disabled={ocupado || cant <= 0}
+              className="w-full bg-marron text-white font-bold py-3.5 rounded-xl mt-4 active:scale-95 disabled:opacity-50"
+            >
+              {ocupado ? 'Guardando…' : 'Guardar la compra'}
+            </button>
+            <p className="text-xs text-neutral-600 mt-2 text-center">
+              Queda anotada en &ldquo;Lo que he comprado&rdquo; con la fecha de hoy.
+            </p>
+          </Modal>
+        );
+      })()}
+
+      {/* ── Registrar un conteo ──
+          Contar sirve para corregir: el sistema lleva una cuenta teórica y
+          la realidad se le desvía por mermas, derrames o capturas que
+          faltaron. Por eso lo importante es ver la diferencia. */}
+      {conteoDe && (() => {
+        const escrito = conteoCantidad.trim();
+        const num = parseFloat(escrito.replace(',', '.'));
+        const valido = escrito !== '' && !isNaN(num) && num >= 0;
+        const dif = valido ? num - conteoDe.stockActual : null;
+
+        return (
+          <Modal titulo={`✍️ Conté ${conteoDe.nombre}`} onCerrar={() => setConteoDe(null)}>
+            <p className="text-sm text-neutral-700 mb-4">
+              El sistema cree que hay{' '}
+              <b className="text-neutral-900">
+                {conteoDe.stockActual} {conteoDe.unidadReceta}
+              </b>
+              . Cuenta lo que de verdad tienes y anótalo aquí.
+            </p>
+
+            <label className="block text-sm font-semibold text-neutral-800 mb-1">
+              ¿Cuánto tienes?
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="any"
+                value={conteoCantidad}
+                onChange={(e) => setConteoCantidad(e.target.value)}
+                placeholder={String(conteoDe.stockActual)}
+                className={inputCls}
+                autoFocus
+              />
+              <span className="text-sm font-bold text-neutral-700 whitespace-nowrap">
+                {conteoDe.unidadReceta}
+              </span>
+            </div>
+
+            {valido && (
+              <div
+                className={`mt-4 rounded-2xl p-4 border ${
+                  dif === 0
+                    ? 'bg-green-50 border-green-200'
+                    : dif! < 0
+                    ? 'bg-red-50 border-red-200'
+                    : 'bg-amber-50 border-amber-200'
+                }`}
+              >
+                <p className="text-sm font-bold text-neutral-900">
+                  {dif === 0
+                    ? '✅ Coincide exacto con lo que decía el sistema.'
+                    : dif! < 0
+                    ? `Faltan ${Math.abs(Math.round(dif! * 1000) / 1000)} ${conteoDe.unidadReceta}`
+                    : `Sobran ${Math.round(dif! * 1000) / 1000} ${conteoDe.unidadReceta}`}
+                </p>
+                {dif !== 0 && (
+                  <p className="text-xs text-neutral-700 mt-1">
+                    {dif! < 0
+                      ? 'Puede ser merma, algo que se tiró o una venta que no se registró.'
+                      : 'Puede ser una compra que no se capturó o una receta que descuenta de más.'}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
+
+            <button
+              onClick={guardarConteoDeUno}
+              disabled={ocupado || !valido}
+              className="w-full bg-marron text-white font-bold py-3.5 rounded-xl mt-4 active:scale-95 disabled:opacity-50"
+            >
+              {ocupado ? 'Guardando…' : 'Guardar el conteo'}
+            </button>
+            <p className="text-xs text-neutral-600 mt-2 text-center">
+              Tu inventario queda en {valido ? `${num} ${conteoDe.unidadReceta}` : 'lo que cuentes'},
+              con la fecha de hoy.
+            </p>
+          </Modal>
+        );
+      })()}
 
       {/* ── Modal: lista de compras ── */}
       {listaAbierta && (

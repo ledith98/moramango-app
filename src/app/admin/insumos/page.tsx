@@ -814,312 +814,314 @@ El sistema cree que hay ${a.stockActual}.`,
             El consumo por día se calcula con las ventas de los últimos {diasAnalisis} días.
           </p>
 
-          <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-neutral-700 border-b border-neutral-100">
-                  <th className="p-3 font-semibold">Insumo</th>
-                  <th className="p-3 font-semibold">Cuánto queda</th>
-                  <th className="p-3 font-semibold">Se gasta al día</th>
-                  <th className="p-3 font-semibold">Alcanza para</th>
-                  <th className="p-3 font-semibold">Última compra</th>
-                  <th className="p-3 font-semibold">Cómo está</th>
-                  <th className="p-3 font-semibold">Último conteo</th>
-                  <th className="p-3 font-semibold"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-100">
-                {gruposActivos.map((grupo) => (
-                  <Fragment key={grupo.categoria}>
-                    <tr className="bg-neutral-50">
-                      <td colSpan={8} className="px-3 py-2 font-bold text-neutral-700 text-xs uppercase tracking-wide">
-                        {ICONO_GRUPO[grupo.categoria] ?? '·'} {grupo.categoria}
-                        <span className="font-normal text-neutral-600 ml-1.5 normal-case tracking-normal">
-                          ({grupo.items.length})
-                        </span>
-                      </td>
-                    </tr>
-                    {grupo.items.map((a) => (
-                  <tr key={a.id} className="hover:bg-neutral-50">
-                    <td className="p-3">
-                      <p className="font-semibold text-neutral-900">{a.nombre}</p>
-                      <p className="text-xs text-neutral-600">{a.categoria || SIN_CATEGORIA}</p>
-                    </td>
-                    <td className="p-3 font-semibold text-neutral-900 whitespace-nowrap">
-                      {a.stockActual} {a.unidadReceta}
-                    </td>
-                    <td className="p-3 text-neutral-600 whitespace-nowrap">
-                      {a.consumoPorDia > 0 ? `${a.consumoPorDia} ${a.unidadReceta}` : '—'}
-                    </td>
-                    <td className="p-3 whitespace-nowrap">
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className={`w-2.5 h-2.5 rounded-full ${PUNTO_NIVEL[a.nivel]}`} />
-                        {a.alcanzaParaDias !== null ? (
-                          <span className="text-neutral-700">
-                            ~{a.alcanzaParaDias} día{a.alcanzaParaDias === 1 ? '' : 's'}
+          {/* Tarjetas, no tabla. Con 8 columnas y los botones al final, en
+              tablet o celular el renglón se salía de la pantalla y las
+              acciones quedaban cortadas. Así cada insumo se acomoda solo y
+              nada depende del ancho. */}
+          <div className="space-y-6">
+            {gruposActivos.map((grupo) => (
+              <section key={grupo.categoria}>
+                <h3 className="font-bold text-neutral-700 text-xs uppercase tracking-wide mb-2">
+                  {ICONO_GRUPO[grupo.categoria] ?? '·'} {grupo.categoria}
+                  <span className="font-normal text-neutral-600 ml-1.5 normal-case tracking-normal">
+                    ({grupo.items.length})
+                  </span>
+                </h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {grupo.items.map((a) => (
+                    <div
+                      key={a.id}
+                      className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-4 flex flex-col gap-3"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-bold text-neutral-900 leading-tight break-words">
+                            {a.nombre}
+                          </p>
+                          <p className="text-xs text-neutral-600">{a.categoria || SIN_CATEGORIA}</p>
+                        </div>
+                        <span className="shrink-0 inline-flex items-center gap-1.5 text-xs">
+                          <span className={`w-2.5 h-2.5 rounded-full ${PUNTO_NIVEL[a.nivel]}`} />
+                          <span className="text-neutral-700 whitespace-nowrap">
+                            {a.alcanzaParaDias !== null
+                              ? `~${a.alcanzaParaDias} día${a.alcanzaParaDias === 1 ? '' : 's'}`
+                              : 'sin datos'}
                           </span>
-                        ) : (
-                          <span className="text-neutral-600">sin datos</span>
-                        )}
-                      </span>
-                    </td>
-                    <td className="p-3 whitespace-nowrap text-neutral-600">
-                      <input
-                        type="date"
-                        value={a.ultimaCompraISO || ''}
-                        disabled={ocupado}
-                        onChange={(e) => accionActivo(a.id, { accion: 'fechaCompra', fechaISO: e.target.value })}
-                        className="bg-neutral-50 border border-neutral-200 rounded-lg px-2 py-1 text-xs text-neutral-900 focus:outline-none focus:border-marron disabled:opacity-50"
-                      />
-                      <div className="flex items-center gap-2 mt-0.5">
+                        </span>
+                      </div>
+
+                      <div className="flex items-end justify-between gap-3">
+                        <div>
+                          <p className="text-[11px] text-neutral-600 uppercase tracking-wide">
+                            Cuánto queda
+                          </p>
+                          <p className="text-2xl font-bold text-neutral-900 leading-none">
+                            {a.stockActual}{' '}
+                            <span className="text-sm font-semibold text-neutral-700">
+                              {a.unidadReceta}
+                            </span>
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[11px] text-neutral-600 uppercase tracking-wide">
+                            Se gasta al día
+                          </p>
+                          <p className="font-semibold text-neutral-900">
+                            {a.consumoPorDia > 0 ? `${a.consumoPorDia} ${a.unidadReceta}` : '—'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {a.conteoFisico !== null && (
+                        <p className="text-xs text-neutral-700">
+                          Último conteo:{' '}
+                          <b>
+                            {a.conteoFisico} {a.unidadReceta}
+                          </b>
+                          {a.diferencia !== null && a.diferencia !== 0 && (
+                            <span
+                              className={`ml-1 font-bold ${
+                                a.diferencia < 0 ? 'text-red-600' : 'text-green-600'
+                              }`}
+                            >
+                              ({a.diferencia > 0 ? '+' : ''}
+                              {a.diferencia})
+                            </span>
+                          )}
+                          {a.fechaConteo && (
+                            <span className="text-neutral-600"> · {a.fechaConteo}</span>
+                          )}
+                        </p>
+                      )}
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="date"
+                          value={a.ultimaCompraISO || ''}
+                          disabled={ocupado}
+                          onChange={(e) =>
+                            accionActivo(a.id, { accion: 'fechaCompra', fechaISO: e.target.value })
+                          }
+                          title="Fecha de la última compra"
+                          className="bg-neutral-50 border border-neutral-200 rounded-lg px-2 py-1.5 text-xs text-neutral-900 focus:outline-none focus:border-marron disabled:opacity-50"
+                        />
+                        <select
+                          value={a.status}
+                          disabled={ocupado}
+                          onChange={(e) =>
+                            accionActivo(a.id, { accion: 'status', valor: e.target.value })
+                          }
+                          title="Cómo está el insumo"
+                          className={`rounded-full px-2.5 py-1.5 text-[11px] font-semibold border-0 focus:outline-none ${
+                            COLOR_STATUS[a.status] ?? 'bg-neutral-100 text-neutral-700'
+                          }`}
+                        >
+                          <option value="">Cómo está</option>
+                          {STATUS.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
                         {a.diasDesdeCompra !== null && (
                           <span className="text-[11px] text-neutral-600">
-                            {a.diasDesdeCompra === 0 ? 'Hoy' : `Hace ${a.diasDesdeCompra} d`}
+                            {a.diasDesdeCompra === 0
+                              ? 'comprado hoy'
+                              : `hace ${a.diasDesdeCompra} d`}
                           </span>
                         )}
+                      </div>
+
+                      <div className="mt-auto pt-1 flex gap-2">
+                        <button
+                          onClick={() => abrirCompra(a)}
+                          disabled={ocupado}
+                          className="flex-1 bg-marron text-white text-sm font-bold py-2.5 rounded-xl active:scale-95 disabled:opacity-50"
+                        >
+                          🛒 Compré
+                        </button>
+                        <button
+                          onClick={() => registrarConteo(a)}
+                          disabled={ocupado}
+                          className="flex-1 bg-neutral-200 text-black text-sm font-bold py-2.5 rounded-xl active:scale-95 disabled:opacity-50"
+                        >
+                          ✍️ Conté
+                        </button>
+                      </div>
+
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
                         <button
                           onClick={() => verHistorial(a.idBiblioteca, a.nombre)}
-                          className="text-[11px] text-marron font-semibold"
+                          className="font-semibold text-neutral-700 underline decoration-neutral-300"
                         >
                           Ver compras
                         </button>
+                        <button
+                          onClick={() => abrirRecetas(a.idBiblioteca, a.nombre)}
+                          className="font-semibold text-neutral-700 underline decoration-neutral-300"
+                        >
+                          En qué se usa
+                        </button>
+                        <button
+                          onClick={() => cambiarUso(a.id, a.nombre, false)}
+                          disabled={ocupado}
+                          className="font-semibold text-neutral-700 underline decoration-neutral-300 disabled:opacity-50"
+                        >
+                          Ya no lo uso
+                        </button>
                       </div>
-                    </td>
-                    <td className="p-3">
-                      <select
-                        value={a.status}
-                        disabled={ocupado}
-                        onChange={(e) =>
-                          accionActivo(a.id, { accion: 'status', valor: e.target.value })
-                        }
-                        className={`rounded-full px-2 py-1 text-[11px] font-semibold border-0 focus:outline-none ${
-                          COLOR_STATUS[a.status] ?? 'bg-neutral-100 text-neutral-600'
-                        }`}
-                      >
-                        <option value="">—</option>
-                        {STATUS.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="p-3 whitespace-nowrap">
-                      {a.conteoFisico !== null ? (
-                        <div>
-                          <p className="text-neutral-700">
-                            {a.conteoFisico} {a.unidadReceta}
-                            {a.diferencia !== null && a.diferencia !== 0 && (
-                              <span
-                                className={`ml-1.5 text-xs font-semibold ${
-                                  a.diferencia < 0 ? 'text-red-600' : 'text-green-600'
-                                }`}
-                              >
-                                ({a.diferencia > 0 ? '+' : ''}
-                                {a.diferencia})
-                              </span>
-                            )}
-                          </p>
-                          {a.fechaConteo && (
-                            <p className="text-[10px] text-neutral-600">{a.fechaConteo}</p>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-neutral-600">—</span>
-                      )}
-                    </td>
-                    <td className="p-3">
-                      {/* Dos acciones, que son las dos cosas que de verdad
-                          pasan con un insumo: lo compré o lo conté. Lo demás
-                          es de vez en cuando y va en letra chica. */}
-                      <div className="flex flex-col gap-1.5 items-end">
-                        <div className="flex gap-1.5">
-                          <button
-                            onClick={() => abrirCompra(a)}
-                            disabled={ocupado}
-                            className="text-xs font-bold bg-marron text-white px-3 py-2 rounded-lg active:scale-95 disabled:opacity-50 whitespace-nowrap"
-                            title="Registrar que compraste más"
-                          >
-                            🛒 Compré
-                          </button>
-                          <button
-                            onClick={() => registrarConteo(a)}
-                            disabled={ocupado}
-                            className="text-xs font-bold text-black bg-neutral-200 px-3 py-2 rounded-lg active:scale-95 disabled:opacity-50 whitespace-nowrap"
-                            title="Anotar cuánto tienes de verdad"
-                          >
-                            ✍️ Conté
-                          </button>
-                        </div>
-                        <div className="flex gap-2 text-[11px]">
-                          <button
-                            onClick={() => abrirRecetas(a.idBiblioteca, a.nombre)}
-                            className="font-semibold text-neutral-700 underline decoration-neutral-300 active:scale-95 whitespace-nowrap"
-                            title="En qué productos se usa este insumo"
-                          >
-                            En qué se usa
-                          </button>
-                          <button
-                            onClick={() => cambiarUso(a.id, a.nombre, false)}
-                            disabled={ocupado}
-                            className="font-semibold text-neutral-700 underline decoration-neutral-300 active:scale-95 disabled:opacity-50 whitespace-nowrap"
-                            title="Guardarlo en el catálogo sin usarlo por ahora"
-                          >
-                            Ya no lo uso
-                          </button>
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                    ))}
-                  </Fragment>
-                ))}
-                {activosFiltrados.length === 0 && (
-                  <tr>
-                    <td colSpan={8} className="p-6 text-center text-neutral-600">
-                      No hay insumos activos que mostrar.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ))}
+
+            {activosFiltrados.length === 0 && (
+              <p className="bg-white rounded-2xl border border-neutral-100 p-6 text-center text-neutral-600">
+                No hay insumos que mostrar.
+              </p>
+            )}
           </div>
         </>
       ) : (
-        <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-neutral-700 border-b border-neutral-100">
-                <th className="p-3 font-semibold">Insumo</th>
-                <th className="p-3 font-semibold">Se compra por</th>
-                <th className="p-3 font-semibold">Equivale a</th>
-                <th className="p-3 font-semibold">Último precio</th>
-                <th className="p-3 font-semibold">Costo por unidad de receta</th>
-                <th className="p-3 font-semibold">Proveedor</th>
-                <th className="p-3 font-semibold"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {bibliotecaFiltrada.map((b) => (
-                <tr key={b.id} className="hover:bg-neutral-50">
-                  <td className="p-3">
-                    <p className="font-semibold text-neutral-900">{b.nombre}</p>
-                    <p className="text-xs text-neutral-600">
-                      {b.id} · {b.categoria || SIN_CATEGORIA}
-                    </p>
-                    <span
-                      className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full mt-1 ${
-                        b.enUso ? 'bg-green-100 text-green-700' : 'bg-neutral-100 text-neutral-700'
-                      }`}
-                    >
-                      {b.enUso ? '🧊 En uso' : '💤 Guardado para después'}
-                    </span>
-                    {b.recetas.length > 0 ? (
-                      <p className="text-[11px] text-green-700 mt-0.5" title={b.recetas.join(', ')}>
-                        🍹 En {b.recetas.length} producto{b.recetas.length === 1 ? '' : 's'}:{' '}
-                        {b.recetas.slice(0, 2).join(', ')}
-                        {b.recetas.length > 2 ? ` +${b.recetas.length - 2}` : ''}
-                      </p>
-                    ) : (
-                      <p className="text-[11px] text-amber-700 mt-0.5">
-                        ⚠️ Sin receta asociada — no se le descuenta stock
-                      </p>
-                    )}
-                    {b.ingredientes.length > 0 && (
-                      <p className="text-[11px] text-neutral-700 mt-0.5">
-                        🔗 {b.ingredientes.join(', ')}
-                      </p>
-                    )}
-                  </td>
-                  <td className="p-3 text-neutral-700 whitespace-nowrap">{b.unidadCompra || '—'}</td>
-                  <td className="p-3 text-neutral-600 whitespace-nowrap">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {bibliotecaFiltrada.map((b) => (
+            <div
+              key={b.id}
+              className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-4 flex flex-col gap-3"
+            >
+              <div>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-bold text-neutral-900 leading-tight break-words min-w-0">
+                    {b.nombre}
+                  </p>
+                  <span
+                    className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                      b.enUso ? 'bg-green-100 text-green-700' : 'bg-neutral-100 text-neutral-700'
+                    }`}
+                  >
+                    {b.enUso ? '🧊 En uso' : '💤 Guardado'}
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-600">
+                  {b.id} · {b.categoria || SIN_CATEGORIA}
+                </p>
+              </div>
+
+              {b.recetas.length > 0 ? (
+                <p className="text-[11px] text-green-700" title={b.recetas.join(', ')}>
+                  🍹 En {b.recetas.length} producto{b.recetas.length === 1 ? '' : 's'}:{' '}
+                  {b.recetas.slice(0, 2).join(', ')}
+                  {b.recetas.length > 2 ? ` +${b.recetas.length - 2}` : ''}
+                </p>
+              ) : (
+                <p className="text-[11px] text-amber-700">
+                  ⚠️ Sin receta asociada — no se le descuenta stock
+                </p>
+              )}
+
+              <div className="grid grid-cols-2 gap-y-2 gap-x-3 text-sm">
+                <div>
+                  <p className="text-[11px] text-neutral-600 uppercase tracking-wide">
+                    Se compra por
+                  </p>
+                  <p className="font-semibold text-neutral-900">{b.unidadCompra || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-neutral-600 uppercase tracking-wide">Equivale a</p>
+                  <p className="font-semibold text-neutral-900">
                     {b.equivalencia} {b.unidadReceta}
-                  </td>
-                  <td className="p-3 text-neutral-900 whitespace-nowrap">
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-neutral-600 uppercase tracking-wide">
+                    Último precio
+                  </p>
+                  <p className="font-semibold text-neutral-900">
                     {b.ultimoPrecioCompra > 0 ? (
                       <>
                         ${b.ultimoPrecioCompra}
-                        <span className="text-neutral-600 text-xs"> / {b.unidadCompra}</span>
+                        <span className="text-neutral-600 text-xs font-normal">
+                          {' '}
+                          / {b.unidadCompra}
+                        </span>
                       </>
                     ) : (
-                      <span className="text-neutral-600">—</span>
+                      <span className="text-neutral-600 font-normal">—</span>
                     )}
-                  </td>
-                  <td className="p-3 whitespace-nowrap">
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-neutral-600 uppercase tracking-wide">
+                    Cuesta cada {b.unidadReceta}
+                  </p>
+                  <p className="font-semibold text-neutral-900">
                     {b.costoPorUnidadReceta !== null ? (
-                      <span className="font-semibold text-neutral-900">
-                        ${b.costoPorUnidadReceta}
-                        <span className="text-neutral-600 font-normal text-xs">
-                          {' '}
-                          / {b.unidadReceta}
-                        </span>
-                      </span>
+                      `$${b.costoPorUnidadReceta}`
                     ) : (
-                      <span className="text-neutral-600">registra una compra</span>
+                      <span className="text-neutral-600 font-normal text-xs">
+                        registra una compra
+                      </span>
                     )}
-                  </td>
-                  <td className="p-3 text-neutral-600">
-                    {b.proveedor || <span className="text-neutral-600">—</span>}
-                    {b.contacto && <p className="text-[11px] text-neutral-600">{b.contacto}</p>}
-                  </td>
-                  <td className="p-3">
-                    <div className="flex gap-1 justify-end flex-wrap">
-                      <button
-                        onClick={() => cambiarUso(b.id, b.nombre, !b.enUso)}
-                        disabled={ocupado}
-                        className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg active:scale-95 disabled:opacity-50 whitespace-nowrap ${
-                          b.enUso ? 'bg-neutral-100 text-neutral-600' : 'bg-green-50 text-green-700'
-                        }`}
-                        title={
-                          b.enUso
-                            ? 'Quitarlo de los insumos activos'
-                            : 'Empezar a usarlo: aparecerá en Insumos activos'
-                        }
-                      >
-                        {b.enUso ? '💤 Guardar' : '🧊 Usar ahora'}
-                      </button>
-                      <button
-                        onClick={() => abrirRecetas(b.id, b.nombre)}
-                        className="text-xs font-semibold text-black bg-neutral-200 px-2.5 py-1.5 rounded-lg active:scale-95 whitespace-nowrap"
-                        title="Elegir a qué ingredientes de las recetas corresponde"
-                      >
-                        🔗 Recetas
-                      </button>
-                      <button
-                        onClick={() => verHistorial(b.id, b.nombre)}
-                        className="text-xs font-semibold text-black bg-neutral-200 px-2.5 py-1.5 rounded-lg active:scale-95"
-                        title="Historial de precios"
-                      >
-                        📈
-                      </button>
-                      <button
-                        onClick={() => abrirEditar(b)}
-                        className="text-xs font-semibold text-black bg-neutral-200 px-2.5 py-1.5 rounded-lg active:scale-95"
-                        title="Editar"
-                      >
-                        ✏️
-                      </button>
-                      <button
-                        onClick={() => eliminarInsumo(b)}
-                        disabled={ocupado}
-                        className="text-xs font-semibold bg-red-50 text-red-600 px-2.5 py-1.5 rounded-lg active:scale-95 disabled:opacity-50"
-                        title="Quitar de la biblioteca"
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {bibliotecaFiltrada.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="p-6 text-center text-neutral-600">
-                    Aún no hay insumos en la biblioteca.
-                  </td>
-                </tr>
+                  </p>
+                </div>
+              </div>
+
+              {(b.proveedor || b.contacto) && (
+                <p className="text-xs text-neutral-700">
+                  🏪 {b.proveedor}
+                  {b.contacto && <span className="text-neutral-600"> · {b.contacto}</span>}
+                </p>
               )}
-            </tbody>
-          </table>
+
+              <div className="mt-auto pt-1 flex flex-wrap gap-2">
+                <button
+                  onClick={() => cambiarUso(b.id, b.nombre, !b.enUso)}
+                  disabled={ocupado}
+                  className={`flex-1 min-w-[120px] text-sm font-bold py-2.5 rounded-xl active:scale-95 disabled:opacity-50 ${
+                    b.enUso ? 'bg-neutral-100 text-neutral-700' : 'bg-green-600 text-white'
+                  }`}
+                >
+                  {b.enUso ? '💤 Guardar' : '🧊 Usar ahora'}
+                </button>
+                <button
+                  onClick={() => abrirEditar(b)}
+                  className="flex-1 min-w-[120px] text-sm font-bold py-2.5 rounded-xl bg-neutral-200 text-black active:scale-95"
+                >
+                  ✏️ Editar
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+                <button
+                  onClick={() => abrirRecetas(b.id, b.nombre)}
+                  className="font-semibold text-neutral-700 underline decoration-neutral-300"
+                >
+                  En qué se usa
+                </button>
+                <button
+                  onClick={() => verHistorial(b.id, b.nombre)}
+                  className="font-semibold text-neutral-700 underline decoration-neutral-300"
+                >
+                  Ver compras
+                </button>
+                <button
+                  onClick={() => eliminarInsumo(b)}
+                  disabled={ocupado}
+                  className="font-semibold text-red-600 underline decoration-red-200 disabled:opacity-50"
+                >
+                  Eliminar
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {bibliotecaFiltrada.length === 0 && (
+            <p className="md:col-span-2 xl:col-span-3 bg-white rounded-2xl border border-neutral-100 p-6 text-center text-neutral-600">
+              Aún no hay insumos en el catálogo.
+            </p>
+          )}
         </div>
       )}
 

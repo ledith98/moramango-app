@@ -30,6 +30,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 
 export const CAMBIOS: Cambio[] = [
   {
+    fecha: '2026-08-18',
+    tipo: 'arreglo',
+    titulo: 'Insumos ya se ve completo, sin nada cortado',
+    detalle:
+      'La pantalla era una tabla de 8 columnas: en tablet o celular los botones de "Compré" y "Conté" se salían de la orilla y no se alcanzaban. Ahora cada insumo es una tarjeta que se reacomoda sola: una por renglón en celular, dos en tablet y tres en pantalla grande. Lo mismo en la pestaña de Catálogo. Comprobado en las tres anchuras: ningún botón queda fuera y no hay que deslizar a los lados.',
+    donde: 'Insumos',
+  },
+  {
     fecha: '2026-08-17',
     tipo: 'nuevo',
     titulo: 'Pedido adelantado con hora de recolección',

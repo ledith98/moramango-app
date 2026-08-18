@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-18',
+    tipo: 'arreglo',
+    titulo: 'Ya se puede guardar un conteo (incluido el 0)',
+    detalle:
+      'Al contar un insumo salía "ninguna cantidad era válida" y no guardaba nada. No era por el cero: el guardado buscaba el insumo por un identificador equivocado, así que fallaba con cualquier cantidad. Ya quedó, y de paso se corrigió la fecha del conteo, que se guardaba en un formato que Google convertía en un número y se habría visto como "46252" en la tarjeta.',
+    donde: 'Insumos',
+  },
+  {
+    fecha: '2026-08-18',
     tipo: 'mejora',
     titulo: 'Borrar la cantidad y poner otra, más fácil',
     detalle:

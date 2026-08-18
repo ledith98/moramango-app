@@ -236,8 +236,19 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'No llegó ningún conteo' }, { status: 400 });
     }
     const activosHoja = await getSheetData(HOJA_ACTIVOS, { crudo: true });
-    const filaPorId = new Map(activosHoja.map((a, i) => [a.ID_Biblioteca, i + 2]));
-    const fechaHoy = fechaHoyMTY();
+    // Se acepta el ID del activo o el de su biblioteca, igual que el resto
+    // de las acciones. La pantalla manda el del activo (ACT-001) y este
+    // mapa solo tenia el de biblioteca (BIB-001): ningun renglon casaba y
+    // el guardado fallaba con "ninguna cantidad era valida".
+    const filaPorId = new Map<string, number>();
+    activosHoja.forEach((a, i) => {
+      if (a.ID_Activo) filaPorId.set(a.ID_Activo, i + 2);
+      if (a.ID_Biblioteca) filaPorId.set(a.ID_Biblioteca, i + 2);
+    });
+    // Misma marca de tiempo que usan las demas acciones. Con una fecha
+    // tipo 2026-08-18, Google Sheets la interpreta como fecha y la
+    // guarda como numero de serie: al releerla salia "46252".
+    const fechaHoy = new Date().toLocaleString('es-MX', { timeZone: 'America/Monterrey' });
 
     const cambios: { fila: number; col: number; valor: string | number }[] = [];
     let contados = 0;

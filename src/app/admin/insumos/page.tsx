@@ -194,6 +194,8 @@ export default function InsumosPage() {
   const [conteoCantidad, setConteoCantidad] = useState('');
   const [compraCantidad, setCompraCantidad] = useState('');
   const [compraPrecio, setCompraPrecio] = useState('');
+  /** Lo que habia antes de la compra; vacio = lo que dice el sistema */
+  const [compraPrevio, setCompraPrevio] = useState('');
   const [historial, setHistorial] = useState<CompraHistorial[] | null>(null);
   const [historialDe, setHistorialDe] = useState('');
   const [historialId, setHistorialId] = useState('');
@@ -355,6 +357,7 @@ El stock quedará igual a lo que contaste.`)) return;
     setCompraDe(a);
     setCompraCantidad(a.sugerenciaCompra > 0 ? String(a.sugerenciaCompra) : '');
     setCompraPrecio('');
+    setCompraPrevio('');
     setError('');
   }
 
@@ -366,21 +369,17 @@ El stock quedará igual a lo que contaste.`)) return;
       accion: 'compra',
       cantidadCompra: cant,
       precioTotal: compraPrecio,
+      // Vacio = usar lo que el sistema ya tenia
+      stockPrevio: compraPrevio.trim(),
     });
     if (ok) setCompraDe(null);
   }
 
   /**
-   * "Conté y tengo esto". Antes eran tres botones distintos para el mismo
-   * número —Conteo (solo anotaba), Stock (lo cambiaba) y Ajustar (igualaba
-   * uno al otro)— y había que saber cuál usar. Aquí se anota el conteo con
-   * su fecha Y el stock queda en lo contado, que es lo que la persona
-   * quiere decir cuando cuenta.
-   */
-  /**
-   * Abre el conteo. Antes era un prompt() del navegador: una cajita gris
-   * sin unidades, sin decir contra qué se compara ni qué va a pasar al
-   * aceptar. Ahora es una ventana que lo explica mientras se escribe.
+   * "Conté y tengo esto": se anota el conteo con su fecha Y el stock queda
+   * en lo contado, que es lo que la persona quiere decir al contar. Antes
+   * eran tres botones para el mismo número (Conteo solo anotaba, Stock lo
+   * cambiaba, Ajustar igualaba uno al otro) y había que saber cuál usar.
    */
   function abrirConteo(a: ItemActivo) {
     setConteoDe(a);
@@ -1289,23 +1288,45 @@ El stock quedará igual a lo que contaste.`)) return;
       {compraDe && (() => {
         const cant = parseFloat(compraCantidad.replace(',', '.')) || 0;
         const entra = cant * compraDe.equivalencia;
-        const queda = compraDe.stockActual + entra;
+        // Lo que había antes: normalmente lo del sistema, pero al llegar
+        // mercancía es cuando se ve el estante y se puede corregir.
+        const previoEscrito = compraPrevio.trim();
+        const previoNum = parseFloat(previoEscrito.replace(',', '.'));
+        const hayPrevio = previoEscrito !== '' && !isNaN(previoNum) && previoNum >= 0;
+        const base = hayPrevio ? previoNum : compraDe.stockActual;
+        const queda = base + entra;
         const pagado = parseFloat(compraPrecio.replace(',', '.')) || 0;
         const porUnidad = cant > 0 && pagado > 0 ? pagado / cant : 0;
         const antes = compraDe.ultimoPrecioCompra || 0;
         const dif = porUnidad > 0 && antes > 0 ? ((porUnidad - antes) / antes) * 100 : null;
+        const redondo = (n: number) => Math.round(n * 1000) / 1000;
 
         return (
           <Modal titulo={`🛒 Compré ${compraDe.nombre}`} onCerrar={() => setCompraDe(null)}>
-            <p className="text-sm text-neutral-700 mb-4">
-              Ahorita tienes{' '}
-              <b className="text-neutral-900">
-                {compraDe.stockActual} {compraDe.unidadReceta}
-              </b>
-              .
+            <label className="block text-sm font-semibold text-neutral-800 mb-1">
+              ¿Cuánto tenías antes de esta compra?
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="any"
+                value={compraPrevio}
+                onChange={(e) => setCompraPrevio(e.target.value)}
+                placeholder={String(compraDe.stockActual)}
+                className={inputCls}
+              />
+              <span className="text-sm font-bold text-neutral-700 whitespace-nowrap">
+                {compraDe.unidadReceta}
+              </span>
+            </div>
+            <p className="text-xs text-neutral-600 -mt-1 mb-1">
+              El sistema cree que hay {compraDe.stockActual} {compraDe.unidadReceta}. Si al guardar
+              la mercancía ves que era otra cantidad, corrígela aquí y se cuenta como conteo.
             </p>
 
-            <label className="block text-sm font-semibold text-neutral-800 mb-1">
+            <label className="block text-sm font-semibold text-neutral-800 mb-1 mt-4">
               ¿Cuántos {compraDe.unidadCompra || 'paquetes'} compraste?
             </label>
             <div className="flex items-center gap-2">
@@ -1342,33 +1363,37 @@ El stock quedará igual a lo que contaste.`)) return;
               />
             </div>
 
-            {/* Lo que va a pasar, en palabras */}
+            {/* La cuenta completa, como se piensa: lo que había + lo que llegó */}
             {cant > 0 && (
-              <div className="mt-4 bg-neutral-50 border border-neutral-200 rounded-2xl p-4 space-y-2">
+              <div className="mt-4 bg-neutral-50 border border-neutral-200 rounded-2xl p-4 space-y-1.5">
                 <p className="text-sm text-neutral-800">
                   {cant} {compraDe.unidadCompra} son{' '}
                   <b>
-                    {Math.round(entra * 1000) / 1000} {compraDe.unidadReceta}
+                    {redondo(entra)} {compraDe.unidadReceta}
                   </b>
                   <span className="text-neutral-600">
                     {' '}
                     (1 {compraDe.unidadCompra} = {compraDe.equivalencia} {compraDe.unidadReceta})
                   </span>
                 </p>
-                <p className="text-sm text-neutral-800">
-                  Tu inventario pasa de {compraDe.stockActual} a{' '}
+                <p className="text-base text-neutral-900 font-semibold">
+                  {redondo(base)} que ya tenías + {redondo(entra)} que llegaron ={' '}
                   <b className="text-green-700">
-                    {Math.round(queda * 1000) / 1000} {compraDe.unidadReceta}
+                    {redondo(queda)} {compraDe.unidadReceta}
                   </b>
                 </p>
+                {hayPrevio && previoNum !== compraDe.stockActual && (
+                  <p className="text-xs text-amber-800">
+                    Ojo: corregiste lo que había ({compraDe.stockActual} →{' '}
+                    {redondo(previoNum)} {compraDe.unidadReceta}). Queda anotado como conteo de hoy.
+                  </p>
+                )}
                 {porUnidad > 0 && (
-                  <p className="text-sm text-neutral-800">
+                  <p className="text-sm text-neutral-800 pt-1">
                     Te sale a <b>${(Math.round(porUnidad * 100) / 100).toFixed(2)}</b> por{' '}
                     {compraDe.unidadCompra}
                     {dif !== null && Math.abs(dif) >= 1 && (
-                      <span
-                        className={`font-bold ${dif > 0 ? 'text-red-600' : 'text-green-700'}`}
-                      >
+                      <span className={`font-bold ${dif > 0 ? 'text-red-600' : 'text-green-700'}`}>
                         {' '}
                         · {dif > 0 ? 'subió' : 'bajó'} {Math.abs(Math.round(dif))}% contra la vez
                         pasada (${antes})

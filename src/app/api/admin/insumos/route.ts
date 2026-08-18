@@ -217,7 +217,7 @@ export async function PATCH(req: NextRequest) {
   }
   await prepararInventario();
 
-  const { id, accion, cantidadCompra, precioTotal, cantidad, valor, fechaISO, fila, lecturas } =
+  const { id, accion, cantidadCompra, precioTotal, stockPrevio, cantidad, valor, fechaISO, fila, lecturas } =
     await req.json();
   const ACCIONES = ['compra', 'conteo', 'ajustar', 'status', 'uso', 'stock', 'fechaCompra', 'borrarCompra', 'conteoRapido'];
   if (!accion || !ACCIONES.includes(accion)) {
@@ -309,36 +309,60 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Cantidad inválida' }, { status: 400 });
     }
 
-    // a) Sumar al stock, convirtiendo compra → receta. Las 3 celdas del
+    /**
+     * De cuánto se parte para sumar la compra.
+     *
+     * Normalmente es lo que el sistema traía, pero al llegar mercancía es
+     * justo cuando se ve el estante: "tenía medio kilo y llegaron tres".
+     * Si se manda `stockPrevio`, esa cuenta manda sobre la del sistema y
+     * queda registrada como conteo del día, para que se sepa de dónde
+     * salió el número y no parezca un ajuste sin explicación.
+     */
+    const previo = parseFloat(stockPrevio);
+    const hayPrevio = stockPrevio !== undefined && stockPrevio !== null && stockPrevio !== ''
+      && !isNaN(previo) && previo >= 0;
+    const base = hayPrevio ? previo : stockActual;
+
+    // a) Sumar al stock, convirtiendo compra → receta. Las celdas del
     // activo en un solo viaje a Google.
     const enReceta = aUnidadesReceta(cant, equivalencia);
-    const nuevoStock = redondear(stockActual + enReceta, 3);
-    await updateCells(HOJA_ACTIVOS, filaAct, {
+    const nuevoStock = redondear(base + enReceta, 3);
+    const celdas: Record<number, string | number> = {
       [COL_ACT.stock]: nuevoStock,
       [COL_ACT.ultimaCompra]: fecha,
       [COL_ACT.status]: 'Fresco', // una compra fresca reinicia el status
-    });
+    };
+    if (hayPrevio) {
+      celdas[COL_ACT.conteoFisico] = redondear(previo, 3);
+      celdas[COL_ACT.fechaConteo] = fecha;
+    }
+    await updateCells(HOJA_ACTIVOS, filaAct, celdas);
 
     // b) Actualizar el último precio en la biblioteca (el padre)
     const precio = parseFloat(precioTotal);
+    const conPrecio = !isNaN(precio) && precio > 0;
     let costoReceta: number | null = null;
-    if (!isNaN(precio) && precio > 0) {
-      const precioPorUnidadCompra = redondear(precio / cant, 2);
+    let precioPorUnidadCompra = 0;
+    if (conPrecio) {
+      precioPorUnidadCompra = redondear(precio / cant, 2);
       await updateCell(HOJA_BIBLIOTECA, filaBib, COL_BIB.ultimoPrecio, precioPorUnidadCompra);
       costoReceta = costoPorUnidadReceta(precioPorUnidadCompra, equivalencia);
-
-      await appendRow(HOJA_COMPRAS, [
-        fecha,
-        bib.ID_Biblioteca,
-        bib.Nombre || '',
-        cant,
-        bib.Unidad_Compra || '',
-        redondear(precio, 2),
-        precioPorUnidadCompra,
-        equivalencia,
-        costoReceta ?? '',
-      ]);
     }
+
+    // c) La compra SIEMPRE se anota, con precio o sin él. Antes solo se
+    // guardaba si se capturaba el monto, así que una compra sin precio no
+    // aparecía en "Lo que he comprado" y la lista mentía.
+    await appendRow(HOJA_COMPRAS, [
+      fecha,
+      bib.ID_Biblioteca,
+      bib.Nombre || '',
+      cant,
+      bib.Unidad_Compra || '',
+      conPrecio ? redondear(precio, 2) : '',
+      conPrecio ? precioPorUnidadCompra : '',
+      equivalencia,
+      costoReceta ?? '',
+    ]);
 
     return NextResponse.json({
       success: true,
@@ -348,7 +372,6 @@ export async function PATCH(req: NextRequest) {
     });
   }
 
-  // ── Fecha de compra a mano (sin tocar stock ni precios) ──
   if (accion === 'fechaCompra') {
     const iso = (fechaISO || '').toString().trim();
     if (iso === '') {

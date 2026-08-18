@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-18',
+    tipo: 'mejora',
+    titulo: 'Contar lo que había y sumar lo que llegó, en un solo paso',
+    detalle:
+      'Al registrar una compra ahora aparece primero "¿Cuánto tenías antes de esta compra?". Lo dejas en blanco si el sistema ya tiene bien el número, o lo corriges si al guardar la mercancía ves que era otra cantidad. La ventana te hace la cuenta completa: "500 que ya tenías + 3000 que llegaron = 3500 g". Si corriges, queda anotado como conteo del día para que después se sepa de dónde salió. También se arregló algo que engañaba: una compra sin precio NO se guardaba en "Lo que he comprado"; ahora se guarda siempre, con precio o sin él.',
+    donde: 'Insumos',
+  },
+  {
+    fecha: '2026-08-18',
     tipo: 'nuevo',
     titulo: 'Los combos se arman con productos, no con ingredientes',
     detalle:

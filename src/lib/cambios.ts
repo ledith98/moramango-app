@@ -32,6 +32,14 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-18',
     tipo: 'mejora',
+    titulo: 'Borrar la cantidad y poner otra, más fácil',
+    detalle:
+      'Al contar un insumo ahora dice claro que el número que escribas REEMPLAZA al que había, y trae tres atajos: "Se acabó (0)" para cuando ya no queda nada, "Está bien como dice" si el sistema tenía razón, y "🧹 Borrar y empezar de nuevo" para limpiar el campo sin ir borrando dígito por dígito. En el conteo de todo el local, cada renglón tiene un botón chico que pone 0 si está vacío o borra lo que escribiste, y arriba hay uno para borrar todo lo capturado si te equivocaste de columna.',
+    donde: 'Insumos',
+  },
+  {
+    fecha: '2026-08-18',
+    tipo: 'mejora',
     titulo: 'Contar lo que había y sumar lo que llegó, en un solo paso',
     detalle:
       'Al registrar una compra ahora aparece primero "¿Cuánto tenías antes de esta compra?". Lo dejas en blanco si el sistema ya tiene bien el número, o lo corriges si al guardar la mercancía ves que era otra cantidad. La ventana te hace la cuenta completa: "500 que ya tenías + 3000 que llegaron = 3500 g". Si corriges, queda anotado como conteo del día para que después se sepa de dónde salió. También se arregló algo que engañaba: una compra sin precio NO se guardaba en "Lo que he comprado"; ahora se guarda siempre, con precio o sin él.',

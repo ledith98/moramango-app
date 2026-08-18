@@ -737,8 +737,16 @@ El stock quedará igual a lo que contaste.`)) return;
             <h2 className="font-bold text-neutral-900">✍️ Contando el local</h2>
             <p className="text-sm text-neutral-700 mt-1">
               Anota cuánto tienes de cada cosa. Lo que dejes vacío no se toca. Al guardar, el
-              sistema se queda con lo que contaste.
+              sistema <b>reemplaza</b> el número viejo por el que contaste.
             </p>
+            {Object.values(lecturas).some((v) => v.trim() !== '') && (
+              <button
+                onClick={() => setLecturas({})}
+                className="mt-3 text-xs font-bold px-3 py-2 rounded-lg bg-neutral-100 text-neutral-700 active:scale-95"
+              >
+                🧹 Borrar todo lo que llevo escrito
+              </button>
+            )}
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden divide-y divide-neutral-100">
@@ -770,6 +778,21 @@ El stock quedará igual a lo que contaste.`)) return;
                     className="w-24 shrink-0 bg-neutral-50 border border-neutral-200 rounded-xl px-2 py-2 text-right text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-marron"
                   />
                   <span className="text-xs text-neutral-700 w-10 shrink-0">{a.unidadReceta}</span>
+                  <button
+                    onClick={() =>
+                      setLecturas((prev) => {
+                        const copia = { ...prev };
+                        // Vacio = "no lo conte", que no es lo mismo que cero
+                        if (escrito === '') copia[a.id] = '0';
+                        else delete copia[a.id];
+                        return copia;
+                      })
+                    }
+                    title={escrito === '' ? 'Marcar que se acabó' : 'Borrar lo que escribí'}
+                    className="w-8 h-8 shrink-0 rounded-lg bg-neutral-100 text-neutral-700 text-xs font-bold active:scale-90"
+                  >
+                    {escrito === '' ? '0' : '×'}
+                  </button>
                 </div>
               );
             })}
@@ -1432,12 +1455,16 @@ El stock quedará igual a lo que contaste.`)) return;
 
         return (
           <Modal titulo={`✍️ Conté ${conteoDe.nombre}`} onCerrar={() => setConteoDe(null)}>
-            <p className="text-sm text-neutral-700 mb-4">
+            <p className="text-sm text-neutral-700 mb-1">
               El sistema cree que hay{' '}
               <b className="text-neutral-900">
                 {conteoDe.stockActual} {conteoDe.unidadReceta}
               </b>
-              . Cuenta lo que de verdad tienes y anótalo aquí.
+              .
+            </p>
+            <p className="text-xs text-neutral-600 mb-4">
+              El número que escribas <b>reemplaza</b> al de arriba: se borra lo que había y queda
+              lo que tú cuentes.
             </p>
 
             <label className="block text-sm font-semibold text-neutral-800 mb-1">
@@ -1458,6 +1485,31 @@ El stock quedará igual a lo que contaste.`)) return;
               <span className="text-sm font-bold text-neutral-700 whitespace-nowrap">
                 {conteoDe.unidadReceta}
               </span>
+            </div>
+
+            {/* Atajos para lo que más pasa: se acabó, o quedó vacío y hay
+                que teclear de cero sin borrar dígito por dígito. */}
+            <div className="flex flex-wrap gap-2 mt-2">
+              <button
+                onClick={() => setConteoCantidad('0')}
+                className="text-xs font-bold px-3 py-2 rounded-lg bg-red-50 text-red-700 active:scale-95"
+              >
+                Se acabó (0)
+              </button>
+              <button
+                onClick={() => setConteoCantidad(String(conteoDe.stockActual))}
+                className="text-xs font-bold px-3 py-2 rounded-lg bg-neutral-100 text-neutral-700 active:scale-95"
+              >
+                Está bien como dice
+              </button>
+              {conteoCantidad !== '' && (
+                <button
+                  onClick={() => setConteoCantidad('')}
+                  className="text-xs font-bold px-3 py-2 rounded-lg bg-neutral-100 text-neutral-700 active:scale-95"
+                >
+                  🧹 Borrar y empezar de nuevo
+                </button>
+              )}
             </div>
 
             {valido && (

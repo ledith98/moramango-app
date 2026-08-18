@@ -5,6 +5,7 @@ import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 import {
   linkWhatsApp,
   mensajePagoRecibido,
+  mensajePedidoListo,
   mensajeTransferencia,
   METODO_PAGO_EN_LINEA,
   normalizarMetodoPago,
@@ -12,6 +13,7 @@ import {
   URL_PAGO_MP,
 } from '@/lib/negocio';
 import { TicketBotones } from '../TicketBotones';
+import { horaBonita } from '@/lib/recoleccion';
 import type { DatosTicket } from '@/lib/ticket';
 
 const iconoMetodo = (m: string) =>
@@ -430,6 +432,13 @@ export default function PedidosPage() {
                 <p className="font-semibold text-neutral-900 truncate">
                   {p.Origen_Venta === 'Local' && <span title="Venta en local">🏪 </span>}
                   {p.Estado_Pago === 'Pagado' && <span title="Pagado">✅ </span>}
+                  {/* Para cuándo lo quiere: es lo que decide el orden de
+                      preparación cuando hay varios pedidos encimados. */}
+                  {p.Hora_Recoleccion && (
+                    <span className="text-amber-700" title="Hora de recolección">
+                      ⏰ {horaBonita(p.Hora_Recoleccion)}{' '}
+                    </span>
+                  )}
                   {p.Nombre_Cliente_Snap}
                 </p>
                 <p className="text-xs text-neutral-700 font-mono">{p.ID_Pedido}</p>
@@ -662,6 +671,25 @@ export default function PedidosPage() {
                         ✅ Confirmar pago recibido
                       </button>
                     )}
+                    {/* El aviso que más le importa al cliente. Aparece en
+                        cuanto el pedido está listo, no solo si ya pagó. */}
+                    {detalle.pedido.Estado === 'Listo para recoger' && detalle.pedido.Telefono && (
+                      <a
+                        href={linkWhatsApp(
+                          detalle.pedido.Telefono,
+                          mensajePedidoListo(
+                            detalle.pedido.ID_Pedido,
+                            horaBonita(detalle.pedido.Hora_Recoleccion || '')
+                          )
+                        )}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 w-full block text-center bg-green-600 text-white font-bold py-3 rounded-xl active:scale-95 transition-transform"
+                      >
+                        📲 Avisarle que ya está listo
+                      </a>
+                    )}
+
                     {/* Avisarle al cliente. Va por WhatsApp y a mano: la app
                         no puede mandarle notificaciones a su celular. */}
                     {detalle.pedido.Estado_Pago === 'Pagado' && detalle.pedido.Telefono && (

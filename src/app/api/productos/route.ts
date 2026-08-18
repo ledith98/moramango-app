@@ -3,6 +3,7 @@ import { getSheetData } from '@/lib/googleSheets';
 import { normalizarUrlImagen } from '@/lib/imagenes';
 import { leerAjustes, posicionCategoria } from '@/lib/ajustes';
 import { estadoTienda } from '@/lib/horario';
+import { horariosDisponibles } from '@/lib/recoleccion';
 import { parsearTamanos } from '@/lib/tamanos';
 import { parsearOpciones } from '@/lib/opciones';
 import { agotadasDeGrupos, claveNombre, comboImposible } from '@/lib/opcionesAgotadas';
@@ -100,6 +101,8 @@ export async function GET() {
       tienda: estadoTienda(horario),
       horario,
       local: { direccion, mapa },
+      // A qué horas puede pasar hoy por su pedido
+      horariosRecoleccion: horariosDisponibles(horario),
     });
   } catch (error) {
     console.error('Error en /api/productos:', error);

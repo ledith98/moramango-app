@@ -27,6 +27,7 @@ import { enviarTelegram } from '@/lib/telegram';
 import { moverStockDePedido } from '@/lib/stock';
 import { leerAjustes } from '@/lib/ajustes';
 import { estadoTienda } from '@/lib/horario';
+import { horaBonita, horaValida } from '@/lib/recoleccion';
 import { validarItems } from '@/lib/preciosServidor';
 
 /**
@@ -114,6 +115,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: `Ahorita no estamos recibiendo pedidos. ${estado.mensaje}`.trim(), cerrado: true },
       { status: 409 }
+    );
+  }
+
+  // La hora de recolección se revisa contra el horario real: quien deje la
+  // pantalla abierta un rato tendría opciones que ya pasaron.
+  if (!horaValida(horario, horaRecoleccion ?? '')) {
+    return NextResponse.json(
+      { error: 'Esa hora ya no está disponible. Vuelve a elegir una.' },
+      { status: 400 }
     );
   }
 
@@ -230,6 +240,7 @@ export async function POST(req: NextRequest) {
     // Ojo: este aviso sale al CREAR el pedido, antes de que el cliente
     // pague. Por eso el pago en línea se anuncia como pendiente; cuando
     // Mercado Pago confirme, el webhook manda un segundo aviso.
+    const cuando = horaBonita(horaRecoleccion ?? '');
     const formaPagoTexto = esTransferencia
       ? '📲 Transferencia — ⏳ POR CONFIRMAR'
       : pagoEnLinea
@@ -256,7 +267,10 @@ export async function POST(req: NextRequest) {
       `🔔 <b>Nuevo pedido ${idPedido}</b>\n` +
         `👤 ${usuario.name ?? 'Cliente'}\n` +
         `🛒 ${numArticulos} artículo${numArticulos === 1 ? '' : 's'} — <b>$${totalFinal.toFixed(2)}</b>\n` +
-        `${formaPagoTexto}\n\n` +
+        `${formaPagoTexto}\n` +
+        // Lo primero que necesita saber quien prepara: para cuándo es
+        (cuando ? `⏰ <b>Para las ${cuando}</b>\n` : '') +
+        `\n` +
         `${listaItems}` +
         (notas?.trim() ? `\n\n📝 ${notas.trim()}` : '')
     );

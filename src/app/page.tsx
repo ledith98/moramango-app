@@ -172,11 +172,16 @@ export default function Home() {
     abierta: true,
     mensaje: '',
   });
+  /** Hora a la que el cliente pasará por su pedido. Vacío = lo antes posible. */
+  const [horaRecoger, setHoraRecoger] = useState('');
   /** Dónde recoger. Vacío mientras no se capture en Ajustes. */
   const [local, setLocal] = useState<{ direccion: string; mapa: string }>({
     direccion: '',
     mapa: '',
   });
+  const [horariosRecoleccion, setHorariosRecoleccion] = useState<
+    { valor: string; etiqueta: string }[]
+  >([]);
 
   useEffect(() => {
     fetch('/api/productos')
@@ -185,6 +190,7 @@ export default function Home() {
         if (data.productos) setProductos(data.productos);
         if (data.tienda) setTienda(data.tienda);
         if (data.local) setLocal(data.local);
+        if (data.horariosRecoleccion) setHorariosRecoleccion(data.horariosRecoleccion);
         setCargando(false);
       })
       .catch(() => setCargando(false));
@@ -881,7 +887,7 @@ export default function Home() {
             extras: item.extras,
           })),
           notas: notas.trim(),
-          horaRecoleccion: '',
+          horaRecoleccion: horaRecoger,
           beneficioCanjeado: beneficioCanjeadoStr,
           pagoEnLinea: formaPago === 'linea',
           metodoPago: formaPago === 'transferencia' ? 'Transferencia' : '',
@@ -900,6 +906,7 @@ export default function Home() {
         setBeneficioAplicado(false);
         setLealtad(null);
         setFormaPago('recoger');
+        setHoraRecoger('');
 
         if (data.checkoutUrl) {
           // Ir al checkout de Mercado Pago; al terminar regresa con ?pago=...
@@ -1427,6 +1434,46 @@ export default function Home() {
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* ¿A qué hora pasa por él? Descarga la hora pico: se prepara
+                  con tiempo en vez de tener a todos esperando parados. */}
+              {horariosRecoleccion.length > 0 && (
+                <div className="bg-white rounded-2xl p-4 border border-neutral-100 shadow-sm">
+                  <label className="text-sm font-semibold text-neutral-700 block mb-2">
+                    ¿A qué hora pasas por él?
+                  </label>
+                  <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                    <button
+                      onClick={() => setHoraRecoger('')}
+                      className={`shrink-0 px-3.5 py-2 rounded-xl text-sm font-semibold border-2 transition-colors ${
+                        horaRecoger === ''
+                          ? 'border-marron bg-marron/10 text-neutral-900'
+                          : 'border-neutral-200 bg-white text-neutral-800'
+                      }`}
+                    >
+                      Lo antes posible
+                    </button>
+                    {horariosRecoleccion.map((h) => (
+                      <button
+                        key={h.valor}
+                        onClick={() => setHoraRecoger(h.valor)}
+                        className={`shrink-0 px-3.5 py-2 rounded-xl text-sm font-semibold border-2 transition-colors ${
+                          horaRecoger === h.valor
+                            ? 'border-marron bg-marron/10 text-neutral-900'
+                            : 'border-neutral-200 bg-white text-neutral-800'
+                        }`}
+                      >
+                        {h.etiqueta}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-neutral-700 mt-2">
+                    {horaRecoger
+                      ? 'Lo tendremos listo a esa hora.'
+                      : 'Lo preparamos en cuanto entre tu pedido.'}
+                  </p>
                 </div>
               )}
 

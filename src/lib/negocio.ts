@@ -67,6 +67,16 @@ export function mensajePagoRecibido(idPedido: string, total?: number): string {
 }
 
 /**
+ * "Ya está listo, pasa por él". Es el aviso que más le importa al cliente
+ * y el que más te ahorra: sin él, o se queda esperando en el local o
+ * llega antes de tiempo.
+ */
+export function mensajePedidoListo(idPedido: string, hora?: string): string {
+  const cuando = hora?.trim() ? ` Te lo esperamos a las ${hora.trim()}.` : '';
+  return `¡Hola! 🥭 Tu pedido ${idPedido} ya está listo para recoger.${cuando} ¡Gracias!`;
+}
+
+/**
  * Mensaje de bienvenida para quien se acaba de registrar. Se manda a mano
  * desde Usuarios, por el mismo motivo que el de arriba.
  */

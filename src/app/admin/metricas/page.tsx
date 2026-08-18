@@ -41,6 +41,30 @@ const restarDias = (iso: string, dias: number) => {
 };
 
 export default function MetricasPage() {
+  const [enviandoCorte, setEnviandoCorte] = useState(false);
+  const [corteEnviado, setCorteEnviado] = useState(false);
+
+  /** Manda el resumen del día a Telegram sin esperar a la hora del cierre. */
+  const enviarCorte = async () => {
+    setEnviandoCorte(true);
+    try {
+      const r = await fetch('/api/admin/corte', { method: 'POST' });
+      const d = await r.json();
+      if (!r.ok) {
+        alert(d.error || 'No se pudo enviar');
+        return;
+      }
+      if (!d.enviado) {
+        alert(d.motivo || 'Hoy no hay nada que reportar todavía.');
+        return;
+      }
+      setCorteEnviado(true);
+      setTimeout(() => setCorteEnviado(false), 3000);
+    } finally {
+      setEnviandoCorte(false);
+    }
+  };
+
   const hoy = fechaHoyMTY();
   const [desde, setDesde] = useState(hoy);
   const [hasta, setHasta] = useState(hoy);
@@ -165,6 +189,25 @@ export default function MetricasPage() {
               </div>
             ))}
           </div>
+
+          {metricas && (
+            <div className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100 flex flex-wrap items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-neutral-900">🧾 Corte del día por Telegram</p>
+                <p className="text-xs text-neutral-700 mt-0.5">
+                  Ventas, cómo te pagaron, la comisión, los cobros sin confirmar y qué insumo se
+                  acabó — todo en un mensaje. Te llega solo cada noche a las 9.
+                </p>
+              </div>
+              <button
+                onClick={enviarCorte}
+                disabled={enviandoCorte}
+                className="shrink-0 bg-black text-white text-sm font-bold px-4 py-2.5 rounded-xl active:scale-95 disabled:opacity-50"
+              >
+                {enviandoCorte ? 'Enviando…' : corteEnviado ? '✅ Enviado' : 'Mandármelo ahora'}
+              </button>
+            </div>
+          )}
 
           {metricas && metricas.comisionTerminal && (
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100">

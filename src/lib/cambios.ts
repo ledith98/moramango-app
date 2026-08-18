@@ -31,6 +31,30 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-17',
+    tipo: 'nuevo',
+    titulo: 'Pedido adelantado con hora de recolección',
+    detalle:
+      'El cliente ya puede elegir a qué hora pasa por su pedido, en bloques de 15 minutos dentro de tu horario. Sirve para descargar la mañana: el 58% de tus ventas caen entre 7 y 10, y así los preparas con tiempo en vez de tener a todos esperando parados. Si no elige nada, queda "lo antes posible" como siempre. La hora te sale en el aviso de Telegram y en la lista de Pedidos con un ⏰, para saber cuál preparar primero.',
+    donde: 'Tienda · Pedidos',
+  },
+  {
+    fecha: '2026-08-17',
+    tipo: 'nuevo',
+    titulo: 'Avisarle al cliente que ya está listo',
+    detalle:
+      'Al poner un pedido en "Listo para recoger", aparece un botón de WhatsApp con el mensaje ya escrito para avisarle. Si eligió hora, se la recuerda. Es el aviso que más le importa al cliente y el que te evita que se quede esperando parado o que llegue antes de tiempo.',
+    donde: 'Pedidos',
+  },
+  {
+    fecha: '2026-08-17',
+    tipo: 'nuevo',
+    titulo: 'Corte del día automático por Telegram',
+    detalle:
+      'Cada noche a las 9 te llega un solo mensaje con todo: cuánto vendiste, cómo te pagaron (para cuadrar la caja), cuánto se llevó la terminal, qué cobros quedaron sin confirmar, cuántos pedidos no se entregaron y qué insumo se acabó. Antes esa información estaba repartida en cuatro pantallas. También hay un botón en Métricas para pedirlo cuando quieras. Si un día no hubo ventas, no se manda nada.',
+    donde: 'Métricas',
+  },
+  {
+    fecha: '2026-08-17',
     tipo: 'mejora',
     titulo: 'Insumos más fácil de usar',
     detalle:

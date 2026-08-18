@@ -8,6 +8,7 @@
  * si el resumen no llega solo, no se ve.
  */
 
+import { leerMovimientos } from './caja';
 import { comisionDeVenta } from './comision';
 import { getSheetData } from './googleSheets';
 import { normalizarMetodoPago } from './negocio';
@@ -20,9 +21,10 @@ const dinero = (n: number) => `$${n.toFixed(2)}`;
  * "vendiste $0" un domingo cerrado solo entrena a ignorar el aviso.
  */
 export async function armarCorteDelDia(fechaISO = fechaHoyMTY()): Promise<string | null> {
-  const [pedidos, activos] = await Promise.all([
+  const [pedidos, activos, movimientos] = await Promise.all([
     getSheetData('PEDIDOS'),
     getSheetData('Insumos_Activos', { crudo: true }).catch(() => []),
+    leerMovimientos(fechaISO).catch(() => []),
   ]);
 
   const delDia = pedidos
@@ -72,6 +74,19 @@ export async function armarCorteDelDia(fechaISO = fechaHoyMTY()): Promise<string
   if (comision > 0) {
     lineas.push(``, `💳 La terminal se llevó <b>${dinero(comision)}</b>`);
     lineas.push(`   Te quedan ${dinero(total - comision)} del día`);
+  }
+
+  // Efectivo que salió o entró sin ser venta: sin esto, el corte de la
+  // noche no explica por qué falta dinero en el cajón.
+  const salidas = movimientos.filter((m) => m.tipo === 'Salida');
+  const entradas = movimientos.filter((m) => m.tipo === 'Entrada');
+  if (salidas.length > 0 || entradas.length > 0) {
+    lineas.push('');
+    for (const m of salidas) lineas.push(`   ➖ ${dinero(m.monto)} — ${m.motivo}`);
+    for (const m of entradas) lineas.push(`   ➕ ${dinero(m.monto)} — ${m.motivo}`);
+    const neto =
+      entradas.reduce((s, m) => s + m.monto, 0) - salidas.reduce((s, m) => s + m.monto, 0);
+    lineas.push(`   <b>${neto < 0 ? 'Salió' : 'Entró'} ${dinero(Math.abs(neto))} de la caja</b>`);
   }
 
   if (pendientes.length > 0) {

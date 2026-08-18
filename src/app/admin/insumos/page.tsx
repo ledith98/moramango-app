@@ -196,6 +196,8 @@ export default function InsumosPage() {
   const [compraPrecio, setCompraPrecio] = useState('');
   /** Lo que habia antes de la compra; vacio = lo que dice el sistema */
   const [compraPrevio, setCompraPrevio] = useState('');
+  /** Si el pago salio del cajon, se anota como salida de caja */
+  const [compraConCaja, setCompraConCaja] = useState(false);
   const [historial, setHistorial] = useState<CompraHistorial[] | null>(null);
   const [historialDe, setHistorialDe] = useState('');
   const [historialId, setHistorialId] = useState('');
@@ -358,6 +360,7 @@ El stock quedará igual a lo que contaste.`)) return;
     setCompraCantidad(a.sugerenciaCompra > 0 ? String(a.sugerenciaCompra) : '');
     setCompraPrecio('');
     setCompraPrevio('');
+    setCompraConCaja(false);
     setError('');
   }
 
@@ -371,6 +374,7 @@ El stock quedará igual a lo que contaste.`)) return;
       precioTotal: compraPrecio,
       // Vacio = usar lo que el sistema ya tenia
       stockPrevio: compraPrevio.trim(),
+      pagadoConCaja: compraConCaja,
     });
     if (ok) setCompraDe(null);
   }
@@ -1385,6 +1389,24 @@ El stock quedará igual a lo que contaste.`)) return;
                 className={inputCls}
               />
             </div>
+
+            <label className="flex items-start gap-3 mt-3 bg-neutral-50 border border-neutral-200 rounded-xl p-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={compraConCaja}
+                onChange={(e) => setCompraConCaja(e.target.checked)}
+                className="mt-0.5 w-5 h-5 accent-[var(--marca-marron)]"
+              />
+              <span>
+                <span className="font-semibold text-neutral-900 block">
+                  Lo pagué con dinero de la caja
+                </span>
+                <span className="text-xs text-neutral-700">
+                  Se anota como salida en el corte del día, para que el cajón cuadre y no aparezca
+                  como faltante.
+                </span>
+              </span>
+            </label>
 
             {/* La cuenta completa, como se piensa: lo que había + lo que llegó */}
             {cant > 0 && (

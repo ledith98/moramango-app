@@ -7,14 +7,22 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { abrirCaja, cerrarCaja, leerCaja } from '@/lib/caja';
+import {
+  abrirCaja,
+  borrarMovimiento,
+  cerrarCaja,
+  leerCaja,
+  leerMovimientos,
+  registrarMovimiento,
+} from '@/lib/caja';
 import { getAdminSession } from '@/lib/roles';
 
 export async function GET() {
   if (!(await getAdminSession())) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
-  return NextResponse.json(await leerCaja());
+  const [estado, movimientos] = await Promise.all([leerCaja(), leerMovimientos()]);
+  return NextResponse.json({ ...estado, movimientos });
 }
 
 export async function POST(req: NextRequest) {
@@ -23,7 +31,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
   const quien = (session.user as { name?: string }).name || '';
-  const { accion, fondo, contado, notas } = await req.json();
+  const { accion, fondo, contado, notas, tipo, monto, motivo, fila } = await req.json();
+
+  // Dinero que sale o entra de la caja sin ser una venta
+  if (accion === 'movimiento') {
+    const cantidad = parseFloat(monto);
+    if (isNaN(cantidad) || cantidad <= 0) {
+      return NextResponse.json({ error: 'Escribe de cuánto fue' }, { status: 400 });
+    }
+    const razon = (motivo || '').toString().trim();
+    if (!razon) {
+      // Sin motivo, el movimiento es indistinguible del descuadre que
+      // este apartado existe para evitar
+      return NextResponse.json({ error: 'Escribe para qué fue' }, { status: 400 });
+    }
+    await registrarMovimiento(tipo === 'Entrada' ? 'Entrada' : 'Salida', cantidad, razon, quien);
+    const [estado, movimientos] = await Promise.all([leerCaja(), leerMovimientos()]);
+    return NextResponse.json({ success: true, estado: { ...estado, movimientos } });
+  }
+
+  if (accion === 'borrarMovimiento') {
+    const n = parseInt(fila, 10);
+    if (isNaN(n) || n < 2) {
+      return NextResponse.json({ error: 'Movimiento inválido' }, { status: 400 });
+    }
+    await borrarMovimiento(n);
+    const [estado, movimientos] = await Promise.all([leerCaja(), leerMovimientos()]);
+    return NextResponse.json({ success: true, estado: { ...estado, movimientos } });
+  }
 
   if (accion === 'abrir') {
     const monto = parseFloat(fondo);
@@ -31,7 +66,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Escribe el fondo de apertura' }, { status: 400 });
     }
     await abrirCaja(monto, quien);
-    return NextResponse.json({ success: true, estado: await leerCaja() });
+    const [estado, movimientos] = await Promise.all([leerCaja(), leerMovimientos()]);
+    return NextResponse.json({ success: true, estado: { ...estado, movimientos } });
   }
 
   if (accion === 'corte') {
@@ -41,7 +77,8 @@ export async function POST(req: NextRequest) {
     }
     try {
       const estado = await cerrarCaja(monto, quien, (notas || '').toString());
-      return NextResponse.json({ success: true, estado });
+      const movimientos = await leerMovimientos();
+      return NextResponse.json({ success: true, estado: { ...estado, movimientos } });
     } catch (e) {
       return NextResponse.json({ error: (e as Error).message }, { status: 400 });
     }

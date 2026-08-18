@@ -7,13 +7,24 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
+interface MovimientoCaja {
+  fila: number;
+  hora: string;
+  tipo: 'Salida' | 'Entrada';
+  monto: number;
+  motivo: string;
+}
+
 interface EstadoCaja {
   fecha: string;
   abierta: boolean;
   fondoApertura: number | null;
   horaApertura: string;
   ventasEfectivo: number;
+  salidas: number;
+  entradas: number;
   esperado: number | null;
+  movimientos?: MovimientoCaja[];
   cerrada: boolean;
   efectivoContado: number | null;
   horaCorte: string;
@@ -30,6 +41,9 @@ export default function CajaPage() {
   const [fondo, setFondo] = useState('');
   const [contado, setContado] = useState('');
   const [notas, setNotas] = useState('');
+  const [tipoMov, setTipoMov] = useState<'Salida' | 'Entrada'>('Salida');
+  const [montoMov, setMontoMov] = useState('');
+  const [motivoMov, setMotivoMov] = useState('');
   const [error, setError] = useState('');
 
   const cargar = useCallback(async () => {
@@ -55,9 +69,10 @@ export default function CajaPage() {
     setOcupado(false);
     if (!res.ok) {
       setError(data.error || 'No se pudo guardar');
-      return;
+      return false;
     }
     setCaja(data.estado);
+    return true;
   }
 
   if (cargando) return <p className="text-neutral-700 animate-pulse">Cargando caja…</p>;
@@ -120,16 +135,137 @@ export default function CajaPage() {
               </dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-neutral-700">Ventas en efectivo</dt>
+              <dt className="text-neutral-700">+ Ventas en efectivo</dt>
               <dd className="font-semibold text-neutral-900 tabular-nums">
                 {money(caja.ventasEfectivo)}
               </dd>
             </div>
+            {caja.entradas > 0 && (
+              <div className="flex justify-between">
+                <dt className="text-neutral-700">+ Otras entradas</dt>
+                <dd className="font-semibold text-green-700 tabular-nums">
+                  {money(caja.entradas)}
+                </dd>
+              </div>
+            )}
+            {caja.salidas > 0 && (
+              <div className="flex justify-between">
+                <dt className="text-neutral-700">− Dinero que se sacó</dt>
+                <dd className="font-semibold text-red-700 tabular-nums">
+                  −{money(caja.salidas)}
+                </dd>
+              </div>
+            )}
             <div className="flex justify-between border-t border-neutral-100 pt-2">
               <dt className="font-bold text-neutral-900">Debería haber</dt>
               <dd className="font-bold text-neutral-900 tabular-nums">{money(caja.esperado ?? 0)}</dd>
             </div>
           </dl>
+
+          {/* ── Entradas y salidas de efectivo ──
+              Sacar dinero del cajón para comprar limones no es un
+              faltante, pero sin anotarlo el corte lo cuenta como tal y
+              deja de ser creíble. */}
+          <div className="border-t border-neutral-100 pt-3 space-y-3">
+            <div>
+              <h3 className="font-bold text-neutral-900">💵 Entradas y salidas de efectivo</h3>
+              <p className="text-xs text-neutral-700 mt-0.5">
+                Anota aquí el dinero que sacas del cajón para comprar algo, o el que metes sin ser
+                una venta. Se descuenta (o se suma) de lo que debería haber.
+              </p>
+            </div>
+
+            <div className="flex gap-1 bg-neutral-100 p-1 rounded-xl w-fit">
+              {(
+                [
+                  ['Salida', '↑ Saqué dinero'],
+                  ['Entrada', '↓ Metí dinero'],
+                ] as const
+              ).map(([v, etiqueta]) => (
+                <button
+                  key={v}
+                  onClick={() => setTipoMov(v)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    tipoMov === v ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-700'
+                  }`}
+                >
+                  {etiqueta}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <div className="flex items-center gap-1">
+                <span className="text-lg font-bold text-neutral-700">$</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="any"
+                  value={montoMov}
+                  onChange={(e) => setMontoMov(e.target.value)}
+                  placeholder="0"
+                  className="w-24 bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-marron"
+                />
+              </div>
+              <input
+                value={motivoMov}
+                onChange={(e) => setMotivoMov(e.target.value)}
+                placeholder={
+                  tipoMov === 'Salida' ? 'Ej. compré limones' : 'Ej. cambio que traía'
+                }
+                className="flex-1 min-w-[160px] bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-marron"
+              />
+              <button
+                onClick={async () => {
+                  const ok = await accion({
+                    accion: 'movimiento',
+                    tipo: tipoMov,
+                    monto: montoMov,
+                    motivo: motivoMov,
+                  });
+                  if (ok) {
+                    setMontoMov('');
+                    setMotivoMov('');
+                  }
+                }}
+                disabled={ocupado}
+                className="bg-marron text-white font-semibold px-4 py-2 rounded-xl active:scale-95 disabled:opacity-50"
+              >
+                Anotar
+              </button>
+            </div>
+
+            {caja.movimientos && caja.movimientos.length > 0 && (
+              <ul className="space-y-1.5">
+                {caja.movimientos.map((m) => (
+                  <li
+                    key={m.fila}
+                    className="flex items-center gap-2 text-sm bg-neutral-50 rounded-xl px-3 py-2"
+                  >
+                    <span
+                      className={`font-bold tabular-nums shrink-0 ${
+                        m.tipo === 'Salida' ? 'text-red-700' : 'text-green-700'
+                      }`}
+                    >
+                      {m.tipo === 'Salida' ? '−' : '+'}
+                      {money(m.monto)}
+                    </span>
+                    <span className="flex-1 min-w-0 text-neutral-800 truncate">{m.motivo}</span>
+                    <span className="text-[11px] text-neutral-600 shrink-0">{m.hora}</span>
+                    <button
+                      onClick={() => accion({ accion: 'borrarMovimiento', fila: m.fila })}
+                      disabled={ocupado}
+                      title="Borrar este movimiento"
+                      className="shrink-0 w-7 h-7 rounded-lg bg-white text-neutral-600 font-bold active:scale-90 disabled:opacity-50"
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
 
           {/* Paso 2: corte */}
           {!caja.cerrada ? (

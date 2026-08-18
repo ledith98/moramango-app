@@ -40,6 +40,7 @@ import {
 import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 import { leerRecetas } from '@/lib/recetario';
 import { getAdminSession } from '@/lib/roles';
+import { registrarMovimiento } from '@/lib/caja';
 
 const DIAS_ANALISIS = 7;
 
@@ -212,12 +213,13 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  if (!(await getAdminSession())) {
+  const session = await getAdminSession();
+  if (!session) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
   await prepararInventario();
 
-  const { id, accion, cantidadCompra, precioTotal, stockPrevio, cantidad, valor, fechaISO, fila, lecturas } =
+  const { id, accion, cantidadCompra, precioTotal, stockPrevio, pagadoConCaja, cantidad, valor, fechaISO, fila, lecturas } =
     await req.json();
   const ACCIONES = ['compra', 'conteo', 'ajustar', 'status', 'uso', 'stock', 'fechaCompra', 'borrarCompra', 'conteoRapido'];
   if (!accion || !ACCIONES.includes(accion)) {
@@ -375,11 +377,31 @@ export async function PATCH(req: NextRequest) {
       costoReceta ?? '',
     ]);
 
+    // d) Si se pagó con dinero del cajón, queda como salida de caja. Sin
+    // esto el corte de la noche marca un faltante que en realidad fue esta
+    // compra, y ese descuadre es lo que hace desconfiar del corte.
+    let salidaCaja = false;
+    if (pagadoConCaja && conPrecio) {
+      try {
+        await registrarMovimiento(
+          'Salida',
+          redondear(precio, 2),
+          `Compra de ${bib.Nombre || 'insumo'}`,
+          (session.user as { name?: string }).name || ''
+        );
+        salidaCaja = true;
+      } catch (error) {
+        // El movimiento de caja no puede tumbar el registro de la compra
+        console.error('Error anotando la salida de caja:', error);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       stockActual: nuevoStock,
       agregadoEnReceta: enReceta,
       costoPorUnidadReceta: costoReceta,
+      salidaCaja,
     });
   }
 

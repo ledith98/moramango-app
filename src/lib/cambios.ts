@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-18',
+    tipo: 'nuevo',
+    titulo: 'Anotar el dinero que sale y entra de la caja',
+    detalle:
+      'En Caja hay un apartado nuevo para el efectivo que se mueve sin ser venta: sacaste $200 para comprar limones, metiste cambio de tu bolsa, le pagaste a un proveedor. Se anota el monto y para qué fue, y el corte lo descuenta (o lo suma) de lo que debería haber en el cajón — antes ese dinero aparecía como faltante. También, al registrar una compra en Insumos hay una casilla de "lo pagué con dinero de la caja" que anota la salida sola. Y el corte que te llega por Telegram ya trae el desglose de esas entradas y salidas.',
+    donde: 'Caja · Insumos',
+  },
+  {
+    fecha: '2026-08-18',
     tipo: 'arreglo',
     titulo: 'Ya se puede guardar un conteo (incluido el 0)',
     detalle:

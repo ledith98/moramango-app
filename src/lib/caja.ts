@@ -12,7 +12,7 @@
  * sin cancelar): así el corte no depende de que nadie las sume a mano.
  */
 
-import { appendRow, ensureSheet, getSheetData, updateCell } from './googleSheets';
+import { appendRow, ensureSheet, getSheetData, updateCell, updateCells } from './googleSheets';
 import { normalizarMetodoPago } from './negocio';
 import { fechaHoyMTY, parsearFechaHora } from './pedidoFecha';
 
@@ -44,7 +44,11 @@ export interface EstadoCaja {
   fondoApertura: number | null;
   horaApertura: string;
   ventasEfectivo: number;
-  /** fondo + ventas en efectivo */
+  /** Efectivo que se sacó de la caja para gastos */
+  salidas: number;
+  /** Efectivo que se metió a la caja sin ser venta */
+  entradas: number;
+  /** fondo + ventas + entradas − salidas */
   esperado: number | null;
   cerrada: boolean;
   efectivoContado: number | null;
@@ -71,18 +75,31 @@ async function ventasEfectivoDelDia(fechaISO: string): Promise<number> {
 function filaAEstado(
   fila: Record<string, string> | undefined,
   fecha: string,
-  ventasEfectivo: number
+  ventasEfectivo: number,
+  movimientos: MovimientoCaja[] = []
 ): EstadoCaja {
+  const salidas = movimientos
+    .filter((m) => m.tipo === 'Salida')
+    .reduce((s, m) => s + m.monto, 0);
+  const entradas = movimientos
+    .filter((m) => m.tipo === 'Entrada')
+    .reduce((s, m) => s + m.monto, 0);
   const fondo = fila && fila.Fondo_Apertura !== '' ? parseFloat(fila.Fondo_Apertura) : null;
   const contado = fila && fila.Efectivo_Contado !== '' ? parseFloat(fila.Efectivo_Contado) : null;
   const abierta = fondo !== null;
-  const esperado = abierta ? Math.round((fondo! + ventasEfectivo) * 100) / 100 : null;
+  // El dinero que salió para comprar no es un faltante: se descuenta de
+  // lo que debería haber, para que el conteo cuadre de verdad.
+  const esperado = abierta
+    ? Math.round((fondo! + ventasEfectivo + entradas - salidas) * 100) / 100
+    : null;
   return {
     fecha,
     abierta,
     fondoApertura: fondo,
     horaApertura: fila?.Hora_Apertura || '',
     ventasEfectivo: Math.round(ventasEfectivo * 100) / 100,
+    salidas: Math.round(salidas * 100) / 100,
+    entradas: Math.round(entradas * 100) / 100,
     esperado,
     cerrada: contado !== null,
     efectivoContado: contado,
@@ -95,14 +112,16 @@ function filaAEstado(
 
 export async function leerCaja(fechaISO = fechaHoyMTY()): Promise<EstadoCaja> {
   await preparar();
-  const [filas, ventas] = await Promise.all([
+  const [filas, ventas, movimientos] = await Promise.all([
     getSheetData(HOJA),
     ventasEfectivoDelDia(fechaISO),
+    leerMovimientos(fechaISO),
   ]);
   return filaAEstado(
     filas.find((f) => f.Fecha === fechaISO),
     fechaISO,
-    ventas
+    ventas,
+    movimientos
   );
 }
 
@@ -146,4 +165,105 @@ export async function cerrarCaja(contado: number, quien: string, notas: string):
   if (notas) await updateCell(HOJA, fila, COL.notas, notas.slice(0, 200));
 
   return leerCaja(fecha);
+}
+
+/* ── Movimientos de efectivo ──────────────────────────────────────────
+ *
+ * Todo el efectivo que entra o sale de la caja SIN ser una venta: sacar
+ * $200 para comprar limones, meter un cambio de la bolsa, pagarle a un
+ * proveedor que llegó por su dinero.
+ *
+ * Sin esto, el corte no podía cuadrar: la caja tenía menos de lo esperado
+ * y aparecía como faltante, cuando en realidad ese dinero se había ido en
+ * una compra. Confundir un gasto con un faltante hace desconfiar del
+ * corte y, a la larga, dejar de hacerlo.
+ */
+
+export const HOJA_MOV = 'Movimientos_Caja';
+const COLS_MOV = ['Fecha', 'Hora', 'Tipo', 'Monto', 'Motivo', 'Quien'];
+
+export type TipoMovimiento = 'Salida' | 'Entrada';
+
+export interface MovimientoCaja {
+  fila: number;
+  fecha: string;
+  hora: string;
+  tipo: TipoMovimiento;
+  monto: number;
+  motivo: string;
+  quien: string;
+}
+
+async function prepararMovimientos() {
+  await ensureSheet(HOJA_MOV, COLS_MOV);
+}
+
+/**
+ * La fecha, venga como venga.
+ *
+ * Al escribir "2026-08-18", Google Sheets lo reconoce como fecha y guarda
+ * un numero de serie; al releer en crudo vuelve "46252" y la comparacion
+ * con la fecha de hoy no casaba nunca. Se normalizan las dos formas para
+ * que sirva con lo ya guardado y con lo que se guarde despues.
+ */
+function fechaDeCelda(valor: string): string {
+  const texto = (valor || '').toString().trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) return texto;
+  if (/^\d+(\.\d+)?$/.test(texto)) {
+    // Serie de Sheets: dias desde el 30/12/1899
+    const ms = Date.UTC(1899, 11, 30) + parseFloat(texto) * 86400000;
+    return new Date(ms).toISOString().slice(0, 10);
+  }
+  return texto;
+}
+
+/** Movimientos de un día, del más reciente al más viejo. */
+export async function leerMovimientos(fechaISO = fechaHoyMTY()): Promise<MovimientoCaja[]> {
+  await prepararMovimientos();
+  const filas = await getSheetData(HOJA_MOV, { crudo: true });
+  return filas
+    .map((f, i) => ({ f, fila: i + 2 }))
+    .filter(({ f }) => fechaDeCelda(f.Fecha) === fechaISO && f.Tipo)
+    .map(({ f, fila }) => ({
+      fila,
+      fecha: fechaDeCelda(f.Fecha),
+      hora: f.Hora || '',
+      tipo: (f.Tipo === 'Entrada' ? 'Entrada' : 'Salida') as TipoMovimiento,
+      monto: Math.abs(parseFloat(f.Monto) || 0),
+      motivo: f.Motivo || '',
+      quien: f.Quien || '',
+    }))
+    .reverse();
+}
+
+/**
+ * Anota que salió o entró dinero de la caja.
+ *
+ * El motivo es obligatorio: un movimiento sin explicación es exactamente
+ * el descuadre que se está tratando de evitar.
+ */
+export async function registrarMovimiento(
+  tipo: TipoMovimiento,
+  monto: number,
+  motivo: string,
+  quien: string,
+  fechaISO = fechaHoyMTY()
+): Promise<void> {
+  await prepararMovimientos();
+  await appendRow(HOJA_MOV, [
+    fechaISO,
+    ahoraHora(),
+    tipo,
+    Math.round(Math.abs(monto) * 100) / 100,
+    motivo.trim(),
+    quien,
+  ]);
+}
+
+/** Borra un movimiento mal capturado. Se vacía la fila para no correr las demás. */
+export async function borrarMovimiento(fila: number): Promise<void> {
+  await prepararMovimientos();
+  const vacias: Record<number, string> = {};
+  for (let c = 1; c <= COLS_MOV.length; c++) vacias[c] = '';
+  await updateCells(HOJA_MOV, fila, vacias);
 }

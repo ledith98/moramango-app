@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
-  const { nombre, telefono, metodoPago, estado, notas, items, estadoPago, idUsuario, beneficioCanjeado, efectivoRecibido, cambio, articuloGratisId, descuentoManual, motivoDescuento } =
+  const { nombre, telefono, metodoPago, estado, notas, items, estadoPago, idUsuario, beneficioCanjeado, efectivoRecibido, cambio, articuloGratisId, descuentoManual, motivoDescuento, yaPago } =
     await req.json();
 
   if (!nombre || typeof nombre !== 'string' || !nombre.trim()) {
@@ -77,9 +77,15 @@ export async function POST(req: NextRequest) {
   if (!METODOS_PAGO.includes(metodoPago)) {
     return NextResponse.json({ error: 'Método de pago inválido' }, { status: 400 });
   }
-  // En efectivo, el monto recibido es obligatorio (para el corte de caja).
-  // La cobertura del total se revalida más abajo, ya calculado el total.
-  if (metodoPago === 'Efectivo' && (efectivoRecibido === undefined || isNaN(parseFloat(efectivoRecibido)))) {
+  // En efectivo el monto recibido es obligatorio para el corte de caja,
+  // PERO solo si el cliente ya pagó. Una venta fiada no tiene monto que
+  // registrar todavía, y exigirlo obligaba a inventar una cifra.
+  const cobrado = yaPago !== false;
+  if (
+    metodoPago === 'Efectivo' &&
+    cobrado &&
+    (efectivoRecibido === undefined || isNaN(parseFloat(efectivoRecibido)))
+  ) {
     return NextResponse.json(
       { error: 'Falta registrar con cuánto pagó el cliente en efectivo' },
       { status: 400 }
@@ -167,7 +173,7 @@ export async function POST(req: NextRequest) {
 
   const total = Math.max(0, totalBruto - descuento);
 
-  if (metodoPago === 'Efectivo' && parseFloat(efectivoRecibido) + 0.001 < total) {
+  if (metodoPago === 'Efectivo' && cobrado && parseFloat(efectivoRecibido) + 0.001 < total) {
     return NextResponse.json(
       { error: 'El efectivo recibido no cubre el total' },
       { status: 400 }
@@ -284,9 +290,11 @@ export async function POST(req: NextRequest) {
   const estadoCobro =
     estadoPago === 'Pagado'
       ? 'Pagado'
-      : metodoPago === 'Transferencia'
-      ? 'Pendiente'
-      : '';
+      : // Efectivo fiado y transferencia sin confirmar son lo mismo para el
+        // corte: dinero que todavía no está.
+        (metodoPago === 'Efectivo' && !cobrado) || metodoPago === 'Transferencia'
+        ? 'Pendiente'
+        : '';
   if (estadoCobro) {
     const colEstadoPago = await ensureColumn('PEDIDOS', 'Estado_Pago');
     await updateCell('PEDIDOS', filaPedido, colEstadoPago, estadoCobro);

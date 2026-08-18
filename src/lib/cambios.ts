@@ -32,6 +32,14 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-18',
     tipo: 'nuevo',
+    titulo: 'Ventas fiadas y buscador de clientes en Pedidos',
+    detalle:
+      'Al cobrar en efectivo ahora eliges "✅ Ya pagó" o "🕓 Queda a deber". Si queda a deber, la venta se registra igual pero aparece como cobro por confirmar y ese dinero no cuenta para el corte de caja hasta que la marques pagada. Y en Pedidos hay un buscador: escribes el nombre del cliente, su teléfono o el número de pedido y te deja solo esos, con el total de lo filtrado. Encuentra aunque escribas sin acentos o en mayúsculas, y el teléfono aunque lo teclees distinto a como está guardado.',
+    donde: 'Venta · Pedidos',
+  },
+  {
+    fecha: '2026-08-18',
+    tipo: 'nuevo',
     titulo: 'Anotar el dinero que sale y entra de la caja',
     detalle:
       'En Caja hay un apartado nuevo para el efectivo que se mueve sin ser venta: sacaste $200 para comprar limones, metiste cambio de tu bolsa, le pagaste a un proveedor. Se anota el monto y para qué fue, y el corte lo descuenta (o lo suma) de lo que debería haber en el cajón — antes ese dinero aparecía como faltante. También, al registrar una compra en Insumos hay una casilla de "lo pagué con dinero de la caja" que anota la salida sola. Y el corte que te llega por Telegram ya trae el desglose de esas entradas y salidas.',

@@ -100,6 +100,8 @@ export default function VentaPage() {
   const [metodoPago, setMetodoPago] = useState('Efectivo');
   // Con cuánto pagó el cliente en efectivo, para calcular el cambio
   const [efectivoRecibido, setEfectivoRecibido] = useState('');
+  /** false = se la lleva fiada; el cobro queda pendiente */
+  const [yaPago, setYaPago] = useState(true);
   const [estado, setEstado] = useState('Recibido');
   const [notas, setNotas] = useState('');
   const [registrando, setRegistrando] = useState(false);
@@ -348,7 +350,9 @@ export default function VentaPage() {
         descuentoManual: descuentoManualNum > 0 ? descuentoManualNum : undefined,
         motivoDescuento: motivoDescuento.trim() || undefined,
         // Solo para efectivo con cambio; queda de registro en el pedido
-        efectivoRecibido: metodoPago === 'Efectivo' && recibidoNum > 0 ? recibidoNum : undefined,
+        yaPago,
+        efectivoRecibido:
+          metodoPago === 'Efectivo' && yaPago && recibidoNum > 0 ? recibidoNum : undefined,
         cambio: cambio > 0 ? cambio : undefined,
       }),
     });
@@ -386,6 +390,7 @@ export default function VentaPage() {
     setTelefono('');
     setMetodoPago('Efectivo');
     setEfectivoRecibido('');
+    setYaPago(true);
     setEstado('Recibido');
     setNotas('');
     setCliente(null);
@@ -505,7 +510,7 @@ export default function VentaPage() {
     }
     // En efectivo es obligatorio capturar con cuánto pagó (o "Justo"), para
     // que el corte de caja cuadre y quede el registro del cambio.
-    if (metodoPago === 'Efectivo') {
+    if (metodoPago === 'Efectivo' && yaPago) {
       if (efectivoRecibido.trim() === '') {
         setError('Registra con cuánto paga el cliente (o toca "Justo" si dio el monto exacto).');
         return;
@@ -1100,8 +1105,39 @@ export default function VentaPage() {
             </label>
           )}
 
-          {/* Cambio en efectivo: con cuánto pagó → cuánto se le regresa */}
+          {/* ¿Ya pagó o se la lleva fiada? Registrar la venta y cobrarla
+              no siempre pasan al mismo tiempo, y forzar un monto obligaba
+              a inventar una cifra que después descuadraba la caja. */}
           {metodoPago === 'Efectivo' && (
+            <div className="flex gap-1 bg-neutral-100 p-1 rounded-xl w-fit">
+              {(
+                [
+                  [true, '✅ Ya pagó'],
+                  [false, '🕓 Queda a deber'],
+                ] as const
+              ).map(([v, etiqueta]) => (
+                <button
+                  key={String(v)}
+                  onClick={() => setYaPago(v)}
+                  className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${
+                    yaPago === v ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-700'
+                  }`}
+                >
+                  {etiqueta}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {metodoPago === 'Efectivo' && !yaPago && (
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3">
+              La venta queda como <b>cobro por confirmar</b> y te aparece arriba en Pedidos hasta
+              que la marques como pagada. Ese dinero no cuenta para el corte de caja de hoy.
+            </p>
+          )}
+
+          {/* Cambio en efectivo: con cuánto pagó → cuánto se le regresa */}
+          {metodoPago === 'Efectivo' && yaPago && (
             <div className="space-y-1.5">
               <label className="text-sm font-semibold text-neutral-700">
                 ¿Con cuánto paga? <span className="font-normal text-red-600">(obligatorio)</span>

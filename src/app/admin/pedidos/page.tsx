@@ -160,6 +160,8 @@ export default function PedidosPage() {
   const [hasta, setHasta] = useState(fechaHoyMTY());
   const [estadoFiltro, setEstadoFiltro] = useState('Todos');
   const [metodoFiltro, setMetodoFiltro] = useState('Todos');
+  /** Buscar por cliente: nombre, telefono o numero de pedido */
+  const [buscaCliente, setBuscaCliente] = useState('');
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [cargando, setCargando] = useState(true);
   const [detalle, setDetalle] = useState<Detalle | null>(null);
@@ -185,10 +187,6 @@ export default function PedidosPage() {
     cargarPedidos();
   }, [cargarPedidos]);
 
-  // Total del periodo, sin contar cancelados
-  const totalRango = pedidos
-    .filter((p) => p.Estado !== 'Cancelado')
-    .reduce((s, p) => s + (parseFloat(p.Total_Final) || 0), 0);
 
   // Historial del cliente: las canceladas no cuentan para el total
   const historialValidos = (historial ?? []).filter((p) => p.Estado !== 'Cancelado');
@@ -250,6 +248,31 @@ export default function PedidosPage() {
    * Cobros iniciados que nadie confirmó. Se sacan del listado que ya está
    * en pantalla, así que respetan el rango de fechas que se esté viendo.
    */
+  /**
+   * Busca por nombre, telefono o numero de pedido. El telefono se compara
+   * por digitos: quien lo tiene guardado con lada lo teclea sin ella, y
+   * comparando texto no encontraria nada.
+   */
+  // Sin acentos: nadie escribe "Rocio" con acento al buscar, y con
+  // comparacion literal su clienta mas frecuente no aparecia.
+  const sinAcentos = (t: string) =>
+    (t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const q = sinAcentos(buscaCliente.trim());
+  const digitos = q.replace(/\D/g, '');
+  const visibles = pedidos.filter((p) => {
+    if (!q) return true;
+    const enTexto = [p.Nombre_Cliente_Snap, p.ID_Pedido].some((c) =>
+      sinAcentos(c || '').includes(q)
+    );
+    const enTel = digitos.length >= 3 && (p.Telefono || '').replace(/\D/g, '').includes(digitos);
+    return enTexto || enTel;
+  });
+  // Sin cancelados: sumarlos inflaria el total y ese numero se usa
+  // para cuadrar contra lo que de verdad entro.
+  const totalVisibles = visibles
+    .filter((p) => p.Estado !== 'Cancelado')
+    .reduce((s, p) => s + (parseFloat(p.Total_Final) || 0), 0);
+
   const porConfirmar = pedidos.filter(
     (p) => p.Estado_Pago === 'Pendiente' && p.Estado !== 'Cancelado'
   );
@@ -364,6 +387,12 @@ export default function PedidosPage() {
               </option>
             ))}
           </select>
+          <input
+            value={buscaCliente}
+            onChange={(e) => setBuscaCliente(e.target.value)}
+            placeholder="Buscar cliente, teléfono o pedido…"
+            className="flex-1 min-w-[190px] bg-white border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-black"
+          />
           <label className="text-sm font-semibold text-neutral-700 ml-2">Cobro</label>
           <select
             value={metodoFiltro}
@@ -377,8 +406,9 @@ export default function PedidosPage() {
             ))}
           </select>
           <span className="text-xs text-neutral-700 ml-auto">
-            {pedidos.length} pedido{pedidos.length === 1 ? '' : 's'}
-            {desde !== hasta && ` · $${totalRango.toFixed(2)} en total`}
+            {visibles.length} pedido{visibles.length === 1 ? '' : 's'}
+            {' · '}${totalVisibles.toFixed(2)}
+            {visibles.length !== pedidos.length && ` (de ${pedidos.length})`}
           </span>
         </div>
       </div>
@@ -409,11 +439,15 @@ export default function PedidosPage() {
 
       {cargando ? (
         <p className="text-neutral-700 animate-pulse">Cargando pedidos...</p>
-      ) : pedidos.length === 0 ? (
-        <p className="text-neutral-700">No hay pedidos para este filtro.</p>
+      ) : visibles.length === 0 ? (
+        <p className="text-neutral-700">
+          {buscaCliente.trim()
+            ? `Ningún pedido de "${buscaCliente.trim()}" en estas fechas.`
+            : 'No hay pedidos para este filtro.'}
+        </p>
       ) : (
         <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 divide-y divide-neutral-100 overflow-hidden">
-          {pedidos.map((p) => (
+          {visibles.map((p) => (
             <button
               key={p.ID_Pedido}
               onClick={() => abrirDetalle(p.ID_Pedido)}

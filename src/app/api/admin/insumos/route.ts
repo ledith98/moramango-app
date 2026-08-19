@@ -40,7 +40,7 @@ import {
 import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 import { leerRecetas } from '@/lib/recetario';
 import { getAdminSession } from '@/lib/roles';
-import { registrarMovimiento } from '@/lib/caja';
+import { CUENTA_DIGITAL, CUENTA_EFECTIVO, registrarMovimiento } from '@/lib/caja';
 
 const DIAS_ANALISIS = 7;
 
@@ -233,7 +233,7 @@ export async function PATCH(req: NextRequest) {
   }
   await prepararInventario();
 
-  const { id, accion, cantidadCompra, precioTotal, stockPrevio, pagadoConCaja, fechaCompraISO, donde, cantidad, valor, fechaISO, fila, lecturas } =
+  const { id, accion, cantidadCompra, precioTotal, stockPrevio, pagadoConCaja, pagadoCon, fechaCompraISO, donde, cantidad, valor, fechaISO, fila, lecturas } =
     await req.json();
   const ACCIONES = ['compra', 'conteo', 'ajustar', 'status', 'uso', 'stock', 'fechaCompra', 'borrarCompra', 'conteoRapido'];
   if (!accion || !ACCIONES.includes(accion)) {
@@ -433,22 +433,44 @@ export async function PATCH(req: NextRequest) {
       lugar,
     ]);
 
-    // d) Si se pagó con dinero del cajón, queda como salida de caja. Sin
-    // esto el corte de la noche marca un faltante que en realidad fue esta
-    // compra, y ese descuadre es lo que hace desconfiar del corte.
+    /**
+     * d) De dónde salió el dinero.
+     *
+     * La compra es el único lugar donde se captura: aquí ya se dice qué
+     * insumo, cuánto y cuánto costó, así que anotar la salida es un toque
+     * más. Al revés habría que capturar dos veces lo mismo — el dinero en
+     * un lado y la mercancía en otro — y dos caminos para el mismo hecho
+     * terminan en movimientos duplicados.
+     *
+     * Sin esto, el corte de la noche marca un faltante que en realidad fue
+     * esta compra, y ese descuadre es lo que hace desconfiar del corte.
+     *
+     * `pagadoConCaja` se sigue aceptando por los envíos viejos.
+     */
+    const bolsa =
+      pagadoCon === CUENTA_DIGITAL || pagadoCon === CUENTA_EFECTIVO
+        ? pagadoCon
+        : pagadoConCaja
+          ? CUENTA_EFECTIVO
+          : '';
+
     let salidaCaja = false;
-    if (pagadoConCaja && conPrecio) {
+    if (bolsa && conPrecio) {
       try {
         await registrarMovimiento(
           'Salida',
           redondear(precio, 2),
           `Compra de ${bib.Nombre || 'insumo'}`,
-          (session.user as { name?: string }).name || ''
+          (session.user as { name?: string }).name || '',
+          // La salida se fecha el día de la COMPRA, no el de captura: si no,
+          // el corte de un día cargaría un gasto de otro.
+          iso,
+          bolsa
         );
         salidaCaja = true;
       } catch (error) {
-        // El movimiento de caja no puede tumbar el registro de la compra
-        console.error('Error anotando la salida de caja:', error);
+        // El movimiento de dinero no puede tumbar el registro de la compra
+        console.error('Error anotando la salida de dinero:', error);
       }
     }
 
@@ -458,6 +480,7 @@ export async function PATCH(req: NextRequest) {
       agregadoEnReceta: enReceta,
       costoPorUnidadReceta: costoReceta,
       salidaCaja,
+      pagadoCon: bolsa,
     });
   }
 

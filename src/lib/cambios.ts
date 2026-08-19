@@ -31,6 +31,22 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-19',
+    tipo: 'mejora',
+    titulo: 'Al registrar una compra eliges si la pagaste del cajón o de la cuenta',
+    detalle:
+      'La casilla de “lo pagué con dinero de la caja” ahora es una elección de tres: efectivo del cajón, dinero de la cuenta, o no lo anotes. La salida se anota sola con la fecha de la compra, en la bolsa que elijas, y así queda ligada al insumo sin capturar nada dos veces. Usa “no lo anotes” si ya habías sacado el dinero antes y lo anotaste aparte, o si lo pagaste de tu bolsa.',
+    donde: 'Insumos → Compré',
+  },
+  {
+    fecha: '2026-08-19',
+    tipo: 'arreglo',
+    titulo: 'Los jugos de naranja y piña no llevaban ni naranja ni piña',
+    detalle:
+      'El Jugo de Naranja descontaba medio kilo de pulpa de mango, y el de Piña descontaba café. Las recetas se habían copiado de otra y no se cambió el ingrediente. Ya quedaron con lo suyo: 1.5 kg de naranja y 600 g de piña por vaso de 500 ml (el litro lo calcula solo, al doble). El agua de todos los jugos pasó a ser de garrafón, 250 ml. Y el Croissant dulce bajó de 200 g de Nutella a 100: su margen sube de 12% a 43%.',
+    donde: 'Recetario',
+  },
+  {
+    fecha: '2026-08-19',
     tipo: 'nuevo',
     titulo: 'Filtrar los pedidos por producto',
     detalle:

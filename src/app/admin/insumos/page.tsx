@@ -250,8 +250,8 @@ export default function InsumosPage() {
   const [compraPrecio, setCompraPrecio] = useState('');
   /** Lo que habia antes de la compra; vacio = lo que dice el sistema */
   const [compraPrevio, setCompraPrevio] = useState('');
-  /** Si el pago salio del cajon, se anota como salida de caja */
-  const [compraConCaja, setCompraConCaja] = useState(false);
+  /** De donde salio el dinero: '' = no anotarlo como salida */
+  const [compraPagadoCon, setCompraPagadoCon] = useState<'' | 'Efectivo' | 'Digital'>('');
   /** Cuando se hizo la compra; arranca en hoy pero se puede cambiar */
   const [compraFecha, setCompraFecha] = useState('');
   /** Donde se surtio; arranca en el proveedor que ya tenia el insumo */
@@ -446,7 +446,7 @@ El stock quedará igual a lo que contaste.`)) return;
     setCompraCantidad(a.sugerenciaCompra > 0 ? String(a.sugerenciaCompra) : '');
     setCompraPrecio('');
     setCompraPrevio('');
-    setCompraConCaja(false);
+    setCompraPagadoCon('');
     setCompraFecha(hoyISO());
     setCompraDonde(a.proveedor || '');
     setError('');
@@ -463,7 +463,7 @@ El stock quedará igual a lo que contaste.`)) return;
       precioTotal: compraPrecio,
       // Vacio = usar lo que el sistema ya tenia
       stockPrevio: compraPrevio.trim(),
-      pagadoConCaja: compraConCaja,
+      pagadoCon: compraPagadoCon,
       fechaCompraISO: compraFecha,
       donde: compraDonde.trim(),
     });
@@ -1651,23 +1651,47 @@ El stock quedará igual a lo que contaste.`)) return;
                 : 'Se guarda para que la próxima venga puesto y tengas a la mano dónde surtes cada cosa.'}
             </p>
 
-            <label className="flex items-start gap-3 mt-3 bg-neutral-50 border border-neutral-200 rounded-xl p-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={compraConCaja}
-                onChange={(e) => setCompraConCaja(e.target.checked)}
-                className="mt-0.5 w-5 h-5 accent-[var(--marca-marron)]"
-              />
-              <span>
-                <span className="font-semibold text-neutral-900 block">
-                  Lo pagué con dinero de la caja
-                </span>
-                <span className="text-xs text-neutral-700">
-                  Se anota como salida en el corte del día, para que el cajón cuadre y no aparezca
-                  como faltante.
-                </span>
-              </span>
-            </label>
+            {/* De dónde salió el dinero. Se pregunta aquí porque aquí ya
+                está todo: qué insumo, cuánto y cuánto costó. Anotarlo por
+                separado obligaría a capturar dos veces lo mismo. */}
+            <div className="mt-4">
+              <label className="block text-sm font-semibold text-neutral-800 mb-1">
+                ¿Con qué lo pagaste?
+              </label>
+              <div className="flex flex-wrap gap-1 bg-neutral-100 p-1 rounded-xl">
+                {(
+                  [
+                    ['Efectivo', '💵 Efectivo del cajón'],
+                    ['Digital', '🏦 Dinero de la cuenta'],
+                    ['', '🚫 No lo anotes'],
+                  ] as const
+                ).map(([v, etiqueta]) => (
+                  <button
+                    key={v || 'nada'}
+                    onClick={() => setCompraPagadoCon(v)}
+                    className={`px-3 py-2 rounded-lg text-xs font-semibold ${
+                      compraPagadoCon === v
+                        ? 'bg-white text-neutral-900 shadow-sm'
+                        : 'text-neutral-700'
+                    }`}
+                  >
+                    {etiqueta}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-neutral-700 mt-1.5">
+                {compraPagadoCon === 'Efectivo'
+                  ? 'Se anota como salida del cajón, con la fecha de la compra, para que el corte cuadre y no aparezca como faltante.'
+                  : compraPagadoCon === 'Digital'
+                    ? 'Se anota como salida de la cuenta, así el saldo del banco cuadra con lo que ves en la app.'
+                    : 'Elige “no lo anotes” si ya sacaste el dinero antes y lo anotaste aparte, o si lo pagaste de tu bolsa. Si no, se contaría dos veces.'}
+              </p>
+              {compraPagadoCon !== '' && !(parseFloat(compraPrecio.replace(',', '.')) > 0) && (
+                <p className="text-xs text-amber-800 mt-1">
+                  Ponle el precio arriba, si no no hay monto que descontar.
+                </p>
+              )}
+            </div>
 
             {/* La cuenta completa, como se piensa: lo que había + lo que llegó */}
             {cant > 0 && (

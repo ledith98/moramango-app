@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-18',
+    tipo: 'nuevo',
+    titulo: 'Filtro de fechas en “Lo que he comprado”',
+    detalle:
+      'La lista de compras ya se puede acotar como la de Pedidos: atajos de Hoy, Ayer, Últimos 7 días, Este mes y Todo, o el rango que quieras del día tal al día tal. El total de arriba sigue al filtro, así que ves cuánto gastaste en ese periodo y no solo el acumulado de siempre. El buscador ahora encuentra por insumo o por el lugar donde compraste, y sin importar acentos (“cafe” encuentra “Café”); el selector de arriba filtra por tipo de insumo. Si la combinación no deja nada, te lo dice y te ofrece quitar los filtros de un toque.',
+    donde: 'Insumos → Lo que he comprado',
+  },
+  {
+    fecha: '2026-08-18',
     tipo: 'arreglo',
     titulo: 'Insumos nuevos ya no se le encimaban a otro',
     detalle:

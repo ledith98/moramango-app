@@ -56,7 +56,15 @@ export async function GET(req: NextRequest) {
   // gastado" había que abrir uno por uno. Esto devuelve las compras de
   // todos juntas, de la más reciente a la más vieja.
   if (new URL(req.url).searchParams.get('compras')) {
-    const compras = await getSheetData(HOJA_COMPRAS, { crudo: true });
+    // La categoría no se guarda en la compra: se toma del insumo, para que
+    // filtrar por tipo no dependa de lo que estuviera capturado ese día.
+    const [compras, biblioteca] = await Promise.all([
+      getSheetData(HOJA_COMPRAS, { crudo: true }),
+      getSheetData(HOJA_BIBLIOTECA, { crudo: true }),
+    ]);
+    const categoriaDe = new Map(
+      biblioteca.map((b) => [b.ID_Biblioteca, (b.Categoria || '').toString().trim()])
+    );
     const lista = compras
       .map((c, i) => ({ c, fila: i + 2 }))
       .filter(({ c }) => (c.Nombre || '').trim() || (c.ID_Biblioteca || '').trim())
@@ -70,6 +78,7 @@ export async function GET(req: NextRequest) {
         unidad: c.Unidad_Compra || '',
         total: parseFloat(c.Precio_Total) || 0,
         donde: (c.Donde || '').toString().trim(),
+        categoria: categoriaDe.get(c.ID_Biblioteca) || '',
       }))
       .sort((a, b) => (b.fechaISO || '').localeCompare(a.fechaISO || ''));
 

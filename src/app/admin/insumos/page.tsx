@@ -61,6 +61,8 @@ interface CompraRegistrada {
   total: number;
   /** Donde se surtio; vacio si no se anoto */
   donde: string;
+  /** Categoria del insumo, para filtrar por tipo */
+  categoria: string;
 }
 
 interface ItemActivo {
@@ -163,6 +165,42 @@ function sugiere(nombreInsumo: string, nombreIngrediente: string): boolean {
 const inputCls =
   'w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-marron';
 
+/** Un dia de Monterrey, corrido N dias hacia atras. */
+function diaISO(atras = 0): string {
+  const p = new Intl.DateTimeFormat('es-MX', {
+    timeZone: 'America/Monterrey',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(Date.now() - atras * 86400000));
+  const g = (t: string) => p.find((x) => x.type === t)?.value ?? '';
+  return `${g('year')}-${g('month')}-${g('day')}`;
+}
+
+/**
+ * Atajos del filtro de compras. "Todo" existe porque las compras son
+ * salteadas: sin el, un rango corto deja la lista vacia y parece que se
+ * perdieron.
+ */
+const ATAJOS_COMPRAS: { etiqueta: string; rango: () => { desde: string; hasta: string } }[] = [
+  { etiqueta: 'Hoy', rango: () => ({ desde: diaISO(0), hasta: diaISO(0) }) },
+  { etiqueta: 'Ayer', rango: () => ({ desde: diaISO(1), hasta: diaISO(1) }) },
+  { etiqueta: 'Ultimos 7 dias', rango: () => ({ desde: diaISO(6), hasta: diaISO(0) }) },
+  { etiqueta: 'Este mes', rango: () => ({ desde: diaISO(0).slice(0, 8) + '01', hasta: diaISO(0) }) },
+  { etiqueta: 'Todo', rango: () => ({ desde: '', hasta: '' }) },
+];
+
+/** "2026-08-15" -> "15 ago 2026" */
+const fechaBonita = (iso: string) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  return `${d} ${meses[m - 1] ?? ''} ${y}`;
+};
+
+/** Para que "Cafe" encuentre "Café" y al reves. */
+const sinAcentos = (t: string) =>
+  t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+
 /** Hoy en Monterrey, en formato YYYY-MM-DD para el campo de fecha. */
 function hoyISO(): string {
   const p = new Intl.DateTimeFormat('es-MX', {
@@ -182,8 +220,10 @@ export default function InsumosPage() {
   const [lecturas, setLecturas] = useState<Record<string, string>>({});
   const [guardandoConteo, setGuardandoConteo] = useState(false);
   const [compras, setCompras] = useState<CompraRegistrada[]>([]);
-  const [gastoTotal, setGastoTotal] = useState(0);
   const [cargandoCompras, setCargandoCompras] = useState(false);
+  /** Rango de fechas de las compras; vacio = todas */
+  const [desde, setDesde] = useState('');
+  const [hasta, setHasta] = useState('');
   const [biblioteca, setBiblioteca] = useState<ItemBiblioteca[]>([]);
   const [activos, setActivos] = useState<ItemActivo[]>([]);
   const [categoriasEnUso, setCategoriasEnUso] = useState<string[]>([]);
@@ -231,7 +271,6 @@ export default function InsumosPage() {
       const r = await fetch('/api/admin/insumos?compras=1');
       const d = await r.json();
       setCompras(d.compras ?? []);
-      setGastoTotal(d.gastoTotal ?? 0);
     } finally {
       setCargandoCompras(false);
     }
@@ -293,6 +332,21 @@ El stock quedará igual a lo que contaste.`)) return;
   }, [cargar]);
 
   const todasCategorias = [...new Set([...CATEGORIAS_INSUMOS, ...categoriasEnUso])].filter(Boolean);
+
+  /**
+   * Compras que se ven: por fecha, por nombre y por tipo. Se filtra aqui y
+   * no en el servidor porque son unas decenas de renglones; pedirlas de
+   * nuevo a Google por cada cambio de filtro tardaria mas que la pantalla.
+   */
+  const comprasVisibles = compras.filter((c) => {
+    if (desde && (!c.fechaISO || c.fechaISO < desde)) return false;
+    if (hasta && (!c.fechaISO || c.fechaISO > hasta)) return false;
+    const q = sinAcentos(busqueda);
+    if (q && !sinAcentos(c.nombre).includes(q) && !sinAcentos(c.donde).includes(q)) return false;
+    if (filtroGrupo !== 'Todos' && (c.categoria || SIN_CATEGORIA) !== filtroGrupo) return false;
+    return true;
+  });
+  const gastoVisible = comprasVisibles.reduce((t, c) => t + c.total, 0);
 
   /**
    * Lugares donde ya se ha surtido algo, para sugerirlos al anotar una
@@ -708,7 +762,7 @@ El stock quedará igual a lo que contaste.`)) return;
         <input
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
-          placeholder="Buscar insumo…"
+          placeholder={pestana === 'compras' ? 'Buscar insumo o lugar…' : 'Buscar insumo…'}
           className="flex-1 min-w-[180px] bg-white border border-neutral-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-marron text-neutral-900"
         />
         <select
@@ -727,18 +781,79 @@ El stock quedará igual a lo que contaste.`)) return;
 
       {pestana === 'compras' ? (
         <div className="space-y-3">
-          <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-4 flex flex-wrap items-center gap-3">
-            <div>
-              <p className="text-xs text-neutral-700 font-medium uppercase tracking-wide">
-                Total comprado
-              </p>
-              <p className="text-2xl font-bold text-neutral-900">${gastoTotal.toFixed(2)}</p>
+          {/* Rango de fechas: el gasto solo dice algo referido a un
+              periodo. "Todo" queda a un toque porque las compras son
+              salteadas y un rango corto puede dejar la lista vacia. */}
+          <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-4 space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {ATAJOS_COMPRAS.map((a) => {
+                const r = a.rango();
+                const activo = desde === r.desde && hasta === r.hasta;
+                return (
+                  <button
+                    key={a.etiqueta}
+                    onClick={() => {
+                      setDesde(r.desde);
+                      setHasta(r.hasta);
+                    }}
+                    className={`text-xs font-semibold px-3 py-1.5 rounded-lg ${
+                      activo ? 'bg-marron text-white' : 'bg-neutral-100 text-neutral-800'
+                    }`}
+                  >
+                    {a.etiqueta}
+                  </button>
+                );
+              })}
             </div>
-            <div className="ml-auto text-right">
-              <p className="text-xs text-neutral-700 font-medium uppercase tracking-wide">
-                Compras registradas
-              </p>
-              <p className="text-2xl font-bold text-neutral-900">{compras.length}</p>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-sm font-semibold text-neutral-800">Del</label>
+              <input
+                type="date"
+                value={desde}
+                max={hasta || undefined}
+                onChange={(e) => setDesde(e.target.value)}
+                className="bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-marron"
+              />
+              <label className="text-sm font-semibold text-neutral-800">al</label>
+              <input
+                type="date"
+                value={hasta}
+                min={desde || undefined}
+                onChange={(e) => setHasta(e.target.value)}
+                className="bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-marron"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-end gap-3 border-t border-neutral-100 pt-3">
+              <div>
+                <p className="text-xs text-neutral-700 font-medium uppercase tracking-wide">
+                  {desde || hasta ? 'Gastado en lo que elegiste' : 'Total comprado'}
+                </p>
+                <p className="text-2xl font-bold text-neutral-900">${gastoVisible.toFixed(2)}</p>
+                {(desde || hasta) && (
+                  <p className="text-xs text-neutral-600">
+                    {desde && hasta
+                      ? desde === hasta
+                        ? fechaBonita(desde)
+                        : `${fechaBonita(desde)} al ${fechaBonita(hasta)}`
+                      : desde
+                      ? `desde el ${fechaBonita(desde)}`
+                      : `hasta el ${fechaBonita(hasta)}`}
+                  </p>
+                )}
+              </div>
+              <div className="ml-auto text-right">
+                <p className="text-xs text-neutral-700 font-medium uppercase tracking-wide">
+                  Compras
+                </p>
+                <p className="text-2xl font-bold text-neutral-900">
+                  {comprasVisibles.length}
+                  {comprasVisibles.length !== compras.length && (
+                    <span className="text-sm font-semibold text-neutral-600"> de {compras.length}</span>
+                  )}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -749,10 +864,26 @@ El stock quedará igual a lo que contaste.`)) return;
               Todavía no hay compras registradas. Se van guardando solas cada vez que le pones
               &ldquo;+ Compra&rdquo; a un insumo en la pestaña de al lado.
             </div>
+          ) : comprasVisibles.length === 0 ? (
+            /* Que quede claro que es el filtro, no que se hayan borrado */
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-800">
+              Ninguna compra cae en lo que elegiste. Tienes {compras.length} en total —
+              <button
+                onClick={() => {
+                  setDesde('');
+                  setHasta('');
+                  setBusqueda('');
+                  setFiltroGrupo('Todos');
+                }}
+                className="ml-1 font-bold underline"
+              >
+                quitar los filtros
+              </button>
+              .
+            </div>
           ) : (
             <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden divide-y divide-neutral-100">
-              {compras
-                .filter((c) => !busqueda.trim() || c.nombre.toLowerCase().includes(busqueda.trim().toLowerCase()))
+              {comprasVisibles
                 .map((c) => (
                   <div key={c.fila} className="flex items-center gap-3 p-3.5">
                     <span className="text-xs text-neutral-700 font-mono w-20 shrink-0">

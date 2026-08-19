@@ -20,6 +20,7 @@ import {
   redondear,
 } from '@/lib/inventario';
 import { COL_REC, HOJA_RECETARIO, prepararRecetario } from '@/lib/recetario';
+import { siguienteId } from '@/lib/ids';
 import { getAdminSession } from '@/lib/roles';
 
 const vivos = (filas: Record<string, string>[]) =>
@@ -226,7 +227,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const idLinea = `REC-${String(recetario.length + 1).padStart(4, '0')}`;
+  const idLinea = siguienteId(recetario, 'ID_Linea', 'REC', 4);
   await appendRow(HOJA_RECETARIO, [
     idLinea,
     idProducto,

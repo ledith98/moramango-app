@@ -18,7 +18,7 @@
  * dueña (tiene fórmulas VLOOKUP y SUMIF) y el respaldo de esta migración.
  */
 
-import { ensureSheet, getSheetData } from './googleSheets';
+import { ensureColumn, ensureSheet, getSheetData } from './googleSheets';
 import { HOJA_BIBLIOTECA } from './inventario';
 
 export const HOJA_RECETARIO = 'Recetario';
@@ -53,6 +53,11 @@ export const COL_REC = {
 
 export async function prepararRecetario(): Promise<void> {
   await ensureSheet(HOJA_RECETARIO, COLS_RECETARIO);
+  // ensureSheet solo escribe encabezados al CREAR la hoja. Para una que ya
+  // existia, la columna nueva nunca aparecia: se escribia el valor en la
+  // celda pero, sin encabezado, getSheetData no lo devolvia y los combos
+  // quedaban vacios. Los componentes no funcionaron hasta este arreglo.
+  await ensureColumn(HOJA_RECETARIO, 'ID_Componente');
 }
 
 /**

@@ -27,6 +27,7 @@ import {
   leerIngredientes,
   prepararInventario,
 } from '@/lib/inventario';
+import { siguienteId } from '@/lib/ids';
 import { getAdminSession } from '@/lib/roles';
 
 /**
@@ -145,23 +146,6 @@ export async function GET(req: NextRequest) {
 
   const categoriasEnUso = [...new Set(items.map((i) => i.categoria).filter(Boolean))];
   return NextResponse.json({ items, categoriasEnUso });
-}
-
-/**
- * Siguiente ID libre: el mas alto que exista, mas uno.
- *
- * Antes se usaba `filas.length + 1`, que cuenta renglones en vez de mirar
- * los IDs. Basta con que una fila se borre o quede vacia para que el
- * contador retroceda y el ID nuevo pise uno que ya existe. Cuando dos
- * insumos comparten ID, el que se lee por ID es el ultimo y el otro queda
- * invisible: su stock y sus recetas se le atribuyen al equivocado.
- */
-function siguienteId(filas: Record<string, string>[], campo: string, prefijo: string): string {
-  const mayor = filas.reduce((max, f) => {
-    const n = parseInt((f[campo] ?? '').toString().replace(`${prefijo}-`, ''), 10);
-    return isNaN(n) ? max : Math.max(max, n);
-  }, 0);
-  return `${prefijo}-${String(mayor + 1).padStart(3, '0')}`;
 }
 
 export async function POST(req: NextRequest) {

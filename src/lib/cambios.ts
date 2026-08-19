@@ -32,6 +32,22 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-18',
     tipo: 'nuevo',
+    titulo: 'Los combos y los productos de reventa ya tienen receta',
+    detalle:
+      'Los 8 combos vivos quedaron armados con los productos que ya existían: el Combo Croissant es “un croissant de jamón y queso más un licuado”, no una lista de ingredientes recapturada. Si cambias la receta del croissant, el combo se entera solo. También los de reventa (agua, refresco, conchas, galleta, bite) quedaron con su renglón: uno se compra, uno se vende. Con esto el panel ya te puede sacar el costo y la ganancia de cada combo.',
+    donde: 'Recetario',
+  },
+  {
+    fecha: '2026-08-18',
+    tipo: 'arreglo',
+    titulo: 'Los combos armados con otros productos no se estaban tomando en cuenta',
+    detalle:
+      'La columna donde se guarda “de qué productos se compone este combo” nunca se creó en el archivo, así que aunque lo capturaras, la app no lo veía y el combo salía sin ingredientes. Ya queda, y se crea sola de aquí en adelante.',
+    donde: 'Recetario',
+  },
+  {
+    fecha: '2026-08-18',
+    tipo: 'nuevo',
     titulo: 'Filtro de fechas en “Lo que he comprado”',
     detalle:
       'La lista de compras ya se puede acotar como la de Pedidos: atajos de Hoy, Ayer, Últimos 7 días, Este mes y Todo, o el rango que quieras del día tal al día tal. El total de arriba sigue al filtro, así que ves cuánto gastaste en ese periodo y no solo el acumulado de siempre. El buscador ahora encuentra por insumo o por el lugar donde compraste, y sin importar acentos (“cafe” encuentra “Café”); el selector de arriba filtra por tipo de insumo. Si la combinación no deja nada, te lo dice y te ofrece quitar los filtros de un toque.',

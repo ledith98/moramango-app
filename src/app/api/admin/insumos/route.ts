@@ -219,7 +219,7 @@ export async function PATCH(req: NextRequest) {
   }
   await prepararInventario();
 
-  const { id, accion, cantidadCompra, precioTotal, stockPrevio, pagadoConCaja, cantidad, valor, fechaISO, fila, lecturas } =
+  const { id, accion, cantidadCompra, precioTotal, stockPrevio, pagadoConCaja, fechaCompraISO, cantidad, valor, fechaISO, fila, lecturas } =
     await req.json();
   const ACCIONES = ['compra', 'conteo', 'ajustar', 'status', 'uso', 'stock', 'fechaCompra', 'borrarCompra', 'conteoRapido'];
   if (!accion || !ACCIONES.includes(accion)) {
@@ -323,6 +323,28 @@ export async function PATCH(req: NextRequest) {
     }
 
     /**
+     * Cuándo se hizo la compra. Obligatoria: la mercancía se captura
+     * cuando se puede, no cuando llega, y fechar todo "hoy" hace que el
+     * historial de precios y el gasto del mes no correspondan a la
+     * realidad.
+     *
+     * Se guarda con el mismo formato de texto que el resto del archivo
+     * ("18/8/2026, 12:00:00 p.m."). Escribir "2026-08-18" haría que Sheets
+     * lo tomara por fecha y lo guardara como número de serie.
+     */
+    const iso = (fechaCompraISO ?? '').toString().trim();
+    const fechaCompra = fechaCompraDesdeISO(iso);
+    if (!fechaCompra) {
+      return NextResponse.json({ error: 'Falta la fecha de la compra' }, { status: 400 });
+    }
+    if (iso > fechaHoyMTY()) {
+      return NextResponse.json(
+        { error: 'La fecha de la compra no puede ser futura' },
+        { status: 400 }
+      );
+    }
+
+    /**
      * De cuánto se parte para sumar la compra.
      *
      * Normalmente es lo que el sistema traía, pero al llegar mercancía es
@@ -342,11 +364,13 @@ export async function PATCH(req: NextRequest) {
     const nuevoStock = redondear(base + enReceta, 3);
     const celdas: Record<number, string | number> = {
       [COL_ACT.stock]: nuevoStock,
-      [COL_ACT.ultimaCompra]: fecha,
+      [COL_ACT.ultimaCompra]: fechaCompra,
       [COL_ACT.status]: 'Fresco', // una compra fresca reinicia el status
     };
     if (hayPrevio) {
       celdas[COL_ACT.conteoFisico] = redondear(previo, 3);
+      // El conteo es de HOY aunque la compra sea de otro día: se contó al
+      // capturarla, no cuando llegó la mercancía.
       celdas[COL_ACT.fechaConteo] = fecha;
     }
     await updateCells(HOJA_ACTIVOS, filaAct, celdas);
@@ -366,7 +390,7 @@ export async function PATCH(req: NextRequest) {
     // guardaba si se capturaba el monto, así que una compra sin precio no
     // aparecía en "Lo que he comprado" y la lista mentía.
     await appendRow(HOJA_COMPRAS, [
-      fecha,
+      fechaCompra,
       bib.ID_Biblioteca,
       bib.Nombre || '',
       cant,

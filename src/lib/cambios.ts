@@ -32,6 +32,14 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-18',
     tipo: 'mejora',
+    titulo: 'Al anotar una compra ahora pones la fecha en que la hiciste',
+    detalle:
+      'En Insumos, el botón 🛒 Compré te pide la fecha de la compra y ya no te deja guardar sin ella. Viene puesta la de hoy, y si compraste el sábado y lo anotas el lunes, le cambias la fecha y el gasto queda contado en el sábado. Así “Lo que he comprado” te dice de verdad cuánto gastaste cada día. El conteo de lo que hay en el local sigue siendo de hoy, aunque la compra sea de otro día.',
+    donde: 'Insumos → Compré',
+  },
+  {
+    fecha: '2026-08-18',
+    tipo: 'mejora',
     titulo: 'En Pedidos ya se ve con qué te pagaron cada uno',
     detalle:
       'Cada pedido de la lista trae ahora su forma de cobro al lado del número: 💵 Efectivo, 💳 Terminal, 📲 Transferencia, 🛍️ Pago en línea, o "sin registrar" si le falta. Antes había que abrir uno por uno para saberlo. Junto con el filtro de Cobro que ya estaba, puedes dejar en pantalla solo los de terminal y ver de un vistazo cuáles son y cuánto suman.',

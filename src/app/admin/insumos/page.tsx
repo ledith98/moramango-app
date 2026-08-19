@@ -161,6 +161,18 @@ function sugiere(nombreInsumo: string, nombreIngrediente: string): boolean {
 const inputCls =
   'w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-marron';
 
+/** Hoy en Monterrey, en formato YYYY-MM-DD para el campo de fecha. */
+function hoyISO(): string {
+  const p = new Intl.DateTimeFormat('es-MX', {
+    timeZone: 'America/Monterrey',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const g = (t: string) => p.find((x) => x.type === t)?.value ?? '';
+  return `${g('year')}-${g('month')}-${g('day')}`;
+}
+
 export default function InsumosPage() {
   const [pestana, setPestana] = useState<'biblioteca' | 'activos' | 'compras'>('activos');
   /** Modo "voy a contar el local": se escriben las cantidades y se guardan juntas */
@@ -198,6 +210,8 @@ export default function InsumosPage() {
   const [compraPrevio, setCompraPrevio] = useState('');
   /** Si el pago salio del cajon, se anota como salida de caja */
   const [compraConCaja, setCompraConCaja] = useState(false);
+  /** Cuando se hizo la compra; arranca en hoy pero se puede cambiar */
+  const [compraFecha, setCompraFecha] = useState('');
   const [historial, setHistorial] = useState<CompraHistorial[] | null>(null);
   const [historialDe, setHistorialDe] = useState('');
   const [historialId, setHistorialId] = useState('');
@@ -361,6 +375,7 @@ El stock quedará igual a lo que contaste.`)) return;
     setCompraPrecio('');
     setCompraPrevio('');
     setCompraConCaja(false);
+    setCompraFecha(hoyISO());
     setError('');
   }
 
@@ -368,6 +383,7 @@ El stock quedará igual a lo que contaste.`)) return;
     if (!compraDe) return;
     const cant = parseFloat(compraCantidad);
     if (isNaN(cant) || cant <= 0) return setError('Escribe cuánto compraste');
+    if (!compraFecha) return setError('Pon la fecha de la compra');
     const ok = await accionActivo(compraDe.id, {
       accion: 'compra',
       cantidadCompra: cant,
@@ -375,6 +391,7 @@ El stock quedará igual a lo que contaste.`)) return;
       // Vacio = usar lo que el sistema ya tenia
       stockPrevio: compraPrevio.trim(),
       pagadoConCaja: compraConCaja,
+      fechaCompraISO: compraFecha,
     });
     if (ok) setCompraDe(null);
   }
@@ -1331,6 +1348,21 @@ El stock quedará igual a lo que contaste.`)) return;
         return (
           <Modal titulo={`🛒 Compré ${compraDe.nombre}`} onCerrar={() => setCompraDe(null)}>
             <label className="block text-sm font-semibold text-neutral-800 mb-1">
+              ¿Qué día la compraste?
+            </label>
+            <input
+              type="date"
+              value={compraFecha}
+              max={hoyISO()}
+              onChange={(e) => setCompraFecha(e.target.value)}
+              className={inputCls}
+            />
+            <p className="text-xs text-neutral-600 -mt-1 mb-4">
+              Viene la de hoy. Cámbiala si la compra fue otro día, para que el gasto quede en el
+              día que fue.
+            </p>
+
+            <label className="block text-sm font-semibold text-neutral-800 mb-1">
               ¿Cuánto tenías antes de esta compra?
             </label>
             <div className="flex items-center gap-2">
@@ -1453,10 +1485,10 @@ El stock quedará igual a lo que contaste.`)) return;
 
             <button
               onClick={registrarCompra}
-              disabled={ocupado || cant <= 0}
+              disabled={ocupado || cant <= 0 || !compraFecha}
               className="w-full bg-marron text-white font-bold py-3.5 rounded-xl mt-4 active:scale-95 disabled:opacity-50"
             >
-              {ocupado ? 'Guardando…' : 'Guardar la compra'}
+              {ocupado ? 'Guardando…' : !compraFecha ? 'Falta la fecha' : 'Guardar la compra'}
             </button>
             <p className="text-xs text-neutral-600 mt-2 text-center">
               Queda anotada en &ldquo;Lo que he comprado&rdquo; con la fecha de hoy.

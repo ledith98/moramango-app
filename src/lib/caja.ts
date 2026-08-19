@@ -277,14 +277,18 @@ export async function leerMovimientos(
 export async function leerMovimientosRango(
   desde: string,
   hasta: string,
-  cuenta = CUENTA_DIGITAL
+  cuenta?: string
 ): Promise<MovimientoCaja[]> {
   await prepararMovimientos();
   const filas = await getSheetData(HOJA_MOV, { crudo: true });
   return filas
     .map((f, i) => ({ f, fila: i + 2 }))
     .filter(({ f }) => {
-      if (!f.Tipo || cuentaDe(f.Cuenta) !== cuenta) return false;
+      // Sin cuenta se devuelven las dos bolsas: la pantalla las muestra
+      // juntas con su distintivo, y leer la hoja dos veces costaría el
+      // doble por un dato que ya viene en la misma respuesta.
+      if (!f.Tipo) return false;
+      if (cuenta && cuentaDe(f.Cuenta) !== cuenta) return false;
       const d = fechaDeCelda(f.Fecha);
       return (!desde || d >= desde) && (!hasta || d <= hasta);
     })

@@ -10,6 +10,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { rendimientoAnual } from '@/lib/rendimiento';
 
 interface Movimiento {
   fila: number;
@@ -18,6 +19,8 @@ interface Movimiento {
   tipo: 'Salida' | 'Entrada' | 'Rendimiento';
   monto: number;
   motivo: string;
+  /** 'Efectivo' (el cajón) o 'Digital' (la cuenta) */
+  cuenta: string;
 }
 
 interface PorMetodo {
@@ -41,7 +44,9 @@ interface EstadoCuenta {
   salidas: number;
   movimientoNeto: number;
   movimientos: Movimiento[];
-  tasaAnual: number | null;
+  /** Último saldo capturado y de cuándo es */
+  saldo: number | null;
+  saldoFecha: string;
 }
 
 const money = (n: number) => `$${n.toFixed(2)}`;
@@ -75,8 +80,11 @@ const inputCls =
 export default function CuentaPage() {
   const [desde, setDesde] = useState(diaISO(0).slice(0, 8) + '01');
   const [hasta, setHasta] = useState(diaISO(0));
-  /** Lo que dice la app del banco. Solo sirve para sacar la tasa. */
+  /** Lo que dice la app del banco. Se guarda; no es solo de pantalla. */
   const [saldo, setSaldo] = useState('');
+  const [saldoTocado, setSaldoTocado] = useState(false);
+  /** De qué bolsa salió el dinero del movimiento que se está anotando */
+  const [bolsa, setBolsa] = useState<'Digital' | 'Efectivo'>('Digital');
   const [estado, setEstado] = useState<EstadoCuenta | null>(null);
   const [cargando, setCargando] = useState(true);
   const [ocupado, setOcupado] = useState(false);
@@ -90,13 +98,19 @@ export default function CuentaPage() {
   const cargar = useCallback(async () => {
     setCargando(true);
     const q = new URLSearchParams({ desde, hasta });
-    if (saldo.trim()) q.set('saldo', saldo.trim());
     const res = await fetch(`/api/admin/cuenta?${q}`);
     const data = await res.json();
     setEstado(res.ok ? data : null);
     if (!res.ok) setError(data.error || 'No se pudo cargar');
+    // Solo se rellena si ella no lo está editando, para no borrarle lo escrito
+    if (res.ok && !saldoTocado && data.saldo !== null && data.saldo !== undefined) {
+      setSaldo(String(data.saldo));
+    }
     setCargando(false);
-  }, [desde, hasta, saldo]);
+    // saldoTocado a propósito fuera de las dependencias: incluirlo
+    // recargaría la pantalla en cuanto se toca el campo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [desde, hasta]);
 
   useEffect(() => {
     cargar();
@@ -286,30 +300,71 @@ export default function CuentaPage() {
                   {money(estado.rendimiento)}
                 </p>
               </div>
-              <div className="flex-1 min-w-[150px]">
+              <div className="flex-1 min-w-[170px]">
                 <label className="block text-[11px] text-neutral-600 uppercase tracking-wide mb-1">
                   ¿Cuánto tienes en la cuenta?
                 </label>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  value={saldo}
-                  onChange={(e) => setSaldo(e.target.value)}
-                  placeholder="lo que dice Mercado Pago"
-                  className={`${inputCls} w-full`}
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="any"
+                    value={saldo}
+                    onChange={(e) => {
+                      setSaldo(e.target.value);
+                      setSaldoTocado(true);
+                    }}
+                    placeholder="lo que dice Mercado Pago"
+                    className={`${inputCls} flex-1 min-w-0`}
+                  />
+                  <button
+                    onClick={async () => {
+                      const ok = await guardar({
+                        accion: 'saldo',
+                        monto: saldo,
+                        fechaISO: diaISO(0),
+                      });
+                      if (ok) setSaldoTocado(false);
+                    }}
+                    disabled={ocupado || !saldo.trim() || !saldoTocado}
+                    className="bg-marron text-white font-semibold px-3 py-2 rounded-xl text-sm active:scale-95 disabled:opacity-40"
+                  >
+                    {saldoTocado ? 'Guardar' : 'Guardado'}
+                  </button>
+                </div>
               </div>
             </div>
-            {estado.tasaAnual !== null ? (
-              <p className="text-sm text-neutral-800 mt-3 bg-green-50 border border-green-200 rounded-xl p-3">
-                A ese paso, tu dinero rinde <b>{estado.tasaAnual.toFixed(2)}% al año</b>.
-              </p>
-            ) : (
-              <p className="text-xs text-neutral-600 mt-3">
-                Escribe cuánto tienes en la cuenta y te calculo el porcentaje: $6 de rendimiento no
-                es lo mismo sobre $600 que sobre $6,000.
-              </p>
-            )}
+
+            {/* La tasa se recalcula mientras escribe: la cuenta es pura y
+                vive en el navegador, no hace falta ir al servidor. */}
+            {(() => {
+              const n = parseFloat(saldo.replace(',', '.'));
+              const tasa = rendimientoAnual(estado.rendimiento, n, estado.dias);
+              if (tasa === null) {
+                return (
+                  <p className="text-xs text-neutral-600 mt-3">
+                    Escribe cuánto tienes en la cuenta y te calculo el porcentaje: $6 de rendimiento
+                    no es lo mismo sobre $600 que sobre $6,000.
+                  </p>
+                );
+              }
+              return (
+                <p className="text-sm text-neutral-800 mt-3 bg-green-50 border border-green-200 rounded-xl p-3">
+                  A ese paso, tu dinero rinde <b>{tasa.toFixed(2)}% al año</b>.
+                  {estado.saldoFecha && !saldoTocado && (
+                    <span className="block text-xs text-neutral-700 mt-1">
+                      Saldo anotado el {estado.saldoFecha}. Actualízalo cuando quieras.
+                    </span>
+                  )}
+                  {saldoTocado && (
+                    <span className="block text-xs text-amber-800 mt-1">
+                      Dale a Guardar para que quede anotado.
+                    </span>
+                  )}
+                </p>
+              );
+            })()}
           </div>
 
           {/* Anotar movimientos */}
@@ -317,9 +372,40 @@ export default function CuentaPage() {
             <div>
               <h2 className="font-bold text-neutral-900">Anotar un movimiento</h2>
               <p className="text-xs text-neutral-700 mt-0.5">
-                Lo que sacas de la cuenta para pagar insumos o proveedores, lo que metes sin ser
-                venta, y el rendimiento que te paga el banco.
+                Lo que sacas para pagar insumos o proveedores, lo que metes sin ser venta, y el
+                rendimiento que te paga el banco. Dinero del cajón o de la cuenta: tú eliges.
               </p>
+            </div>
+
+            {/* De qué bolsa salió. Lo mismo se paga con lo del cajón que
+                con lo de la cuenta, y si no se distingue, ninguno de los
+                dos cuadra al final del día. */}
+            <div>
+              <p className="text-xs font-semibold text-neutral-800 mb-1">¿De dónde salió?</p>
+              <div className="flex flex-wrap gap-1 bg-neutral-100 p-1 rounded-xl w-fit max-w-full">
+                {(
+                  [
+                    ['Digital', '🏦 De la cuenta'],
+                    ['Efectivo', '💵 Del cajón'],
+                  ] as const
+                ).map(([v, etiqueta]) => (
+                  <button
+                    key={v}
+                    onClick={() => {
+                      setBolsa(v);
+                      // El cajón no genera intereses; si estaba en
+                      // Rendimiento, se cae a Salida para no guardar algo
+                      // que no existe.
+                      if (v === 'Efectivo' && tipo === 'Rendimiento') setTipo('Salida');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
+                      bolsa === v ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-700'
+                    }`}
+                  >
+                    {etiqueta}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-1 bg-neutral-100 p-1 rounded-xl w-fit max-w-full">
@@ -329,7 +415,9 @@ export default function CuentaPage() {
                   ['Rendimiento', '📈 Rendimiento'],
                   ['Entrada', '↓ Metí dinero'],
                 ] as const
-              ).map(([v, etiqueta]) => (
+              )
+                .filter(([v]) => v !== 'Rendimiento' || bolsa === 'Digital')
+                .map(([v, etiqueta]) => (
                 <button
                   key={v}
                   onClick={() => setTipo(v)}
@@ -368,7 +456,9 @@ export default function CuentaPage() {
                 onChange={(e) => setMotivo(e.target.value)}
                 placeholder={
                   tipo === 'Salida'
-                    ? 'Ej. pagué el pollo de COSTCO'
+                    ? bolsa === 'Efectivo'
+                      ? 'Ej. compré limones en la esquina'
+                      : 'Ej. pagué el pollo de COSTCO'
                     : tipo === 'Rendimiento'
                       ? 'opcional'
                       : 'Ej. deposité de mi bolsa'
@@ -383,6 +473,7 @@ export default function CuentaPage() {
                     monto,
                     motivo,
                     fechaISO: fecha,
+                    cuenta: bolsa === 'Efectivo' ? 'Efectivo' : 'Digital',
                   });
                   if (ok) {
                     setMonto('');
@@ -414,6 +505,9 @@ export default function CuentaPage() {
                       {money(m.monto)}
                     </span>
                     <span className="flex-1 min-w-0 text-neutral-800 truncate">
+                      <span title={m.cuenta === 'Efectivo' ? 'Del cajón' : 'De la cuenta'}>
+                        {m.cuenta === 'Efectivo' ? '💵 ' : '🏦 '}
+                      </span>
                       {m.tipo === 'Rendimiento' && '📈 '}
                       {m.motivo}
                     </span>
@@ -429,6 +523,15 @@ export default function CuentaPage() {
                   </li>
                 ))}
               </ul>
+            )}
+
+            {/* Los del cajón se ven aquí porque se anotan aquí, pero suman
+                en el corte de caja: mezclarlos descuadraría las dos cosas. */}
+            {estado.movimientos.some((m) => m.cuenta === 'Efectivo') && (
+              <p className="text-xs text-neutral-600">
+                Los que dicen 💵 son del cajón: se anotan aquí pero cuentan en el corte de Caja, no
+                en el saldo de la cuenta.
+              </p>
             )}
           </div>
         </>

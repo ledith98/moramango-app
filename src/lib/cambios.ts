@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-19',
+    tipo: 'arreglo',
+    titulo: 'El saldo de la cuenta ya se guarda, y los movimientos distinguen cajón de banco',
+    detalle:
+      'En Cuenta, el campo de “¿cuánto tienes en la cuenta?” no guardaba nada: se borraba al salir. Ahora tiene su botón de Guardar y queda anotado con la fecha en que lo tomaste, para que se note cuándo el dato ya está viejo. No hace falta anotar ningún movimiento para eso. El porcentaje se recalcula mientras escribes, al instante. Y al anotar un movimiento ahora eliges si el dinero salió del cajón o de la cuenta, y anotas en qué se usó: los del cajón cuentan en el corte de Caja y los de la cuenta en el saldo, pero los dos se anotan desde el mismo lugar.',
+    donde: 'Cuenta',
+  },
+  {
+    fecha: '2026-08-19',
     tipo: 'mejora',
     titulo: 'En Pedidos ya se ve cuánto te queda de verdad de cada cobro con tarjeta',
     detalle:

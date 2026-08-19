@@ -8,8 +8,14 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { borrarMovimiento, CUENTA_DIGITAL, registrarMovimiento, type TipoMovimiento } from '@/lib/caja';
-import { leerCuenta, rendimientoAnual } from '@/lib/cuenta';
+import {
+  borrarMovimiento,
+  CUENTA_DIGITAL,
+  CUENTA_EFECTIVO,
+  registrarMovimiento,
+  type TipoMovimiento,
+} from '@/lib/caja';
+import { guardarSaldo, leerCuenta } from '@/lib/cuenta';
 import { fechaHoyMTY } from '@/lib/pedidoFecha';
 import { getAdminSession } from '@/lib/roles';
 
@@ -29,17 +35,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'La fecha de inicio va antes que la del final' }, { status: 400 });
   }
 
-  const estado = await leerCuenta(desde, hasta);
-
-  // El saldo lo escribe ella (es lo que dice la app del banco); sin él no
-  // se puede sacar la tasa, porque el mismo rendimiento en pesos significa
-  // cosas distintas segun cuanto dinero haya parado.
-  const saldo = parseFloat(q.get('saldo') ?? '');
-  const tasaAnual = isFinite(saldo)
-    ? rendimientoAnual(estado.rendimiento, saldo, estado.dias)
-    : null;
-
-  return NextResponse.json({ ...estado, tasaAnual });
+  // La tasa se calcula en la pantalla (rendimiento.ts es puro): asi el
+  // porcentaje cambia mientras se escribe el saldo, sin un viaje al
+  // servidor por cada tecla.
+  return NextResponse.json(await leerCuenta(desde, hasta));
 }
 
 export async function POST(req: NextRequest) {
@@ -48,7 +47,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
   const quien = (session.user as { name?: string }).name || '';
-  const { accion, tipo, monto, motivo, fechaISO, fila } = await req.json();
+  const { accion, tipo, monto, motivo, fechaISO, fila, cuenta } = await req.json();
+
+  // El saldo real, copiado de la app del banco. Se guarda con la fecha en
+  // que se tomo: sin ella, un saldo de hace tres semanas se ve igual de
+  // confiable que el de hoy.
+  if (accion === 'saldo') {
+    const valor = parseFloat(monto);
+    if (isNaN(valor) || valor < 0) {
+      return NextResponse.json({ error: 'Escribe cuánto tienes en la cuenta' }, { status: 400 });
+    }
+    const cuando = ES_FECHA.test((fechaISO ?? '').toString()) ? fechaISO : fechaHoyMTY();
+    await guardarSaldo(valor, cuando);
+    return NextResponse.json({ success: true });
+  }
 
   if (accion === 'borrar') {
     const n = parseInt(fila, 10);
@@ -82,13 +94,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'La fecha no puede ser futura' }, { status: 400 });
   }
 
+  // De qué bolsa salió (o entró) el dinero. El rendimiento solo existe en
+  // la cuenta: el efectivo del cajón no genera intereses.
+  const bolsa = cuenta === CUENTA_EFECTIVO && clase !== 'Rendimiento' ? CUENTA_EFECTIVO : CUENTA_DIGITAL;
+
   await registrarMovimiento(
     clase,
     cantidad,
     texto || 'Rendimiento de la cuenta',
     quien,
     fecha,
-    CUENTA_DIGITAL
+    bolsa
   );
   return NextResponse.json({ success: true });
 }

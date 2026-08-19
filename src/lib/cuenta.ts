@@ -19,11 +19,14 @@
  * no cuadra con las ventas.
  */
 
+import { guardarAjuste } from './ajustes';
 import { CUENTA_DIGITAL, leerMovimientosRango, type MovimientoCaja } from './caja';
 import { comisionDeVenta, METODOS_CON_COMISION } from './comision';
 import { getSheetData } from './googleSheets';
 import { normalizarMetodoPago } from './negocio';
 import { parsearFechaHora } from './pedidoFecha';
+
+export { rendimientoAnual } from './rendimiento';
 
 /** Formas de cobro cuyo dinero cae en la cuenta, no en el cajón. */
 export const METODOS_EN_CUENTA = ['Terminal', 'Pago en línea', 'Transferencia'];
@@ -57,7 +60,24 @@ export interface EstadoCuenta {
   salidas: number;
   /** disponible + rendimiento + otras entradas − salidas */
   movimientoNeto: number;
+  /** Los de la cuenta Y los del cajón: se anotan desde la misma pantalla */
   movimientos: MovimientoCaja[];
+  /** Lo último que se capturó como saldo real, y de cuándo es */
+  saldo: number | null;
+  saldoFecha: string;
+}
+
+/** Dónde se guarda el saldo que ella copia de la app del banco. */
+export const CLAVE_SALDO = 'SaldoCuenta';
+
+/**
+ * Guarda el saldo con la fecha en que se tomó.
+ *
+ * Sin la fecha el número envejece sin avisar: un saldo de hace tres
+ * semanas se ve igual de confiable que el de hoy, y no lo es.
+ */
+export async function guardarSaldo(monto: number, fechaISO: string): Promise<void> {
+  await guardarAjuste(CLAVE_SALDO, Math.round(monto * 100) / 100, fechaISO);
 }
 
 /** Días que abarca un rango, contando ambos extremos. */
@@ -68,29 +88,19 @@ function diasEntre(desde: string, hasta: string): number {
   return Math.max(1, Math.round((b - a) / 86400000) + 1);
 }
 
-/**
- * Rendimiento llevado a tasa anual, para poder compararlo con cualquier
- * otra inversión.
- *
- * Se necesita el saldo porque un rendimiento de $6 no dice nada por sí
- * solo: son un 4% anual sobre $6,000 y un 40% sobre $600. Sin saldo
- * devuelve null en vez de inventar un número.
- */
-export function rendimientoAnual(
-  rendimiento: number,
-  saldo: number,
-  dias: number
-): number | null {
-  if (!(saldo > 0) || !(dias > 0) || !(rendimiento > 0)) return null;
-  return redondear((rendimiento / saldo) * (365 / dias) * 100);
-}
-
 /** Todo lo que le pasó a la cuenta en un rango de fechas. */
 export async function leerCuenta(desde: string, hasta: string): Promise<EstadoCuenta> {
-  const [pedidos, movimientos] = await Promise.all([
+  const [pedidos, movimientos, ajustes] = await Promise.all([
     getSheetData('PEDIDOS'),
-    leerMovimientosRango(desde, hasta, CUENTA_DIGITAL).catch(() => [] as MovimientoCaja[]),
+    leerMovimientosRango(desde, hasta).catch(() => [] as MovimientoCaja[]),
+    getSheetData('Ajustes_Tienda', { crudo: true }).catch(() => [] as Record<string, string>[]),
   ]);
+  // Solo lo de la cuenta cuenta para la matemática de la cuenta; los del
+  // cajón se muestran, pero suman en el corte de caja, no aquí.
+  const deLaCuenta = movimientos.filter((m) => m.cuenta === CUENTA_DIGITAL);
+
+  const filaSaldo = ajustes.find((a) => a.Clave === CLAVE_SALDO);
+  const saldoGuardado = parseFloat((filaSaldo?.Valor ?? '').toString());
 
   const enRango = pedidos
     .filter((p) => p.ID_Pedido)
@@ -120,13 +130,13 @@ export async function leerCuenta(desde: string, hasta: string): Promise<EstadoCu
 
   const suma = (f: (e: EntradaPorMetodo) => number) => redondear(porMetodo.reduce((s, e) => s + f(e), 0));
   const rendimiento = redondear(
-    movimientos.filter((m) => m.tipo === 'Rendimiento').reduce((s, m) => s + m.monto, 0)
+    deLaCuenta.filter((m) => m.tipo === 'Rendimiento').reduce((s, m) => s + m.monto, 0)
   );
   const otrasEntradas = redondear(
-    movimientos.filter((m) => m.tipo === 'Entrada').reduce((s, m) => s + m.monto, 0)
+    deLaCuenta.filter((m) => m.tipo === 'Entrada').reduce((s, m) => s + m.monto, 0)
   );
   const salidas = redondear(
-    movimientos.filter((m) => m.tipo === 'Salida').reduce((s, m) => s + m.monto, 0)
+    deLaCuenta.filter((m) => m.tipo === 'Salida').reduce((s, m) => s + m.monto, 0)
   );
   const disponibleTotal = suma((e) => e.disponible);
 
@@ -143,5 +153,7 @@ export async function leerCuenta(desde: string, hasta: string): Promise<EstadoCu
     salidas,
     movimientoNeto: redondear(disponibleTotal + rendimiento + otrasEntradas - salidas),
     movimientos,
+    saldo: isFinite(saldoGuardado) ? saldoGuardado : null,
+    saldoFecha: (filaSaldo?.Nota ?? '').toString().trim(),
   };
 }

@@ -31,6 +31,22 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-18',
+    tipo: 'nuevo',
+    titulo: 'Al comprar, te propongo el precio de la vez pasada y anotas dónde compraste',
+    detalle:
+      'En 🛒 Compré, si ya le habías puesto precio a ese insumo te digo en cuánto salió la vez pasada y te saco la cuenta de lo que sería por lo que estás comprando: le das un toque a “Costó lo mismo” y se llena solo. Si te salió en otro precio lo escribes y se actualiza. Además hay un campo opcional de dónde la compraste, que viene puesto con el último lugar y te ofrece de un toque los que ya has usado; así se te arma sola la lista de dónde surtes cada cosa y la ves en “Lo que he comprado”.',
+    donde: 'Insumos → Compré',
+  },
+  {
+    fecha: '2026-08-18',
+    tipo: 'arreglo',
+    titulo: 'Insumos ya no se sale de la pantalla en el celular',
+    detalle:
+      'El título con sus botones y la fila de pestañas no cabían en una pantalla de celular y estiraban toda la página a lo ancho, así que había que correrla de lado para ver los bordes. Ahora bajan de renglón cuando no caben y no queda nada cortado.',
+    donde: 'Insumos',
+  },
+  {
+    fecha: '2026-08-18',
     tipo: 'mejora',
     titulo: 'Al anotar una compra ahora pones la fecha en que la hiciste',
     detalle:

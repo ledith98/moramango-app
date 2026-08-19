@@ -69,6 +69,7 @@ export async function GET(req: NextRequest) {
         cantidad: parseFloat(c.Cantidad_Compra) || 0,
         unidad: c.Unidad_Compra || '',
         total: parseFloat(c.Precio_Total) || 0,
+        donde: (c.Donde || '').toString().trim(),
       }))
       .sort((a, b) => (b.fechaISO || '').localeCompare(a.fechaISO || ''));
 
@@ -219,7 +220,7 @@ export async function PATCH(req: NextRequest) {
   }
   await prepararInventario();
 
-  const { id, accion, cantidadCompra, precioTotal, stockPrevio, pagadoConCaja, fechaCompraISO, cantidad, valor, fechaISO, fila, lecturas } =
+  const { id, accion, cantidadCompra, precioTotal, stockPrevio, pagadoConCaja, fechaCompraISO, donde, cantidad, valor, fechaISO, fila, lecturas } =
     await req.json();
   const ACCIONES = ['compra', 'conteo', 'ajustar', 'status', 'uso', 'stock', 'fechaCompra', 'borrarCompra', 'conteoRapido'];
   if (!accion || !ACCIONES.includes(accion)) {
@@ -380,10 +381,27 @@ export async function PATCH(req: NextRequest) {
     const conPrecio = !isNaN(precio) && precio > 0;
     let costoReceta: number | null = null;
     let precioPorUnidadCompra = 0;
+
+    /**
+     * Dónde se surtió. Opcional y de texto libre.
+     *
+     * Se guarda en la compra (para el historial) y además se recuerda en
+     * la biblioteca, para que la próxima vez venga puesto y la lista de
+     * lugares se arme sola con el uso, sin un catálogo que mantener.
+     */
+    const lugar = (donde ?? '').toString().trim().slice(0, 80);
+
+    // Precio y proveedor van en la misma escritura: son dos celdas de la
+    // misma fila y separarlas costaría un viaje de más a Google.
+    const celdasBib: Record<number, string | number> = {};
     if (conPrecio) {
       precioPorUnidadCompra = redondear(precio / cant, 2);
-      await updateCell(HOJA_BIBLIOTECA, filaBib, COL_BIB.ultimoPrecio, precioPorUnidadCompra);
+      celdasBib[COL_BIB.ultimoPrecio] = precioPorUnidadCompra;
       costoReceta = costoPorUnidadReceta(precioPorUnidadCompra, equivalencia);
+    }
+    if (lugar) celdasBib[COL_BIB.proveedor] = lugar;
+    if (Object.keys(celdasBib).length > 0) {
+      await updateCells(HOJA_BIBLIOTECA, filaBib, celdasBib);
     }
 
     // c) La compra SIEMPRE se anota, con precio o sin él. Antes solo se
@@ -399,6 +417,7 @@ export async function PATCH(req: NextRequest) {
       conPrecio ? precioPorUnidadCompra : '',
       equivalencia,
       costoReceta ?? '',
+      lugar,
     ]);
 
     // d) Si se pagó con dinero del cajón, queda como salida de caja. Sin

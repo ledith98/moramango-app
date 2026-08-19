@@ -74,6 +74,9 @@ export const COLS_COMPRAS = [
   'Precio_Unidad_Compra',
   'Equivalencia',
   'Costo_Unidad_Receta',
+  // Dónde se surtió. Opcional, texto libre: la lista de proveedores se
+  // arma sola con lo que se va escribiendo, no hay catálogo que mantener.
+  'Donde',
 ];
 
 // Columnas 1-based para updateCell (coinciden con los arreglos de arriba)
@@ -118,6 +121,7 @@ export async function prepararInventario(): Promise<void> {
   await Promise.all([
     ensureColumn(HOJA_ACTIVOS, 'En_Uso'),
     ensureColumn(HOJA_BIBLIOTECA, 'Ingredientes'),
+    ensureColumn(HOJA_COMPRAS, 'Donde'),
   ]);
 }
 

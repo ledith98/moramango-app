@@ -59,6 +59,8 @@ interface CompraRegistrada {
   cantidad: number;
   unidad: string;
   total: number;
+  /** Donde se surtio; vacio si no se anoto */
+  donde: string;
 }
 
 interface ItemActivo {
@@ -212,6 +214,8 @@ export default function InsumosPage() {
   const [compraConCaja, setCompraConCaja] = useState(false);
   /** Cuando se hizo la compra; arranca en hoy pero se puede cambiar */
   const [compraFecha, setCompraFecha] = useState('');
+  /** Donde se surtio; arranca en el proveedor que ya tenia el insumo */
+  const [compraDonde, setCompraDonde] = useState('');
   const [historial, setHistorial] = useState<CompraHistorial[] | null>(null);
   const [historialDe, setHistorialDe] = useState('');
   const [historialId, setHistorialId] = useState('');
@@ -289,6 +293,20 @@ El stock quedará igual a lo que contaste.`)) return;
   }, [cargar]);
 
   const todasCategorias = [...new Set([...CATEGORIAS_INSUMOS, ...categoriasEnUso])].filter(Boolean);
+
+  /**
+   * Lugares donde ya se ha surtido algo, para sugerirlos al anotar una
+   * compra. Se arma con los proveedores que ya tienen los insumos, que es
+   * justo lo que se va guardando al comprar: la lista crece con el uso y
+   * no hay un catalogo aparte que mantener.
+   */
+  const lugaresConocidos = [
+    ...new Set(
+      [...activos.map((a) => a.proveedor), ...biblioteca.map((b) => b.proveedor)]
+        .map((p) => (p || '').trim())
+        .filter(Boolean)
+    ),
+  ].sort((a, b) => a.localeCompare(b, 'es'));
 
   // ── Biblioteca: crear / editar / eliminar ──────────────────────────────────
   function abrirNuevo() {
@@ -376,6 +394,7 @@ El stock quedará igual a lo que contaste.`)) return;
     setCompraPrevio('');
     setCompraConCaja(false);
     setCompraFecha(hoyISO());
+    setCompraDonde(a.proveedor || '');
     setError('');
   }
 
@@ -392,6 +411,7 @@ El stock quedará igual a lo que contaste.`)) return;
       stockPrevio: compraPrevio.trim(),
       pagadoConCaja: compraConCaja,
       fechaCompraISO: compraFecha,
+      donde: compraDonde.trim(),
     });
     if (ok) setCompraDe(null);
   }
@@ -610,9 +630,9 @@ El stock quedará igual a lo que contaste.`)) return;
 
   return (
     <div className="p-4 sm:p-6 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between gap-3 mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <h1 className="text-2xl font-bold text-neutral-900">📦 Insumos</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={abrirLista}
             className="bg-white border border-neutral-200 text-black text-sm font-semibold px-4 py-2 rounded-xl active:scale-95 whitespace-nowrap"
@@ -634,7 +654,7 @@ El stock quedará igual a lo que contaste.`)) return;
       </div>
 
       {/* Pestañas */}
-      <div className="flex gap-1 bg-neutral-100 p-1 rounded-2xl mb-4 w-fit">
+      <div className="flex flex-wrap gap-1 bg-neutral-100 p-1 rounded-2xl mb-4 w-fit max-w-full">
         {(
           [
             ['activos', `🧊 Lo que hay hoy (${activos.length})`],
@@ -742,6 +762,7 @@ El stock quedará igual a lo que contaste.`)) return;
                       <p className="font-semibold text-neutral-900 truncate">{c.nombre}</p>
                       <p className="text-xs text-neutral-700">
                         {c.cantidad} {c.unidad}
+                        {c.donde && <span className="text-neutral-600"> · 🏪 {c.donde}</span>}
                       </p>
                     </div>
                     <span className="font-bold text-neutral-900 tabular-nums shrink-0">
@@ -1343,6 +1364,9 @@ El stock quedará igual a lo que contaste.`)) return;
         const porUnidad = cant > 0 && pagado > 0 ? pagado / cant : 0;
         const antes = compraDe.ultimoPrecioCompra || 0;
         const dif = porUnidad > 0 && antes > 0 ? ((porUnidad - antes) / antes) * 100 : null;
+        // Lo que costaría al precio de la vez pasada, para ofrecerlo de un toque
+        const sugerido = antes > 0 && cant > 0 ? Math.round(antes * cant * 100) / 100 : 0;
+        const yaEsElSugerido = sugerido > 0 && Math.abs(pagado - sugerido) < 0.005;
         const redondo = (n: number) => Math.round(n * 1000) / 1000;
 
         return (
@@ -1422,6 +1446,80 @@ El stock quedará igual a lo que contaste.`)) return;
               />
             </div>
 
+            {/* ── El precio de la vez pasada ──
+                Se ofrece, no se rellena solo: este número fija el costo de
+                cada receta y, con él, el margen. Darlo por bueno sin que
+                nadie lo mire propaga un precio viejo a toda la carta. */}
+            {antes > 0 ? (
+              <div className="mt-2 bg-blue-50 border border-blue-200 rounded-xl p-3">
+                <p className="text-sm text-neutral-800">
+                  La vez pasada te salió a <b className="text-neutral-900">${antes}</b> por{' '}
+                  {compraDe.unidadCompra}
+                  {compraDe.proveedor && <> en {compraDe.proveedor}</>}.
+                </p>
+                {sugerido > 0 && !yaEsElSugerido && (
+                  <button
+                    onClick={() => setCompraPrecio(String(sugerido))}
+                    className="mt-2 w-full bg-white border border-blue-300 text-blue-900 font-bold text-sm py-2.5 rounded-lg active:scale-95"
+                  >
+                    Costó lo mismo → poner ${sugerido.toFixed(2)}
+                  </button>
+                )}
+                <p className="text-xs text-neutral-700 mt-2">
+                  {cant > 0
+                    ? 'Si te salió en otro precio, escríbelo arriba y se actualiza.'
+                    : 'Pon cuántos compraste y te digo cuánto sería al mismo precio.'}
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-neutral-700 mt-2">
+                Es la primera vez que le anotas precio. El que pongas queda de referencia para la
+                próxima compra.
+              </p>
+            )}
+
+            {/* ── Dónde se surtió ──
+                Opcional a propósito: obligarlo haría que se escriba
+                cualquier cosa con tal de guardar. La lista de lugares se
+                arma sola con lo que se va usando. */}
+            <label className="block text-sm font-semibold text-neutral-800 mb-1 mt-4">
+              ¿Dónde la compraste?{' '}
+              <span className="font-normal text-neutral-600">(opcional)</span>
+            </label>
+            <input
+              list="lugares-compra"
+              value={compraDonde}
+              onChange={(e) => setCompraDonde(e.target.value)}
+              placeholder="Ej. Central de Abastos"
+              className={inputCls}
+            />
+            <datalist id="lugares-compra">
+              {lugaresConocidos.map((l) => (
+                <option key={l} value={l} />
+              ))}
+            </datalist>
+            {lugaresConocidos.filter((l) => l !== compraDonde.trim()).length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {lugaresConocidos
+                  .filter((l) => l !== compraDonde.trim())
+                  .slice(0, 6)
+                  .map((l) => (
+                    <button
+                      key={l}
+                      onClick={() => setCompraDonde(l)}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-neutral-100 text-neutral-800 active:scale-95"
+                    >
+                      🏪 {l}
+                    </button>
+                  ))}
+              </div>
+            )}
+            <p className="text-xs text-neutral-600 mt-1.5">
+              {compraDe.proveedor
+                ? `Viene ${compraDe.proveedor}, que es donde lo compraste la última vez. Cámbialo si fue en otro lado.`
+                : 'Se guarda para que la próxima venga puesto y tengas a la mano dónde surtes cada cosa.'}
+            </p>
+
             <label className="flex items-start gap-3 mt-3 bg-neutral-50 border border-neutral-200 rounded-xl p-3 cursor-pointer">
               <input
                 type="checkbox"
@@ -1491,7 +1589,7 @@ El stock quedará igual a lo que contaste.`)) return;
               {ocupado ? 'Guardando…' : !compraFecha ? 'Falta la fecha' : 'Guardar la compra'}
             </button>
             <p className="text-xs text-neutral-600 mt-2 text-center">
-              Queda anotada en &ldquo;Lo que he comprado&rdquo; con la fecha de hoy.
+              Queda anotada en &ldquo;Lo que he comprado&rdquo; con la fecha que pusiste arriba.
             </p>
           </Modal>
         );

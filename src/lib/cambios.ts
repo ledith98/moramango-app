@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-19',
+    tipo: 'nuevo',
+    titulo: 'Filtrar los pedidos por producto',
+    detalle:
+      'En Pedidos hay un selector de Producto: eliges Croissant dulce o Jugo de Naranja y te quedan solo los pedidos que lo llevaron, con el número grande de cuántas piezas se pidieron en total. La lista del selector se arma con lo que de verdad se vendió en el periodo, ordenada de lo más pedido a lo menos, y trae la cuenta al lado. Se combina con los demás filtros: puedes ver cuántos jugos de naranja se pagaron con terminal la semana pasada. Los combos se agrupan aunque cada quien haya elegido distinta bebida.',
+    donde: 'Pedidos',
+  },
+  {
+    fecha: '2026-08-19',
     tipo: 'arreglo',
     titulo: 'El saldo de la cuenta ya se guarda, y los movimientos distinguen cajón de banco',
     detalle:

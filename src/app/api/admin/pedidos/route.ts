@@ -47,12 +47,38 @@ export async function GET(req: NextRequest) {
   // ninguna: casi siempre pedidos de la app que se pagan al recoger.
   const metodo = searchParams.get('metodo');
 
-  const [pedidos, usuarios] = await Promise.all([
+  const [pedidos, usuarios, detalles] = await Promise.all([
     getSheetData('PEDIDOS'),
     getSheetData('USUARIOS'),
+    getSheetData('DT PEDIDOS'),
   ]);
 
   const telefonoPorUsuario = new Map(usuarios.map((u) => [u.ID_Usuario, u.Telefono || '']));
+
+  /**
+   * Qué se llevó cada pedido, para poder filtrar por producto.
+   *
+   * El nombre guardado trae las opciones elegidas entre paréntesis
+   * ("Combo Croissant (Fresa · Si)"). Para agrupar hay que quitarlas, o
+   * el mismo combo aparecería como cinco productos distintos según lo que
+   * haya pedido cada quien.
+   */
+  const nombreBase = (snap: string) => (snap || '').replace(/\s*\([^()]*\)\s*$/, '').trim();
+  const productosPorPedido = new Map<string, { id: string; nombre: string; cantidad: number }[]>();
+  for (const d of detalles) {
+    if (!d.ID_Pedido) continue;
+    const nombre = nombreBase(d.Nombre_Producto_Snap);
+    if (!nombre) continue;
+    const lista = productosPorPedido.get(d.ID_Pedido) ?? [];
+    // El vínculo es por ID; el nombre es solo la etiqueta. Si un pedido
+    // trae el mismo producto en dos renglones (tamaños distintos), se suman.
+    const clave = d.ID_Producto || nombre;
+    const ya = lista.find((x) => x.id === clave);
+    const cantidad = parseInt(d.Cantidad) || 0;
+    if (ya) ya.cantidad += cantidad;
+    else lista.push({ id: clave, nombre, cantidad });
+    productosPorPedido.set(d.ID_Pedido, lista);
+  }
 
   const delDia = pedidos
     .map((p) => ({ pedido: p, info: parsearFechaHora(p.Fecha_Hora) }))
@@ -69,6 +95,7 @@ export async function GET(req: NextRequest) {
       // Ventas locales no tienen usuario: cae al teléfono capturado en mostrador
       Telefono: telefonoPorUsuario.get(pedido.ID_Usuario) || pedido.Telefono_Cliente || '',
       HoraLegible: info!.horaLegible,
+      Productos: productosPorPedido.get(pedido.ID_Pedido) ?? [],
     }));
 
   return NextResponse.json({ pedidos: delDia });

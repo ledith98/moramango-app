@@ -41,6 +41,8 @@ interface Pedido {
   Link_Pago?: string;
   /** Fecha en que el cliente avisó desde la app que ya está en el local */
   Aviso_Llegada?: string;
+  /** Qué se llevó, para poder filtrar por producto */
+  Productos?: { id: string; nombre: string; cantidad: number }[];
 }
 
 interface DetalleItem {
@@ -175,6 +177,8 @@ export default function PedidosPage() {
   const [hasta, setHasta] = useState(fechaHoyMTY());
   const [estadoFiltro, setEstadoFiltro] = useState('Todos');
   const [metodoFiltro, setMetodoFiltro] = useState('Todos');
+  /** Filtrar por lo que se llevaron: '' = todo */
+  const [productoFiltro, setProductoFiltro] = useState('');
   /** Buscar por cliente: nombre, telefono o numero de pedido */
   const [buscaCliente, setBuscaCliente] = useState('');
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
@@ -274,7 +278,29 @@ export default function PedidosPage() {
     (t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const q = sinAcentos(buscaCliente.trim());
   const digitos = q.replace(/\D/g, '');
+  /**
+   * Lo que se pidió en el periodo, con cuántas piezas de cada cosa.
+   *
+   * Sale de los pedidos que ya están en pantalla, no del catálogo: así la
+   * lista solo ofrece lo que de verdad se vendió y nunca sale vacía al
+   * elegir algo. Va ordenada por lo más pedido, que es lo que se busca.
+   */
+  const productosDelPeriodo = (() => {
+    const m = new Map<string, { nombre: string; piezas: number; pedidos: number }>();
+    for (const p of pedidos) {
+      if (p.Estado === 'Cancelado') continue;
+      for (const it of p.Productos ?? []) {
+        const e = m.get(it.id) ?? { nombre: it.nombre, piezas: 0, pedidos: 0 };
+        e.piezas += it.cantidad;
+        e.pedidos += 1;
+        m.set(it.id, e);
+      }
+    }
+    return [...m].sort((a, b) => b[1].piezas - a[1].piezas);
+  })();
+
   const visibles = pedidos.filter((p) => {
+    if (productoFiltro && !(p.Productos ?? []).some((it) => it.id === productoFiltro)) return false;
     if (!q) return true;
     const enTexto = [p.Nombre_Cliente_Snap, p.ID_Pedido].some((c) =>
       sinAcentos(c || '').includes(q)
@@ -296,6 +322,19 @@ export default function PedidosPage() {
         s + comisionDeVenta(parseFloat(p.Total_Final) || 0, normalizarMetodoPago(p.Metodo_Pago)),
       0
     );
+
+  // Piezas del producto elegido dentro de lo que está en pantalla: es la
+  // pregunta de fondo ("cuántos croissants dulces se han pedido").
+  const piezasDelFiltro = productoFiltro
+    ? visibles
+        .filter((p) => p.Estado !== 'Cancelado')
+        .reduce(
+          (s, p) => s + ((p.Productos ?? []).find((it) => it.id === productoFiltro)?.cantidad ?? 0),
+          0
+        )
+    : 0;
+  const nombreDelFiltro =
+    productosDelPeriodo.find(([id]) => id === productoFiltro)?.[1].nombre ?? '';
 
   const porConfirmar = pedidos.filter(
     (p) => p.Estado_Pago === 'Pendiente' && p.Estado !== 'Cancelado'
@@ -429,6 +468,19 @@ export default function PedidosPage() {
               </option>
             ))}
           </select>
+          <label className="text-sm font-semibold text-neutral-700 ml-2">Producto</label>
+          <select
+            value={productoFiltro}
+            onChange={(e) => setProductoFiltro(e.target.value)}
+            className="bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-black max-w-[220px]"
+          >
+            <option value="">Todos los productos</option>
+            {productosDelPeriodo.map(([id, d]) => (
+              <option key={id} value={id}>
+                {d.nombre} ({d.piezas})
+              </option>
+            ))}
+          </select>
           <span className="text-xs text-neutral-700 ml-auto text-right">
             <span className="block">
               {visibles.length} pedido{visibles.length === 1 ? '' : 's'}
@@ -444,6 +496,44 @@ export default function PedidosPage() {
           </span>
         </div>
       </div>
+
+      {/* La respuesta a "cuántos croissants dulces se han pedido", en
+          grande. El renglón de arriba dice cuántos PEDIDOS lo traen, que
+          no es lo mismo: un pedido puede llevarse tres. */}
+      {productoFiltro && (
+        <div className="bg-marron/5 border border-marron/20 rounded-2xl p-4 flex flex-wrap items-center gap-3">
+          <div>
+            <p className="text-2xl font-bold text-neutral-900">
+              {piezasDelFiltro}{' '}
+              <span className="text-base font-semibold text-neutral-700">
+                {piezasDelFiltro === 1 ? 'pieza' : 'piezas'}
+              </span>
+            </p>
+            <p className="text-sm text-neutral-800">
+              de <b>{nombreDelFiltro}</b>, en {visibles.filter((p) => p.Estado !== 'Cancelado').length}{' '}
+              pedido
+              {visibles.filter((p) => p.Estado !== 'Cancelado').length === 1 ? '' : 's'}
+            </p>
+            <p className="text-xs text-neutral-600 mt-0.5">
+              {desde === hasta ? fechaBonita(desde) : `${fechaBonita(desde)} al ${fechaBonita(hasta)}`}
+              {/* Los cancelados siguen en la lista pero no se cuentan; sin
+                  decirlo, el numero de arriba parece no cuadrar con los
+                  renglones que se ven. */}
+              {(() => {
+                const n = visibles.filter((p) => p.Estado === 'Cancelado').length;
+                if (n === 0) return null;
+                return ` · ${n} cancelado${n === 1 ? ' que no cuenta' : 's que no cuentan'}`;
+              })()}
+            </p>
+          </div>
+          <button
+            onClick={() => setProductoFiltro('')}
+            className="ml-auto text-xs font-bold px-3 py-2 rounded-lg bg-white border border-neutral-200 text-neutral-800 active:scale-95"
+          >
+            Ver todos
+          </button>
+        </div>
+      )}
 
       {/* Cobros que se iniciaron y nadie confirmó. Van arriba porque es
           dinero que puede quedarse sin cobrar sin que nadie lo note. */}

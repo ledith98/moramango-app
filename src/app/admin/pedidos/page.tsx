@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { comisionDeVenta, METODOS_CON_COMISION } from '@/lib/comision';
 import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 import {
   linkWhatsApp,
@@ -93,6 +94,20 @@ const ATAJOS_FECHA: { etiqueta: string; rango: () => { desde: string; hasta: str
   { etiqueta: 'Últimos 7 días', rango: () => ({ desde: fechaMTY(6), hasta: fechaMTY(0) }) },
   { etiqueta: 'Este mes', rango: () => ({ desde: primerDiaDelMes(), hasta: fechaMTY(0) }) },
 ];
+
+/**
+ * Lo que de verdad entra a la cuenta.
+ *
+ * Mercado Pago descuenta su comision antes de depositar, asi que el total
+ * del pedido no es lo que se recibe. Verlo aqui evita cuadrar el dia con
+ * un numero que nunca llego al banco. El efectivo y la transferencia
+ * llegan completos y devuelven null, para no ensuciar la lista con un
+ * dato que no aporta.
+ */
+function netoDelPedido(total: number, metodo: string): number | null {
+  if (!METODOS_CON_COMISION.includes(metodo) || !(total > 0)) return null;
+  return Math.round((total - comisionDeVenta(total, metodo)) * 100) / 100;
+}
 
 const colorEstado = (estado: string) => {
   switch (estado) {
@@ -272,6 +287,15 @@ export default function PedidosPage() {
   const totalVisibles = visibles
     .filter((p) => p.Estado !== 'Cancelado')
     .reduce((s, p) => s + (parseFloat(p.Total_Final) || 0), 0);
+  // Lo que Mercado Pago se lleva de lo que hay en pantalla. Se calcula
+  // cobro por cobro porque el pago en linea trae cargo fijo por venta.
+  const comisionVisible = visibles
+    .filter((p) => p.Estado !== 'Cancelado')
+    .reduce(
+      (s, p) =>
+        s + comisionDeVenta(parseFloat(p.Total_Final) || 0, normalizarMetodoPago(p.Metodo_Pago)),
+      0
+    );
 
   const porConfirmar = pedidos.filter(
     (p) => p.Estado_Pago === 'Pendiente' && p.Estado !== 'Cancelado'
@@ -405,10 +429,18 @@ export default function PedidosPage() {
               </option>
             ))}
           </select>
-          <span className="text-xs text-neutral-700 ml-auto">
-            {visibles.length} pedido{visibles.length === 1 ? '' : 's'}
-            {' · '}${totalVisibles.toFixed(2)}
-            {visibles.length !== pedidos.length && ` (de ${pedidos.length})`}
+          <span className="text-xs text-neutral-700 ml-auto text-right">
+            <span className="block">
+              {visibles.length} pedido{visibles.length === 1 ? '' : 's'}
+              {' · '}${totalVisibles.toFixed(2)}
+              {visibles.length !== pedidos.length && ` (de ${pedidos.length})`}
+            </span>
+            {comisionVisible > 0 && (
+              <span className="block text-[11px] text-green-700 font-semibold">
+                te quedan ${(totalVisibles - comisionVisible).toFixed(2)} · comisión $
+                {comisionVisible.toFixed(2)}
+              </span>
+            )}
           </span>
         </div>
       </div>
@@ -497,7 +529,20 @@ export default function PedidosPage() {
                   })()}
                 </p>
               </div>
-              <span className="font-bold text-neutral-900 shrink-0">${parseFloat(p.Total_Final || '0').toFixed(2)}</span>
+              {(() => {
+                const bruto = parseFloat(p.Total_Final || '0') || 0;
+                const neto = netoDelPedido(bruto, normalizarMetodoPago(p.Metodo_Pago));
+                return (
+                  <span className="shrink-0 text-right">
+                    <span className="block font-bold text-neutral-900">${bruto.toFixed(2)}</span>
+                    {neto !== null && (
+                      <span className="block text-[10px] font-semibold text-green-700 whitespace-nowrap">
+                        te quedan ${neto.toFixed(2)}
+                      </span>
+                    )}
+                  </span>
+                );
+              })()}
               <div className="flex flex-col items-end gap-1 shrink-0">
                 <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${colorEstado(p.Estado)}`}>
                   {p.Estado}
@@ -687,6 +732,34 @@ export default function PedidosPage() {
                     <span className="text-neutral-700 font-medium">Total</span>
                     <span className="text-xl font-bold text-black">${parseFloat(detalle.pedido.Total_Final || '0').toFixed(2)}</span>
                   </div>
+
+                  {/* Lo que de verdad llega, cuando el cobro paga comisión */}
+                  {(() => {
+                    const bruto = parseFloat(detalle.pedido.Total_Final || '0') || 0;
+                    const metodo = normalizarMetodoPago(detalle.pedido.Metodo_Pago);
+                    const neto = netoDelPedido(bruto, metodo);
+                    if (neto === null) return null;
+                    return (
+                      <div className="bg-neutral-50 rounded-xl p-3 space-y-1 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-red-700">
+                            Comisión de {metodo === 'Terminal' ? 'la terminal' : 'Mercado Pago'}
+                          </span>
+                          <span className="font-semibold text-red-700 tabular-nums">
+                            −${(bruto - neto).toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="font-semibold text-neutral-900">
+                            Lo que entra a tu cuenta
+                          </span>
+                          <span className="font-bold text-green-700 tabular-nums">
+                            ${neto.toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div className="p-5 border-t border-neutral-100 shrink-0 space-y-3">

@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-19',
+    tipo: 'mejora',
+    titulo: 'En Pedidos ya se ve cuánto te queda de verdad de cada cobro con tarjeta',
+    detalle:
+      'Debajo del total de cada pedido cobrado con terminal o en línea aparece en verde lo que de verdad entra a tu cuenta, ya sin la comisión: un cobro de $115 dice “te quedan $110.33”. Arriba, junto al total del filtro, viene la suma: lo que te queda y cuánto se llevó la comisión. Al abrir el pedido lo ves desglosado. El efectivo y las transferencias no lo muestran porque llegan completos. En Venta, al elegir Terminal te lo dice ANTES de cobrar, para que decidas si te conviene pedir efectivo.',
+    donde: 'Pedidos y Venta',
+  },
+  {
+    fecha: '2026-08-19',
     tipo: 'nuevo',
     titulo: 'Nueva sección “Cuenta” para el dinero que no está en el cajón',
     detalle:

@@ -15,6 +15,7 @@ import { claveNombre } from '@/lib/opcionesAgotadas';
 import { TicketBotones } from '../TicketBotones';
 import type { DatosTicket } from '@/lib/ticket';
 import { esBeneficioReactivacion, montoReactivacion } from '@/lib/beneficioCliente';
+import { comisionDeVenta } from '@/lib/comision';
 
 /** Fecha/hora en formato de ticket: 2026-07-14 16:25:30 (zona Monterrey) */
 const fechaTicket = () => {
@@ -1083,6 +1084,26 @@ export default function VentaPage() {
               ))}
             </div>
           </div>
+
+          {/* Terminal: lo que de verdad va a caer en la cuenta. Se ve
+              ANTES de cobrar, que es cuando todavia se puede ofrecer
+              efectivo o transferencia si la venta es chica. */}
+          {metodoPago === 'Terminal' && total > 0 && (
+            <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-red-700">Comisión de la terminal</span>
+                <span className="font-semibold text-red-700 tabular-nums">
+                  −${comisionDeVenta(total, 'Terminal').toFixed(2)}
+                </span>
+              </div>
+              <div className="flex justify-between mt-0.5">
+                <span className="font-semibold text-neutral-900">Entra a tu cuenta</span>
+                <span className="font-bold text-green-700 tabular-nums">
+                  ${(total - comisionDeVenta(total, 'Terminal')).toFixed(2)}
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Transferencia: ¿ya cayó el dinero o queda pendiente de revisar? */}
           {metodoPago === 'Transferencia' && (

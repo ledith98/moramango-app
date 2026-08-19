@@ -9,7 +9,7 @@
  */
 
 import { leerMovimientos } from './caja';
-import { comisionDeVenta } from './comision';
+import { comisionDeVenta, METODOS_CON_COMISION } from './comision';
 import { getSheetData } from './googleSheets';
 import { normalizarMetodoPago } from './negocio';
 import { fechaHoyMTY, parsearFechaHora } from './pedidoFecha';
@@ -48,10 +48,16 @@ export async function armarCorteDelDia(fechaISO = fechaHoyMTY()): Promise<string
     porMetodo.set(m, actual);
   }
 
-  // Comisión: se calcula cobro por cobro, el cargo fijo es por venta
+  // Comisión: cobro por cobro, y con la tarifa de cada método. Antes solo
+  // contaba la terminal, así que un día de puros pagos en línea salía sin
+  // comisión aunque Mercado Pago sí se hubiera quedado con su parte.
   const comision = validos
-    .filter((p) => normalizarMetodoPago(p.Metodo_Pago) === 'Terminal')
-    .reduce((s, p) => s + comisionDeVenta(parseFloat(p.Total_Final) || 0), 0);
+    .filter((p) => METODOS_CON_COMISION.includes(normalizarMetodoPago(p.Metodo_Pago)))
+    .reduce(
+      (s, p) =>
+        s + comisionDeVenta(parseFloat(p.Total_Final) || 0, normalizarMetodoPago(p.Metodo_Pago)),
+      0
+    );
 
   const pendientes = validos.filter((p) => p.Estado_Pago === 'Pendiente');
   const cancelados = delDia.filter((p) => p.Estado === 'Cancelado');
@@ -72,7 +78,7 @@ export async function armarCorteDelDia(fechaISO = fechaHoyMTY()): Promise<string
   }
 
   if (comision > 0) {
-    lineas.push(``, `💳 La terminal se llevó <b>${dinero(comision)}</b>`);
+    lineas.push(``, `💳 Mercado Pago se llevó <b>${dinero(comision)}</b>`);
     lineas.push(`   Te quedan ${dinero(total - comision)} del día`);
   }
 

@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { fechaHoyMTY } from '@/lib/pedidoFecha';
-import { CARGO_FIJO, TEXTO_TARIFA } from '@/lib/comision';
 
 interface Metricas {
   desde: string;
@@ -15,6 +14,15 @@ interface Metricas {
   reembolsos: { total: number; pedidos: number };
   pedidosCancelados: number;
   comisionTerminal: { ventaBruta: number; comision: number; neto: number; cobros: number };
+  /** Desglose por metodo: la terminal y el pago en linea no cobran igual */
+  comisionPorMetodo?: {
+    metodo: string;
+    tarifa: string;
+    ventaBruta: number;
+    comision: number;
+    neto: number;
+    cobros: number;
+  }[];
   totalNeto: number;
 }
 
@@ -212,22 +220,50 @@ export default function MetricasPage() {
           {metricas && metricas.comisionTerminal && (
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100">
               <p className="text-xs text-neutral-700 font-medium uppercase tracking-wide">
-                Comisión de la terminal
+                Lo que se queda Mercado Pago
               </p>
               <p className="text-xs text-neutral-600 mt-0.5 mb-3">
-                {TEXTO_TARIFA} por cada cobro con tarjeta
+                De los cobros con tarjeta y en línea. El efectivo y las transferencias no pagan
+                nada.
               </p>
 
               {metricas.comisionTerminal.cobros === 0 ? (
                 <p className="text-sm text-neutral-700">
-                  No hubo cobros con terminal en este periodo.
+                  No hubo cobros con tarjeta ni en línea en este periodo.
                 </p>
               ) : (
                 <>
                   <div className="space-y-2">
+                    {/* Desglose por metodo: cada uno cobra distinto, y
+                        verlos juntos escondia que el pago en linea sale
+                        mucho mas caro en las ventas chicas. */}
+                    {(metricas.comisionPorMetodo ?? []).map((r) => (
+                      <div key={r.metodo} className="py-1.5 border-b border-neutral-50">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold text-neutral-900">
+                            {r.metodo === 'Terminal' ? '💳' : '🛍️'} {r.metodo}
+                            <span className="font-normal text-neutral-600 ml-1.5">
+                              ({r.cobros} cobro{r.cobros === 1 ? '' : 's'} · {r.tarifa})
+                            </span>
+                          </span>
+                          <span className="font-bold text-black tabular-nums">
+                            ${r.ventaBruta.toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs mt-0.5">
+                          <span className="text-red-700">
+                            se llevó {((r.comision / r.ventaBruta) * 100).toFixed(1)}%
+                          </span>
+                          <span className="font-semibold text-red-700 tabular-nums">
+                            −${r.comision.toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+
                     <div className="flex items-center justify-between py-1.5 border-b border-neutral-50">
                       <span className="text-sm text-neutral-700">
-                        Venta total con terminal
+                        Cobrado en total
                         <span className="text-neutral-600 ml-1.5">
                           ({metricas.comisionTerminal.cobros} cobro
                           {metricas.comisionTerminal.cobros === 1 ? '' : 's'})
@@ -266,8 +302,9 @@ export default function MetricasPage() {
                   </div>
 
                   <p className="text-xs text-neutral-600 mt-3">
-                    💡 Los ${CARGO_FIJO} fijos se cobran por cada venta, no por día: conviene más un
-                    cobro de $500 que cinco de $100.
+                    💡 La terminal cobra solo el porcentaje, pero el pago en línea le suma $4 fijos
+                    por venta. Por eso en línea un cobro de $50 se lleva casi 12% y uno de $200
+                    baja a 6%: entre más chica la venta, más pesa.
                   </p>
                 </>
               )}

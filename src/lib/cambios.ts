@@ -30,6 +30,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 
 export const CAMBIOS: Cambio[] = [
   {
+    fecha: '2026-08-19',
+    tipo: 'arreglo',
+    titulo: 'La comisión de la terminal estaba calculada al doble',
+    detalle:
+      'La app le cobraba a la terminal la misma tarifa del pago en línea (3.49% + $4 + IVA), pero la terminal NO cobra los $4 fijos: son 3.50% + IVA, o sea 4.06% parejo. Cotejado con los movimientos reales de tu cuenta del 11 al 19 de agosto, los 13 cobros cuadran al centavo. Sobre $1,150 cobrados con tarjeta la app decía $97.59 de comisión cuando la real fue $46.69. Ahora Métricas separa las dos tarifas y te dice cuánto se lleva cada una.',
+    donde: 'Métricas → Lo que se queda Mercado Pago',
+  },
+  {
     fecha: '2026-08-18',
     tipo: 'nuevo',
     titulo: 'Los combos y los productos de reventa ya tienen receta',

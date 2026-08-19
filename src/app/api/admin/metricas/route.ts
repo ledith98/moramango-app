@@ -11,7 +11,7 @@ import { getSheetData } from '@/lib/googleSheets';
 import { normalizarMetodoPago } from '@/lib/negocio';
 import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 import { getAdminSession } from '@/lib/roles';
-import { METODOS_CON_COMISION, resumenComision } from '@/lib/comision';
+import { METODOS_CON_COMISION, resumenComision, TARIFA_POR_METODO } from '@/lib/comision';
 
 export async function GET(req: NextRequest) {
   if (!(await getAdminSession())) {
@@ -61,13 +61,29 @@ export async function GET(req: NextRequest) {
     ventasPorMetodo[metodo].pedidos += 1;
   }
 
-  // Comisión de la terminal. Se calcula cobro por cobro y no sobre el
-  // total del periodo, porque el cargo fijo es por cada venta: $500 en una
-  // venta no cuesta lo mismo que $500 en cinco.
-  const cobrosConComision = validos
-    .filter((p) => METODOS_CON_COMISION.includes(normalizarMetodoPago(p.Metodo_Pago)))
-    .map((p) => parseFloat(p.Total_Final) || 0);
-  const comisionTerminal = resumenComision(cobrosConComision);
+  // Comisión, separada por método: la terminal y el pago en línea NO
+  // cobran igual (3.50% + IVA contra 3.49% + $4 + IVA), así que sumarlos
+  // en un solo bote daba un número que no cuadraba con la cuenta. Se
+  // calcula cobro por cobro porque el cargo fijo del pago en línea es por
+  // venta: $500 en una no cuesta lo mismo que $500 en cinco.
+  const comisionPorMetodo = METODOS_CON_COMISION.map((metodo) => ({
+    metodo,
+    tarifa: TARIFA_POR_METODO[metodo].texto,
+    ...resumenComision(
+      validos
+        .filter((p) => normalizarMetodoPago(p.Metodo_Pago) === metodo)
+        .map((p) => parseFloat(p.Total_Final) || 0),
+      metodo
+    ),
+  })).filter((r) => r.cobros > 0);
+
+  // El total juntando ambos, que es lo que se resta de la venta del día
+  const comisionTerminal = {
+    ventaBruta: Math.round(comisionPorMetodo.reduce((s, r) => s + r.ventaBruta, 0) * 100) / 100,
+    comision: Math.round(comisionPorMetodo.reduce((s, r) => s + r.comision, 0) * 100) / 100,
+    neto: Math.round(comisionPorMetodo.reduce((s, r) => s + r.neto, 0) * 100) / 100,
+    cobros: comisionPorMetodo.reduce((s, r) => s + r.cobros, 0),
+  };
 
   const idsValidos = new Set(validos.map((p) => p.ID_Pedido));
   const conteoProductos = new Map<string, number>();
@@ -94,6 +110,7 @@ export async function GET(req: NextRequest) {
     productoMasVendido,
     ventasPorMetodo,
     comisionTerminal,
+    comisionPorMetodo,
     // Lo que queda del periodo completo una vez descontada la comisión
     totalNeto: Math.round((totalVentas - comisionTerminal.comision) * 100) / 100,
     reembolsos,

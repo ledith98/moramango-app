@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-19',
+    tipo: 'nuevo',
+    titulo: 'Nueva sección “Cuenta” para el dinero que no está en el cajón',
+    detalle:
+      'Ahí vive lo que te pagan con terminal, en línea y por transferencia. Te separa lo COBRADO (lo que pagó el cliente) de lo DISPONIBLE (lo que de verdad quedó en la cuenta, ya sin comisión), y la transferencia se marca como que llega completa. Puedes anotar el dinero que sacas para pagar insumos o proveedores, y el rendimiento que te paga el banco: si le escribes cuánto tienes en la cuenta, te dice a cuántos por ciento al año te está rindiendo. Se ve por mes, por semana o por el rango que elijas.',
+    donde: 'Cuenta',
+  },
+  {
+    fecha: '2026-08-19',
     tipo: 'arreglo',
     titulo: 'La comisión de la terminal estaba calculada al doble',
     detalle:

@@ -12,7 +12,14 @@
  * sin cancelar): así el corte no depende de que nadie las sume a mano.
  */
 
-import { appendRow, ensureSheet, getSheetData, updateCell, updateCells } from './googleSheets';
+import {
+  appendRow,
+  ensureColumn,
+  ensureSheet,
+  getSheetData,
+  updateCell,
+  updateCells,
+} from './googleSheets';
 import { normalizarMetodoPago } from './negocio';
 import { fechaHoyMTY, parsearFechaHora } from './pedidoFecha';
 
@@ -180,9 +187,22 @@ export async function cerrarCaja(contado: number, quien: string, notas: string):
  */
 
 export const HOJA_MOV = 'Movimientos_Caja';
-const COLS_MOV = ['Fecha', 'Hora', 'Tipo', 'Monto', 'Motivo', 'Quien'];
+const COLS_MOV = ['Fecha', 'Hora', 'Tipo', 'Monto', 'Motivo', 'Quien', 'Cuenta'];
 
-export type TipoMovimiento = 'Salida' | 'Entrada';
+/**
+ * Dónde vive el dinero. Son dos bolsas distintas y no se mezclan: el
+ * cajón se cuenta a mano cada noche, y la cuenta de Mercado Pago se
+ * compara contra lo que dice la app del banco.
+ */
+export const CUENTA_EFECTIVO = 'Efectivo';
+export const CUENTA_DIGITAL = 'Digital';
+
+/** Vacío se lee como efectivo: así los movimientos de antes siguen valiendo. */
+const cuentaDe = (valor: string | undefined) =>
+  (valor ?? '').toString().trim() === CUENTA_DIGITAL ? CUENTA_DIGITAL : CUENTA_EFECTIVO;
+
+/** 'Rendimiento' solo aplica a la cuenta: es lo que paga el banco por tener el dinero ahí. */
+export type TipoMovimiento = 'Salida' | 'Entrada' | 'Rendimiento';
 
 export interface MovimientoCaja {
   fila: number;
@@ -192,11 +212,19 @@ export interface MovimientoCaja {
   monto: number;
   motivo: string;
   quien: string;
+  cuenta: string;
 }
 
 async function prepararMovimientos() {
   await ensureSheet(HOJA_MOV, COLS_MOV);
+  // ensureSheet solo escribe encabezados al CREAR la hoja. Sin esto, la
+  // columna nueva se llenaría en la celda pero getSheetData no la
+  // devolvería, y todos los movimientos parecerían de efectivo.
+  await ensureColumn(HOJA_MOV, 'Cuenta');
 }
+
+const leerTipo = (v: string | undefined): TipoMovimiento =>
+  v === 'Entrada' ? 'Entrada' : v === 'Rendimiento' ? 'Rendimiento' : 'Salida';
 
 /**
  * La fecha, venga como venga.
@@ -217,22 +245,50 @@ function fechaDeCelda(valor: string): string {
   return texto;
 }
 
+const mapear = (f: Record<string, string>, fila: number): MovimientoCaja => ({
+  fila,
+  fecha: fechaDeCelda(f.Fecha),
+  hora: f.Hora || '',
+  tipo: leerTipo(f.Tipo),
+  monto: Math.abs(parseFloat(f.Monto) || 0),
+  motivo: f.Motivo || '',
+  quien: f.Quien || '',
+  cuenta: cuentaDe(f.Cuenta),
+});
+
 /** Movimientos de un día, del más reciente al más viejo. */
-export async function leerMovimientos(fechaISO = fechaHoyMTY()): Promise<MovimientoCaja[]> {
+export async function leerMovimientos(
+  fechaISO = fechaHoyMTY(),
+  cuenta = CUENTA_EFECTIVO
+): Promise<MovimientoCaja[]> {
   await prepararMovimientos();
   const filas = await getSheetData(HOJA_MOV, { crudo: true });
   return filas
     .map((f, i) => ({ f, fila: i + 2 }))
-    .filter(({ f }) => fechaDeCelda(f.Fecha) === fechaISO && f.Tipo)
-    .map(({ f, fila }) => ({
-      fila,
-      fecha: fechaDeCelda(f.Fecha),
-      hora: f.Hora || '',
-      tipo: (f.Tipo === 'Entrada' ? 'Entrada' : 'Salida') as TipoMovimiento,
-      monto: Math.abs(parseFloat(f.Monto) || 0),
-      motivo: f.Motivo || '',
-      quien: f.Quien || '',
-    }))
+    .filter(({ f }) => fechaDeCelda(f.Fecha) === fechaISO && f.Tipo && cuentaDe(f.Cuenta) === cuenta)
+    .map(({ f, fila }) => mapear(f, fila))
+    .reverse();
+}
+
+/**
+ * Movimientos de un rango. La cuenta no se corta cada noche como el
+ * cajón: lo que interesa es el mes, o desde tal día hasta tal día.
+ */
+export async function leerMovimientosRango(
+  desde: string,
+  hasta: string,
+  cuenta = CUENTA_DIGITAL
+): Promise<MovimientoCaja[]> {
+  await prepararMovimientos();
+  const filas = await getSheetData(HOJA_MOV, { crudo: true });
+  return filas
+    .map((f, i) => ({ f, fila: i + 2 }))
+    .filter(({ f }) => {
+      if (!f.Tipo || cuentaDe(f.Cuenta) !== cuenta) return false;
+      const d = fechaDeCelda(f.Fecha);
+      return (!desde || d >= desde) && (!hasta || d <= hasta);
+    })
+    .map(({ f, fila }) => mapear(f, fila))
     .reverse();
 }
 
@@ -247,7 +303,8 @@ export async function registrarMovimiento(
   monto: number,
   motivo: string,
   quien: string,
-  fechaISO = fechaHoyMTY()
+  fechaISO = fechaHoyMTY(),
+  cuenta = CUENTA_EFECTIVO
 ): Promise<void> {
   await prepararMovimientos();
   await appendRow(HOJA_MOV, [
@@ -257,6 +314,7 @@ export async function registrarMovimiento(
     Math.round(Math.abs(monto) * 100) / 100,
     motivo.trim(),
     quien,
+    cuenta,
   ]);
 }
 

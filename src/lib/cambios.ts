@@ -31,6 +31,22 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-18',
+    tipo: 'arreglo',
+    titulo: 'Insumos nuevos ya no se le encimaban a otro',
+    detalle:
+      'La clave de cada insumo se sacaba contando renglones, así que al borrar uno el contador retrocedía y el insumo nuevo se quedaba con la clave de otro que ya existía. Cuando eso pasaba, los dos se pisaban: el panel mostraba el nombre de uno con la existencia del otro. Ahora la clave se toma de la más alta que haya, más uno, y no se puede repetir.',
+    donde: 'Insumos → Catálogo',
+  },
+  {
+    fecha: '2026-08-18',
+    tipo: 'arreglo',
+    titulo: 'Al borrar un insumo ya no queda existencia colgada',
+    detalle:
+      'Cuando borrabas un insumo del catálogo, su registro de inventario seguía vivo por dentro: no lo veías en el panel, pero seguía guardando la cantidad que tenías, sin manera de contarla ni corregirla. Ahora se retira junto con el insumo. También dejé de mostrar los renglones sin nombre, que salían como tarjetas en blanco.',
+    donde: 'Insumos',
+  },
+  {
+    fecha: '2026-08-18',
     tipo: 'nuevo',
     titulo: 'Al comprar, te propongo el precio de la vez pasada y anotas dónde compraste',
     detalle:

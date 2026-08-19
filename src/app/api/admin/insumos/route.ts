@@ -147,6 +147,10 @@ export async function GET(req: NextRequest) {
       const bib = bibPorId.get(a.ID_Biblioteca);
       if (!bib) return null; // activo huérfano
       if ((bib.Eliminado || '').toLowerCase() === 'si') return null;
+      // Un renglón sin nombre no es un insumo: son filas que quedaron a
+      // medias en la hoja y salían como tarjetas en blanco, imposibles de
+      // identificar y de corregir.
+      if (!(bib.Nombre || '').toString().trim()) return null;
       // Los que no están en uso viven solo en la biblioteca
       if (!estaEnUso(a.En_Uso)) return null;
 

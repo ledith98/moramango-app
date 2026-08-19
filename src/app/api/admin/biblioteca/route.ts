@@ -17,6 +17,7 @@ import { normalizarNombre } from '@/lib/insumos';
 import {
   clavesDeInsumo,
   COL_BIB,
+  columnaEnUso,
   columnaIngredientes,
   costoPorUnidadReceta,
   escribirIngredientes,
@@ -28,8 +29,17 @@ import {
 } from '@/lib/inventario';
 import { getAdminSession } from '@/lib/roles';
 
+/**
+ * Insumos que cuentan: ni borrados ni renglones a medias.
+ *
+ * Una fila con ID pero sin nombre no es un insumo, es basura de la hoja;
+ * salía como tarjeta en blanco que no se podía ni identificar ni borrar.
+ */
 const vivos = (filas: Record<string, string>[]) =>
-  filas.filter((b) => (b.Eliminado || '').toLowerCase() !== 'si');
+  filas.filter(
+    (b) =>
+      (b.Eliminado || '').toLowerCase() !== 'si' && (b.Nombre || '').toString().trim() !== ''
+  );
 
 /** Ingredientes distintos de Catalogo, con los productos que los usan. */
 function ingredientesDelCatalogo(catalogo: Record<string, string>[]) {
@@ -137,6 +147,23 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ items, categoriasEnUso });
 }
 
+/**
+ * Siguiente ID libre: el mas alto que exista, mas uno.
+ *
+ * Antes se usaba `filas.length + 1`, que cuenta renglones en vez de mirar
+ * los IDs. Basta con que una fila se borre o quede vacia para que el
+ * contador retroceda y el ID nuevo pise uno que ya existe. Cuando dos
+ * insumos comparten ID, el que se lee por ID es el ultimo y el otro queda
+ * invisible: su stock y sus recetas se le atribuyen al equivocado.
+ */
+function siguienteId(filas: Record<string, string>[], campo: string, prefijo: string): string {
+  const mayor = filas.reduce((max, f) => {
+    const n = parseInt((f[campo] ?? '').toString().replace(`${prefijo}-`, ''), 10);
+    return isNaN(n) ? max : Math.max(max, n);
+  }, 0);
+  return `${prefijo}-${String(mayor + 1).padStart(3, '0')}`;
+}
+
 export async function POST(req: NextRequest) {
   if (!(await getAdminSession())) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
@@ -168,7 +195,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Ya existe un insumo con ese nombre' }, { status: 400 });
   }
 
-  const idBib = `BIB-${String(biblioteca.length + 1).padStart(3, '0')}`;
+  const idBib = siguienteId(biblioteca, 'ID_Biblioteca', 'BIB');
   await appendRow(HOJA_BIBLIOTECA, [
     idBib,
     nombre.toString().trim(),
@@ -183,7 +210,7 @@ export async function POST(req: NextRequest) {
   ]);
 
   // Relación 1:1 — cada insumo de biblioteca nace con su registro activo
-  const idAct = `ACT-${String(activos.length + 1).padStart(3, '0')}`;
+  const idAct = siguienteId(activos, 'ID_Activo', 'ACT');
   await appendRow(HOJA_ACTIVOS, [idAct, idBib, 0, '', 'Fresco', '', '', 'si']);
 
   return NextResponse.json({ success: true, id: idBib });
@@ -200,7 +227,10 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 });
   }
 
-  const biblioteca = await getSheetData(HOJA_BIBLIOTECA, { crudo: true });
+  const [biblioteca, activos] = await Promise.all([
+    getSheetData(HOJA_BIBLIOTECA, { crudo: true }),
+    getSheetData(HOJA_ACTIVOS, { crudo: true }),
+  ]);
   const idx = biblioteca.findIndex((b) => b.ID_Biblioteca === id);
   if (idx === -1) {
     return NextResponse.json({ error: 'Insumo no encontrado' }, { status: 404 });
@@ -225,6 +255,14 @@ export async function PATCH(req: NextRequest) {
   if (accion === 'eliminar') {
     // Baja lógica: la fila se conserva para no romper recetas ni historial
     await updateCell(HOJA_BIBLIOTECA, fila, COL_BIB.eliminado, 'si');
+
+    // Y su registro de inventario se retira también. Antes se quedaba vivo
+    // apuntando a un insumo borrado: no se veía en el panel, pero seguía
+    // guardando existencia que ya no se podía contar ni corregir.
+    const filaAct = activos.findIndex((a) => a.ID_Biblioteca === id);
+    if (filaAct !== -1) {
+      await updateCell(HOJA_ACTIVOS, filaAct + 2, await columnaEnUso(), 'no');
+    }
     return NextResponse.json({ success: true });
   }
 

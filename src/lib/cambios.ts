@@ -31,6 +31,22 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-19',
+    tipo: 'arreglo',
+    titulo: 'El aviso del pedido ya dice QUÉ eligió el cliente, no solo la respuesta',
+    detalle:
+      'Al llegar un pedido, el aviso decía “Mango · No” y había que adivinar si el mango era el licuado o el chile, y a qué se contestó que no. Ahora cada elección va en su propio renglón con su nombre: “Licuado: Mango”, “Tostado: No”, “+ Aguacate”, y debajo la descripción del combo. Lo mismo se ve en el carrito, en el ticket y en Mis pedidos.',
+    donde: 'Avisos de Telegram y toda la app',
+  },
+  {
+    fecha: '2026-08-19',
+    tipo: 'mejora',
+    titulo: '“Volver a pedir” ahora te pregunta antes, y sí puede repetir combos',
+    detalle:
+      'Antes el botón metía el pedido al carrito sin avisar, y con cualquier combo decía que no estaba disponible — porque no sabía recuperar qué licuado o qué queso habías elegido. Ahora se abre una ventana con el detalle exacto de lo que se va a pedir y dos botones: “Sí, quiero lo mismo” o “No, quiero cambiarle algo”, que te lleva al menú. Y los combos sí se repiten, con su sabor y todo. Además, en Mis pedidos ya se ven las notas que escribiste (“sin granola”), que antes no aparecían en ningún lado.',
+    donde: 'Mis pedidos',
+  },
+  {
+    fecha: '2026-08-19',
     tipo: 'mejora',
     titulo: 'Al registrar una compra eliges si la pagaste del cajón o de la cuenta',
     detalle:

@@ -39,6 +39,7 @@ import {
   type Eleccion,
   enumerar,
   type GrupoOpcion,
+  eleccionDesdeNombre,
   resumenEleccion,
 } from '@/lib/opciones';
 import { claveExtras, type Extra, precioExtras, resumenExtras } from '@/lib/extras';
@@ -80,6 +81,8 @@ interface MiPedido {
   total: number;
   yaOpino: boolean;
   items: { idProducto: string; nombre: string; cantidad: number; subtotal: number }[];
+  /** Lo que el cliente escribio al pedir ("sin granola", "poco hielo") */
+  notas?: string;
 }
 
 // Avance visual del pedido; 'Cancelado' se muestra aparte
@@ -131,6 +134,8 @@ export default function Home() {
   const [enviandoAviso, setEnviandoAviso] = useState(false);
   const [cargandoPedidos, setCargandoPedidos] = useState(false);
   const [avisoRepetir, setAvisoRepetir] = useState('');
+  /** Pedido que se va a repetir, esperando confirmacion */
+  const [confirmarRepetir, setConfirmarRepetir] = useState<MiPedido | null>(null);
   const [accionPedido, setAccionPedido] = useState<string | null>(null);
   // Opiniones: qué pedido se está calificando y con qué notas
   const [opinando, setOpinando] = useState<string | null>(null);
@@ -782,11 +787,13 @@ export default function Home() {
         noDisponibles.push(item.nombre);
         continue;
       }
-      // Si el producto ahora pide elegir algo (el queso del combo, por
-      // ejemplo), no se puede repetir a ciegas: el pedido viejo no guardó
-      // esa decisión. Se manda a elegirlo en vez de adivinar.
+      // Lo que se eligió (el queso del combo, el sabor del licuado) se
+      // recupera del nombre guardado. Si no se puede — porque ese sabor ya
+      // no se vende o el pedido es de antes de que existieran las
+      // opciones — se manda a elegirlo, en vez de servir otra cosa.
       const grupos: GrupoOpcion[] = actual.opciones ?? [];
-      if (grupos.length > 0) {
+      const eleccion = eleccionDesdeNombre(grupos, item.nombre);
+      if (eleccion === null) {
         noDisponibles.push(item.nombre);
         continue;
       }
@@ -800,9 +807,9 @@ export default function Home() {
         categoria: actual.categoria,
         cantidad: item.cantidad,
         tamano: tamano ?? '',
-        opciones: {},
+        opciones: eleccion,
         extras: [],
-        clave: claveLinea(actual.id, tamano, '#'),
+        clave: claveLinea(actual.id, tamano, `${claveEleccion(grupos, eleccion)}#`),
       });
     }
 
@@ -1376,21 +1383,23 @@ export default function Home() {
                 <div key={item.clave} className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-neutral-100">
                   <div className="pr-4 flex-1">
                     <h3 className="font-semibold text-neutral-900 leading-tight">{item.nombre}</h3>
-                    {[
-                      item.tamano,
-                      ...Object.values(item.opciones ?? {}),
-                      resumenExtras(item.extras ?? []),
-                    ].filter(Boolean).length > 0 && (
-                      <p className="text-xs text-neutral-700 font-medium mt-0.5">
-                        {[
-                          item.tamano,
-                          ...Object.values(item.opciones ?? {}),
-                          resumenExtras(item.extras ?? []),
-                        ]
-                          .filter(Boolean)
-                          .join(' · ')}
-                      </p>
-                    )}
+                    {/* Con el nombre del grupo delante: "Fresa · No" no dice
+                        si el fresa es el licuado ni a qué se contestó que no. */}
+                    {(() => {
+                      const partes = [
+                        item.tamano,
+                        ...Object.entries(item.opciones ?? {})
+                          .filter(([, v]) => v)
+                          .map(([g, v]) => `${g}: ${v}`),
+                        resumenExtras(item.extras ?? []),
+                      ].filter(Boolean);
+                      if (partes.length === 0) return null;
+                      return (
+                        <p className="text-xs text-neutral-700 font-medium mt-0.5">
+                          {partes.join(' · ')}
+                        </p>
+                      );
+                    })()}
                     <p className="text-neutral-800 font-semibold text-sm mt-1">${(item.precio * item.cantidad).toFixed(2)}</p>
                   </div>
                   <div className="flex items-center bg-neutral-100 rounded-xl p-1 gap-2 shrink-0">
@@ -1639,6 +1648,64 @@ export default function Home() {
           </div>
         )}
 
+        {/* Confirmar antes de repetir. Se pide porque "volver a pedir" no
+            abre nada: mete el pedido al carrito tal cual, y quien no lo
+            sabe se encuentra con un pedido que ya no queria igual. */}
+        {confirmarRepetir && (
+          <div className="absolute inset-0 bg-black/50 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
+            <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[85%] overflow-y-auto p-5">
+              <h3 className="text-lg font-bold text-black">¿Pedir lo mismo?</h3>
+              <p className="text-sm text-neutral-700 mt-1">
+                Vamos a agregar a tu carrito exactamente esto:
+              </p>
+
+              <ul className="mt-3 space-y-2">
+                {confirmarRepetir.items.map((item, idx) => (
+                  <li key={idx} className="bg-neutral-50 rounded-xl px-3 py-2">
+                    <span className="text-sm font-semibold text-black">
+                      {item.cantidad}× {item.nombre}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+
+              {confirmarRepetir.notas?.trim() && (
+                <p className="mt-2 text-xs text-neutral-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                  📝 Aquella vez escribiste: <b>{confirmarRepetir.notas.trim()}</b>
+                  <span className="block mt-1 text-neutral-600">
+                    Esta nota <b>no</b> se copia. Si la quieres otra vez, escríbela al pagar.
+                  </span>
+                </p>
+              )}
+
+              <div className="mt-4 space-y-2">
+                <button
+                  onClick={() => {
+                    const pedido = confirmarRepetir;
+                    setConfirmarRepetir(null);
+                    volverAPedir(pedido);
+                  }}
+                  className="w-full bg-marron text-white font-bold py-3.5 rounded-xl active:scale-95"
+                >
+                  Sí, quiero lo mismo
+                </button>
+                <button
+                  onClick={() => {
+                    setConfirmarRepetir(null);
+                    setVerMisPedidos(false);
+                  }}
+                  className="w-full bg-neutral-100 text-neutral-800 font-bold py-3.5 rounded-xl active:scale-95"
+                >
+                  No, quiero cambiarle algo
+                </button>
+              </div>
+              <p className="text-xs text-neutral-600 mt-2 text-center">
+                Si le cambias algo, armas tu pedido desde el menú como siempre.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* PANTALLA 4: MIS PEDIDOS */}
         {verMisPedidos && (
           <div className="absolute inset-0 bg-neutral-50 z-50 flex flex-col h-full">
@@ -1716,6 +1783,14 @@ export default function Home() {
                         ))}
                       </div>
 
+                      {/* Lo que escribio al pedir. Vivia solo en la hoja:
+                          quien pidio "sin granola" no podia comprobarlo. */}
+                      {p.notas?.trim() && (
+                        <p className="mt-2 text-xs text-neutral-700 bg-neutral-50 rounded-lg px-3 py-2">
+                          📝 {p.notas.trim()}
+                        </p>
+                      )}
+
                       <div className="flex justify-between items-center mt-3 pt-3 border-t border-neutral-100">
                         <div>
                           <span className="font-bold text-black">${p.total.toFixed(2)}</span>
@@ -1728,7 +1803,7 @@ export default function Home() {
                         </div>
                         {p.items.length > 0 && (
                           <button
-                            onClick={() => volverAPedir(p)}
+                            onClick={() => setConfirmarRepetir(p)}
                             className="bg-marron text-white text-sm font-bold px-4 py-2 rounded-xl active:scale-95 transition-transform"
                           >
                             🔁 Volver a pedir

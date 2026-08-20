@@ -253,15 +253,29 @@ export async function POST(req: NextRequest) {
     const productoPorId = new Map(productosSheet.map((p) => [p.ID_Producto, p]));
     const listaItems = itemsValidados
       .map((it) => {
-        const linea = `• ${it.cantidad}× ${it.nombre}`;
         const prod = productoPorId.get(it.id);
+        // El nombre a secas, sin las opciones entre paréntesis: van abajo
+        // renglón por renglón, que es como se prepara el pedido.
+        const base = (prod?.Nombre || it.nombre).trim();
+        const partes = [`• <b>${it.cantidad}× ${base}</b>`];
+
+        if (it.tamano) partes.push(`   Tamaño: ${it.tamano}`);
+        for (const [grupo, valor] of Object.entries(it.opciones ?? {})) {
+          if (valor) partes.push(`   ${grupo}: <b>${valor}</b>`);
+        }
+        for (const e of it.extras ?? []) partes.push(`   + ${e.nombre}`);
+
+        // Los combos llevan su descripción, para no tener que consultar el
+        // menú al prepararlos.
         const esCombo = ((prod?.Categoria ?? prod?.['Categoría']) || '')
           .toLowerCase()
           .includes('combo');
         const desc = (prod?.Descripcion || '').trim();
-        return esCombo && desc ? `${linea}\n   <i>${desc}</i>` : linea;
+        if (esCombo && desc) partes.push(`   <i>${desc}</i>`);
+
+        return partes.join('\n');
       })
-      .join('\n');
+      .join('\n\n');
 
     await enviarTelegram(
       `🔔 <b>Nuevo pedido ${idPedido}</b>\n` +

@@ -107,9 +107,64 @@ export function eleccionInicial(grupos: GrupoOpcion[]): Eleccion {
 /** "Queso suizo · Jugo de Mango" — para el nombre del renglón y el ticket. */
 export function resumenEleccion(grupos: GrupoOpcion[], eleccion: Eleccion | undefined): string {
   return grupos
-    .map((g) => limpio(eleccion?.[g.nombre] ?? ''))
+    .map((g) => {
+      const valor = limpio(eleccion?.[g.nombre] ?? '');
+      // Con el nombre del grupo delante. Sin él, "Mango · No" no dice si
+      // el mango es el licuado o el chile, ni qué se contestó que no; y
+      // quien prepara el pedido lee justo esta línea.
+      return valor ? `${g.nombre}: ${valor}` : '';
+    })
     .filter(Boolean)
     .join(' · ');
+}
+
+/**
+ * Recupera lo que se eligió a partir del nombre guardado del renglón.
+ *
+ * El pedido guarda "Combo 1 (Queso: Panela · Bebida: Jugo de Mango)", y
+ * para repetirlo hay que volver a esas decisiones. Antes no se leían y
+ * cualquier producto con opciones se declaraba imposible de repetir, que
+ * es justo lo que más se repite: los combos.
+ *
+ * Los pedidos viejos se guardaron sin el nombre del grupo (solo
+ * "Panela · Jugo de Mango"), así que si no aparece la etiqueta se busca
+ * el valor entre las opciones que ese grupo ofrece.
+ *
+ * Devuelve null si alguna decisión no se puede recuperar: es preferible
+ * mandar a elegir de nuevo que servir algo distinto a lo que se pidió.
+ */
+export function eleccionDesdeNombre(grupos: GrupoOpcion[], nombre: string): Eleccion | null {
+  if (grupos.length === 0) return {};
+  const m = /\(([^()]*)\)\s*$/.exec((nombre ?? '').trim());
+  const partes = (m?.[1] ?? '')
+    .split('·')
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  const eleccion: Eleccion = {};
+  for (const g of grupos) {
+    const etiqueta = partes.find((x) => limpio(x).toLowerCase().startsWith(`${g.nombre.toLowerCase()}:`));
+    let valor = etiqueta ? etiqueta.slice(etiqueta.indexOf(':') + 1).trim() : '';
+    // Formato viejo: sin etiqueta, se busca el valor entre lo que ofrece
+    // el grupo. Los tamaños y los extras ("+ Chía") nunca coinciden.
+    if (!valor) valor = partes.find((x) => g.opciones.some((o) => o.toLowerCase() === x.toLowerCase())) ?? '';
+    // Tiene que seguir ofreciéndose hoy: un sabor que se dejó de vender
+    // no se puede repetir a ciegas.
+    const vigente = g.opciones.find((o) => o.toLowerCase() === valor.toLowerCase());
+    if (!vigente) return null;
+    eleccion[g.nombre] = vigente;
+  }
+  return eleccion;
+}
+
+/** Lo elegido como renglones sueltos, para listarlo uno debajo de otro. */
+export function lineasEleccion(
+  grupos: GrupoOpcion[],
+  eleccion: Eleccion | undefined
+): { grupo: string; valor: string }[] {
+  return grupos
+    .map((g) => ({ grupo: g.nombre, valor: limpio(eleccion?.[g.nombre] ?? '') }))
+    .filter((x) => x.valor);
 }
 
 /**

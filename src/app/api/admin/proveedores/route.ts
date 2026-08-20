@@ -84,9 +84,9 @@ export async function GET() {
       const mio = opciones.find((o) => (o.idProveedor || normalizar(o.proveedor)) === (p.id || normalizar(p.nombre)))
         ?? opciones.find((o) => normalizar(o.proveedor) === normalizar(p.nombre));
       // Sin compra todavía, vale el precio que se declaró en la presentación
-      const suPres = presentaciones.find(
-        (x) => x.idProveedor === p.id && x.idBiblioteca === idBib && x.activa
-      );
+      const suPres =
+        presentaciones.find((x) => x.idProveedor === p.id && x.idBiblioteca === idBib && x.activa) ??
+        presentaciones.find((x) => x.idProveedor === p.id && x.idBiblioteca === idBib);
       return {
         id: idBib,
         nombre: nombreInsumo.get(idBib) ?? idBib,
@@ -94,6 +94,10 @@ export async function GET() {
         precioPaquete: mio?.precioPaquete ?? suPres?.ultimoPrecio ?? 0,
         contenido: mio?.contenido ?? suPres?.contenido ?? 0,
         marca: suPres?.marca ?? '',
+        /** La presentación de este proveedor, para poder editarla o borrarla */
+        idPresentacion: suPres?.id ?? '',
+        unidadCompra: suPres?.unidadCompra ?? '',
+        activa: suPres?.activa ?? true,
         /** true = todavía no se le ha comprado; el precio es el declarado */
         soloDeclarado: !mio,
         esElMasBarato: mio?.esElMasBarato ?? false,

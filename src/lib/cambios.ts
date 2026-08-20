@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-20',
+    tipo: 'mejora',
+    titulo: 'Los insumos anotados en un proveedor ya se pueden corregir y borrar',
+    detalle:
+      'Una vez anotado qué vende un proveedor, no había forma de arreglarlo si te equivocabas. Ahora tócalo y se abre para corregir la marca, cómo viene, cuánto trae y el precio. Hay dos formas de quitarlo, y no son lo mismo: “ya no la compro así” lo esconde pero conserva su historial de precios, y “lo anoté por error” lo borra de verdad — esto último solo si todavía no le has comprado, porque si no esas compras se quedarían sin a qué apuntar.',
+    donde: 'Proveedores',
+  },
+  {
+    fecha: '2026-08-20',
     tipo: 'nuevo',
     titulo: 'Cada proveedor con su ubicación, y botón para abrir Google Maps',
     detalle:

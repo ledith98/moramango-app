@@ -35,6 +35,10 @@ interface InsumoDeProveedor {
   precioPaquete: number;
   contenido: number;
   marca: string;
+  /** La presentacion de este proveedor, para editarla o borrarla */
+  idPresentacion: string;
+  unidadCompra: string;
+  activa: boolean;
   /** true = anotado como que aqui lo venden, pero aun sin comprarle */
   soloDeclarado: boolean;
   esElMasBarato: boolean;
@@ -95,6 +99,8 @@ export default function ProveedoresPage() {
   /** Alta de "aqui venden esto": proveedor al que se le agrega */
   const [agregarA, setAgregarA] = useState<Proveedor | null>(null);
   const [insForm, setInsForm] = useState({ id: '', marca: '', unidadCompra: '', contenido: '', ultimoPrecio: '' });
+  /** Presentacion que se esta corrigiendo; null = alta */
+  const [insEditando, setInsEditando] = useState<InsumoDeProveedor | null>(null);
   const [cargando, setCargando] = useState(true);
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState('');
@@ -280,6 +286,7 @@ export default function ProveedoresPage() {
                       <button
                         onClick={() => {
                           setAgregarA(p);
+                          setInsEditando(null);
                           setInsForm({ id: '', marca: '', unidadCompra: '', contenido: '', ultimoPrecio: '' });
                           setError('');
                         }}
@@ -333,7 +340,27 @@ export default function ProveedoresPage() {
                       <ul className="space-y-1">
                         {p.insumos.map((i) => (
                           <li key={i.id} className="flex items-center justify-between text-sm gap-2">
-                            <span className="text-neutral-800 truncate min-w-0">
+                            {/* Tocable: capturar mal la presentación es fácil
+                                y hasta ahora no había manera de corregirlo. */}
+                            <button
+                              onClick={() => {
+                                if (!i.idPresentacion) return;
+                                setAgregarA(p);
+                                setInsEditando(i);
+                                setInsForm({
+                                  id: i.id,
+                                  marca: i.marca,
+                                  unidadCompra: i.unidadCompra,
+                                  contenido: i.contenido ? String(i.contenido) : '',
+                                  ultimoPrecio: i.precioPaquete ? String(i.precioPaquete) : '',
+                                });
+                                setError('');
+                              }}
+                              disabled={!i.idPresentacion}
+                              className={`text-neutral-800 truncate min-w-0 text-left ${
+                                i.idPresentacion ? 'underline decoration-neutral-300' : ''
+                              } ${i.activa ? '' : 'line-through text-neutral-500'}`}
+                            >
                               {i.nombre}
                               {i.marca && i.marca !== 'No aplica' && (
                                 <span className="text-neutral-600"> · {i.marca}</span>
@@ -343,7 +370,7 @@ export default function ProveedoresPage() {
                                   aún sin comprar
                                 </span>
                               )}
-                            </span>
+                            </button>
                             <span className="shrink-0 tabular-nums text-right">
                               <span className="font-semibold text-neutral-900">
                                 {porPieza(i.porUnidad)}
@@ -463,11 +490,14 @@ export default function ProveedoresPage() {
             <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[90%] overflow-y-auto p-5 space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-bold text-neutral-900">
-                  ¿Qué venden en {agregarA.nombre}?
+                  {insEditando
+                    ? `Corregir ${insEditando.nombre} en ${agregarA.nombre}`
+                    : `¿Qué venden en ${agregarA.nombre}?`}
                 </h3>
                 <button
                   onClick={() => {
                     setAgregarA(null);
+                    setInsEditando(null);
                     setError('');
                   }}
                   className="text-neutral-600 text-xl leading-none px-2"
@@ -476,13 +506,15 @@ export default function ProveedoresPage() {
                 </button>
               </div>
               <p className="text-xs text-neutral-700">
-                Queda anotado aunque todavía no le compres. Es cuando más sirve: para saber a dónde
-                ir antes de salir.
+                {insEditando
+                  ? 'Corrige lo que esté mal. El insumo no se cambia: si te equivocaste de insumo, bórralo y agrega el correcto.'
+                  : 'Queda anotado aunque todavía no le compres. Es cuando más sirve: para saber a dónde ir antes de salir.'}
               </p>
 
               <label className="block text-sm font-semibold text-neutral-800">Insumo</label>
               <select
                 value={insForm.id}
+                disabled={!!insEditando}
                 onChange={(e) => {
                   const c = catalogo.find((x) => x.id === e.target.value);
                   setInsForm({
@@ -492,7 +524,7 @@ export default function ProveedoresPage() {
                     contenido: c?.equivalencia ? String(c.equivalencia) : '',
                   });
                 }}
-                className={inputCls}
+                className={`${inputCls} disabled:bg-neutral-100 disabled:text-neutral-600`}
               >
                 <option value="">— elige el insumo —</option>
                 {catalogo.map((c) => (
@@ -566,17 +598,21 @@ export default function ProveedoresPage() {
                 onClick={async () => {
                   setOcupado(true);
                   setError('');
+                  const comun = {
+                    marca: insForm.marca,
+                    unidadCompra: insForm.unidadCompra,
+                    contenido: insForm.contenido,
+                    ultimoPrecio: insForm.ultimoPrecio,
+                    proveedor: agregarA.nombre,
+                  };
                   const res = await fetch('/api/admin/presentaciones', {
-                    method: 'POST',
+                    method: insEditando ? 'PATCH' : 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      idBiblioteca: insForm.id,
-                      marca: insForm.marca,
-                      unidadCompra: insForm.unidadCompra,
-                      contenido: insForm.contenido,
-                      ultimoPrecio: insForm.ultimoPrecio,
-                      proveedor: agregarA.nombre,
-                    }),
+                    body: JSON.stringify(
+                      insEditando
+                        ? { id: insEditando.idPresentacion, ...comun }
+                        : { idBiblioteca: insForm.id, ...comun }
+                    ),
                   });
                   const data = await res.json();
                   setOcupado(false);
@@ -585,6 +621,7 @@ export default function ProveedoresPage() {
                     return;
                   }
                   setAgregarA(null);
+                  setInsEditando(null);
                   await cargar();
                 }}
                 disabled={ocupado || !insForm.id || contenido <= 0}
@@ -598,6 +635,58 @@ export default function ProveedoresPage() {
                       ? 'Falta cuánto trae'
                       : 'Guardar'}
               </button>
+
+              {/* Dos formas de quitarla, y no son lo mismo: esconderla
+                  conserva su historial de precios; borrarla solo aplica
+                  cuando fue un error de captura y no tiene compras. */}
+              {insEditando && (
+                <>
+                  <button
+                    onClick={async () => {
+                      setOcupado(true);
+                      await fetch('/api/admin/presentaciones', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          id: insEditando.idPresentacion,
+                          activa: !insEditando.activa,
+                        }),
+                      });
+                      setOcupado(false);
+                      setAgregarA(null);
+                      setInsEditando(null);
+                      await cargar();
+                    }}
+                    disabled={ocupado}
+                    className="w-full bg-neutral-100 text-neutral-800 font-semibold py-3 rounded-xl active:scale-95 disabled:opacity-50"
+                  >
+                    {insEditando.activa ? 'Ya no la compro así' : 'Volver a comprarla así'}
+                  </button>
+                  <button
+                    onClick={async () => {
+                      setOcupado(true);
+                      setError('');
+                      const url =
+                        '/api/admin/presentaciones?id=' +
+                        encodeURIComponent(insEditando.idPresentacion);
+                      const res = await fetch(url, { method: 'DELETE' });
+                      const data = await res.json();
+                      setOcupado(false);
+                      if (!res.ok) {
+                        setError(data.error || 'No se pudo borrar');
+                        return;
+                      }
+                      setAgregarA(null);
+                      setInsEditando(null);
+                      await cargar();
+                    }}
+                    disabled={ocupado}
+                    className="w-full bg-red-50 text-red-700 font-semibold py-3 rounded-xl active:scale-95 disabled:opacity-50"
+                  >
+                    🗑️ Lo anoté por error, bórralo
+                  </button>
+                </>
+              )}
             </div>
           </div>
         );

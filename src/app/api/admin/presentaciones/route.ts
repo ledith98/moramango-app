@@ -13,8 +13,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { anotar } from '@/lib/bitacora';
 import { getSheetData } from '@/lib/googleSheets';
-import { HOJA_BIBLIOTECA } from '@/lib/inventario';
+import { HOJA_BIBLIOTECA, HOJA_COMPRAS } from '@/lib/inventario';
 import {
+  borrarPresentacion,
   crearPresentacion,
   guardarPresentacion,
   leerPresentaciones,
@@ -113,5 +114,40 @@ export async function PATCH(req: NextRequest) {
 
   await guardarPresentacion(id, datos);
   await anotar(quienDe(sesion), 'Insumos', `Editó una presentación (${id})`);
+  return NextResponse.json({ success: true });
+}
+
+export async function DELETE(req: NextRequest) {
+  const sesion = await getAdminSession();
+  if (!sesion) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  }
+  const id = new URL(req.url).searchParams.get('id');
+  if (!id) return NextResponse.json({ error: 'Falta la presentación' }, { status: 400 });
+
+  const todas = await leerPresentaciones();
+  const actual = todas.find((p) => p.id === id);
+  if (!actual) return NextResponse.json({ error: 'Presentación no encontrada' }, { status: 404 });
+
+  /**
+   * Con compras encima no se borra.
+   *
+   * Esas compras quedarían apuntando a la nada y se perdería su historial
+   * de precios, que es lo que permite comparar proveedores. Para dejar de
+   * usarla existe "ya no la compro así", que la esconde sin romper nada.
+   */
+  const compras = await getSheetData(HOJA_COMPRAS, { crudo: true }).catch(() => []);
+  const cuantas = compras.filter((c) => (c.ID_Presentacion || '').toString().trim() === id).length;
+  if (cuantas > 0) {
+    return NextResponse.json(
+      {
+        error: `No se puede borrar: ya tiene ${cuantas} compra${cuantas === 1 ? '' : 's'} registrada${cuantas === 1 ? '' : 's'}. Usa "ya no la compro así" para dejar de verla, sin perder su historial de precios.`,
+      },
+      { status: 409 }
+    );
+  }
+
+  await borrarPresentacion(id);
+  await anotar(quienDe(sesion), 'Insumos', `Borró una presentación (${id})`, 'no tenía compras');
   return NextResponse.json({ success: true });
 }

@@ -173,6 +173,25 @@ export async function anotarPrecio(id: string, precio: number): Promise<void> {
   await guardarPresentacion(id, { ultimoPrecio: Math.round(precio * 100) / 100 });
 }
 
+/**
+ * Borra una presentación capturada por error.
+ *
+ * Se vacía la fila en vez de quitarla: eliminar filas recorre todas las de
+ * abajo y los índices que ya se leyeron dejan de servir. Solo debe usarse
+ * cuando NO tiene compras — si las tiene, borrarla dejaría esas compras
+ * apuntando a la nada y se perdería su historial de precios; para eso está
+ * desactivarla.
+ */
+export async function borrarPresentacion(id: string): Promise<void> {
+  await prepararPresentaciones();
+  const filas = await getSheetData(HOJA_PRESENTACIONES, { crudo: true });
+  const i = filas.findIndex((f) => f.ID_Presentacion === id);
+  if (i === -1) return;
+  const vacias: Record<number, string> = {};
+  for (let c = 1; c <= COLS.length; c++) vacias[c] = '';
+  await updateCells(HOJA_PRESENTACIONES, i + 2, vacias);
+}
+
 /** Las de un insumo, la más barata primero. */
 export function deInsumo(todas: Presentacion[], idBiblioteca: string): Presentacion[] {
   return todas

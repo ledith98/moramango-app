@@ -41,6 +41,7 @@ import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 import { leerRecetas } from '@/lib/recetario';
 import { getAdminSession } from '@/lib/roles';
 import { anotar } from '@/lib/bitacora';
+import { idDeProveedor } from '@/lib/proveedores';
 import { CUENTA_DIGITAL, CUENTA_EFECTIVO, registrarMovimiento } from '@/lib/caja';
 
 const DIAS_ANALISIS = 7;
@@ -414,6 +415,10 @@ export async function PATCH(req: NextRequest) {
      * lugares se arme sola con el uso, sin un catálogo que mantener.
      */
     const lugar = (donde ?? '').toString().trim().slice(0, 80);
+    // Se resuelve contra el directorio: si es un nombre nuevo, se da de
+    // alta. Guardar solo el texto es lo que partia el historial de precios
+    // cuando el mismo lugar se escribia de dos formas.
+    const idProveedor = lugar ? await idDeProveedor(lugar, quien) : '';
 
     // Precio y proveedor van en la misma escritura: son dos celdas de la
     // misma fila y separarlas costaría un viaje de más a Google.
@@ -443,6 +448,7 @@ export async function PATCH(req: NextRequest) {
       costoReceta ?? '',
       lugar,
       quien,
+      idProveedor,
     ]);
 
     /**

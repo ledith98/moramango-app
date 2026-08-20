@@ -10,6 +10,7 @@ const TABS = [
   { href: '/admin/dinero', label: 'Dinero', icon: '💰' },
   { href: '/admin/productos', label: 'Productos', icon: '🥤' },
   { href: '/admin/insumos', label: 'Insumos', icon: '📦' },
+  { href: '/admin/proveedores', label: 'Proveedores', icon: '🏪' },
   { href: '/admin/recetario', label: 'Recetario', icon: '📖' },
   { href: '/admin/usuarios', label: 'Usuarios', icon: '👥' },
   { href: '/admin/opiniones', label: 'Opiniones', icon: '⭐' },

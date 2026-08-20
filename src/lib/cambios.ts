@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-20',
+    tipo: 'nuevo',
+    titulo: 'Directorio de proveedores, con comparación de precios',
+    detalle:
+      'Nueva sección 🏪 Proveedores. Guarda a quién le compras con su teléfono, con quién tratas y tus notas, y te muestra qué le compras a cada uno y cuánto llevas gastado — eso sale solo de tus compras, no hay que capturarlo. La pestaña de comparar pone el precio del mismo insumo lado a lado y te dice cuánto te ahorras yendo con el más barato. Se sembró con los 15 proveedores que ya tenías escritos y se ligaron tus compras. De aquí en adelante, al anotar dónde compraste, el nombre se guarda en el directorio en vez de quedar como texto suelto.',
+    donde: 'Proveedores',
+  },
+  {
+    fecha: '2026-08-20',
     tipo: 'mejora',
     titulo: 'Caja y Cuenta ahora son una sola sección: 💰 Dinero',
     detalle:

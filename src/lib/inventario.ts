@@ -81,6 +81,10 @@ export const COLS_COMPRAS = [
   // entran al panel y sin esto no hay a quién preguntarle por una captura
   // rara.
   'Quien',
+  // Proveedor del directorio. 'Donde' se conserva con el texto de siempre
+  // para las compras viejas; el ID es el vínculo firme que permite
+  // comparar precios sin que un nombre mal escrito parta el historial.
+  'ID_Proveedor',
 ];
 
 // Columnas 1-based para updateCell (coinciden con los arreglos de arriba)
@@ -125,8 +129,12 @@ export async function prepararInventario(): Promise<void> {
   await Promise.all([
     ensureColumn(HOJA_ACTIVOS, 'En_Uso'),
     ensureColumn(HOJA_BIBLIOTECA, 'Ingredientes'),
+    // Varios proveedores por insumo, separados por '|': casi nada se le
+    // compra siempre al mismo, y sin esto no se puede comparar.
+    ensureColumn(HOJA_BIBLIOTECA, 'Proveedores'),
     ensureColumn(HOJA_COMPRAS, 'Donde'),
     ensureColumn(HOJA_COMPRAS, 'Quien'),
+    ensureColumn(HOJA_COMPRAS, 'ID_Proveedor'),
   ]);
 }
 

@@ -16,6 +16,7 @@
  */
 
 import { ensureColumn, getSheetData, updateCell } from '@/lib/googleSheets';
+import { extrasDesdeNombre } from './extras';
 import { factorDeTamano } from './tamanoFactor';
 import { parsearTamanos } from './tamanos';
 import { consumoPorInsumo } from '@/lib/insumos';
@@ -101,6 +102,9 @@ export async function moverStockDePedido(
         idProducto: i.ID_Producto,
         cantidad: parseInt(i.Cantidad) || 1,
         factor: factorDeTamano(tamanosPorProducto.get(i.ID_Producto) ?? [], i.Tamano ?? ''),
+        // Los extras solo quedan en el nombre guardado ("(+ Avena)"): DT
+        // PEDIDOS no tiene columna propia para ellos.
+        extras: extrasDesdeNombre(i.Nombre_Producto_Snap ?? ''),
       })),
       catalogo
     );

@@ -58,16 +58,21 @@ export function factorMerma(mermaPct: string | undefined): number {
  * Devuelve un Map cuya clave es el nombre normalizado del ingrediente.
  */
 export function consumoPorInsumo(
-  items: { idProducto: string; cantidad: number; factor?: number }[],
+  items: { idProducto: string; cantidad: number; factor?: number; extras?: string[] }[],
   catalogo: Record<string, string>[]
 ): Map<string, number> {
   const consumo = new Map<string, number>();
+  const igual = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
   for (const item of items) {
     if (!item.idProducto || item.cantidad <= 0) continue;
     const recetas = catalogo.filter((c) => c.ID_Producto === item.idProducto);
 
     for (const receta of recetas) {
+      // Renglones que solo aplican si se pidió cierto extra: la avena del
+      // licuado se descuenta nada más cuando se pidió con avena.
+      const pide = (receta.Extra_Requerido || '').trim();
+      if (pide && !(item.extras ?? []).some((e) => igual(e, pide))) continue;
       const clave = normalizarNombre(receta.Ingrediente);
       if (!clave) continue;
 

@@ -55,6 +55,23 @@ export function resumenExtras(extras: Extra[]): string {
 }
 
 /**
+ * Los extras que se pidieron, leídos del nombre guardado del renglón.
+ *
+ * El pedido guarda "Licuado de Plátano (+ Avena)"; para descontar los 20 g
+ * de avena hay que saber que se pidió. Es el único lugar donde queda
+ * registrado: DT PEDIDOS no tiene columna de extras.
+ */
+export function extrasDesdeNombre(nombre: string): string[] {
+  const m = /\(([^()]*)\)\s*$/.exec((nombre ?? '').trim());
+  return (m?.[1] ?? '')
+    .split('·')
+    .map((x) => x.trim())
+    .filter((x) => x.startsWith('+'))
+    .map((x) => x.slice(1).trim())
+    .filter(Boolean);
+}
+
+/**
  * Parte de la llave del renglón. Se ordena para que elegir chía y luego
  * granola caiga en el mismo renglón que al revés.
  */

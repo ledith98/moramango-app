@@ -80,6 +80,10 @@ export async function GET() {
     let total = 0;
     for (const r of lineas) {
       const cantidad = parseFloat(r.Cantidad) || 0;
+      // Los renglones que dependen de un extra no van en el costo base:
+      // el producto sin ese extra no los lleva, y sumarlos haría ver más
+      // caro de lo que cuesta lo que se vende casi siempre.
+      if ((r.Extra_Requerido || '').trim()) continue;
       if (r.ID_Componente) {
         const costoComp = costoDeProducto(r.ID_Componente, propios);
         if (costoComp === null) return null;
@@ -132,6 +136,8 @@ export async function GET() {
           cantidad,
           merma: r.Merma_Pct || '',
           nota: r.Notas || '',
+          /** Si viene, este renglón solo cuenta cuando se pide ese extra */
+          extraRequerido: (r.Extra_Requerido || '').trim(),
           // Costo real, calculado con la última compra registrada
           costo: costoUnidad !== null
             ? redondear(cantidad * factorMerma(r.Merma_Pct) * costoUnidad, 2)

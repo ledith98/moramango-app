@@ -39,6 +39,10 @@ export const COLS_RECETARIO = [
   // jugo" en vez de recapturar los ingredientes de los dos, y cuando
   // cambie la receta del sandwich el combo se entera solo.
   'ID_Componente',
+  // Si viene lleno, este renglón SOLO cuenta cuando el cliente pidió ese
+  // extra. Así la avena del licuado se descuenta nada más cuando se pide
+  // con avena, en vez de irse en todos.
+  'Extra_Requerido',
 ];
 
 // Columnas 1-based para updateCell
@@ -49,6 +53,7 @@ export const COL_REC = {
   merma: 5,
   notas: 6,
   idComponente: 7,
+  extraRequerido: 8,
 } as const;
 
 export async function prepararRecetario(): Promise<void> {
@@ -58,6 +63,7 @@ export async function prepararRecetario(): Promise<void> {
   // celda pero, sin encabezado, getSheetData no lo devolvia y los combos
   // quedaban vacios. Los componentes no funcionaron hasta este arreglo.
   await ensureColumn(HOJA_RECETARIO, 'ID_Componente');
+  await ensureColumn(HOJA_RECETARIO, 'Extra_Requerido');
 }
 
 /**
@@ -84,12 +90,12 @@ function insumosDe(
   porProducto: Map<string, Record<string, string>[]>,
   visitados: Set<string>,
   nivel = 0
-): { idBiblioteca: string; cantidad: number; merma: string }[] {
+): { idBiblioteca: string; cantidad: number; merma: string; extra: string }[] {
   if (nivel >= PROFUNDIDAD_MAX || visitados.has(idProducto)) return [];
   const propios = new Set(visitados);
   propios.add(idProducto);
 
-  const salida: { idBiblioteca: string; cantidad: number; merma: string }[] = [];
+  const salida: { idBiblioteca: string; cantidad: number; merma: string; extra: string }[] = [];
   for (const r of porProducto.get(idProducto) ?? []) {
     const cantidad = (parseFloat(r.Cantidad) || 0) * factor;
     if (cantidad <= 0) continue;
@@ -103,6 +109,7 @@ function insumosDe(
         idBiblioteca: r.ID_Biblioteca,
         cantidad,
         merma: r.Merma_Pct || '',
+        extra: (r.Extra_Requerido || '').trim(),
       });
     }
   }
@@ -142,6 +149,7 @@ export function recetarioComoCatalogo(
         Ingrediente: nombre,
         Cantidad_Receta: String(l.cantidad),
         Merma_Pct: l.merma,
+        Extra_Requerido: l.extra,
       });
     }
   }

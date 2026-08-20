@@ -31,6 +31,22 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-19',
+    tipo: 'nuevo',
+    titulo: 'La avena ya es un extra, y descuenta del inventario cuando la piden',
+    detalle:
+      'Los cuatro licuados traen ahora “Avena +$10” como extra a elegir. Antes se descontaban 20 g de avena en TODOS los licuados de plátano aunque nadie la pidiera, y en los demás no se descontaba nunca. Ahora los 20 g salen del inventario solo cuando el cliente la pide, y el costo del licuado sin avena ya no la carga. Si el licuado es de litro, se descuentan 40 g.',
+    donde: 'Venta y la app del cliente',
+  },
+  {
+    fecha: '2026-08-19',
+    tipo: 'mejora',
+    titulo: 'Recetas al día con el recetario del local',
+    detalle:
+      'Se capturó el recetario que está pegado en el local. Los licuados quedaron con sus cantidades reales (dos plátanos, 19 g de chocolate, el hielo que faltaba en el de fresa) y las de leche y agua se dejaron en 250 ml para tener holgura. El Jugo de Papáya, que no llevaba papaya, y el de Melón, que tenía los números cruzados, quedaron corregidos aunque sigan pausados. Márgenes: Plátano 76%, Mango 73%, Chocobanana 68%, Fresa 66%.',
+    donde: 'Recetario',
+  },
+  {
+    fecha: '2026-08-19',
     tipo: 'arreglo',
     titulo: 'El aviso del pedido ya dice QUÉ eligió el cliente, no solo la respuesta',
     detalle:

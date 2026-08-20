@@ -250,65 +250,85 @@ export default function AjustesPage() {
         Reglas del negocio que puedes cambiar tú, sin que nadie toque la aplicación.
       </p>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5 space-y-4">
-        <div>
-          <h2 className="font-bold text-neutral-900">📍 Dirección del local</h2>
-          <p className="text-sm text-neutral-700 mt-1">
-            Se le muestra al cliente cuando elige pagar al recoger y en la pantalla de su pedido,
-            para que sepa a dónde ir. Si lo dejas vacío, no se muestra nada.
-          </p>
-        </div>
 
-        <div className="space-y-1.5">
-          <label className="text-sm font-semibold text-neutral-700">Dirección</label>
-          <textarea
-            value={direccion}
-            onChange={(e) => setDireccion(e.target.value)}
-            rows={2}
-            placeholder="Ej. Av. Universidad 123, Col. Centro, San Nicolás de los Garza, N.L."
-            className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-marron"
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="text-sm font-semibold text-neutral-700">
-            Enlace del mapa <span className="font-normal text-neutral-600">(opcional)</span>
-          </label>
-          <input
-            value={mapa}
-            onChange={(e) => setMapa(e.target.value)}
-            placeholder="https://maps.app.goo.gl/…"
-            className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-marron"
-          />
-          <p className="text-xs text-neutral-600">
-            En Google Maps busca tu local, toca Compartir y copia el enlace. Con esto al cliente le
-            aparece un botón de “Cómo llegar”.
-          </p>
-        </div>
-
-        {errorLocal && <p className="text-sm text-red-600">{errorLocal}</p>}
-
-        <div className="flex items-center gap-2">
+      {/* Quien cambio que. Ocho personas entran al panel: sin esto, un
+          precio cambiado o una existencia rara no tiene a quien preguntarle. */}
+      <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5">
+        <div className="flex flex-wrap items-center gap-3">
+          <div>
+            <h2 className="font-bold text-neutral-900">📋 Qué se ha cambiado</h2>
+            <p className="text-xs text-neutral-700 mt-0.5">
+              Quién cambió qué y cuándo, en todo el panel. Sirve para corregir, no para vigilar:
+              si algo amanece raro, aquí ves cómo estaba antes.
+            </p>
+          </div>
           <button
-            onClick={guardarLocal}
-            disabled={guardandoLocal || !localCambiado}
-            className="bg-marron text-white font-semibold px-5 py-3 rounded-xl active:scale-95 disabled:opacity-50"
+            onClick={() => setVerBitacora((v) => !v)}
+            className="ml-auto text-xs font-bold px-3 py-2 rounded-lg bg-neutral-100 text-neutral-800 active:scale-95"
           >
-            {guardandoLocal ? 'Guardando…' : okLocal ? '✅ Guardado' : 'Guardar dirección'}
+            {verBitacora ? 'Ocultar' : 'Ver'}
           </button>
-          {localCambiado && (
-            <button
-              onClick={() => {
-                setDireccion(localGuardado.direccion);
-                setMapa(localGuardado.mapa);
-                setErrorLocal('');
-              }}
-              className="text-sm font-semibold text-neutral-700 px-3 py-3"
-            >
-              Deshacer
-            </button>
-          )}
         </div>
+
+        {verBitacora && (
+          <div className="mt-4 space-y-3">
+            <div className="flex flex-wrap gap-1.5">
+              {['Todas', 'Productos', 'Insumos', 'Recetario', 'Pedidos', 'Caja', 'Cuenta', 'Ajustes'].map(
+                (a) => (
+                  <button
+                    key={a}
+                    onClick={() => setAreaFiltro(a)}
+                    className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg ${
+                      areaFiltro === a ? 'bg-marron text-white' : 'bg-neutral-100 text-neutral-800'
+                    }`}
+                  >
+                    {a === 'Todas' ? 'Todas' : `${ICONO_AREA[a] ?? ''} ${a}`}
+                  </button>
+                )
+              )}
+            </div>
+
+            {bitacora.length === 0 ? (
+              <p className="text-sm text-neutral-700">
+                Todavía no hay nada anotado. Se va llenando solo con cada cambio que se haga.
+              </p>
+            ) : (
+              (() => {
+                const vistos = bitacora.filter(
+                  (m) => areaFiltro === 'Todas' || m.area === areaFiltro
+                );
+                if (vistos.length === 0) {
+                  return (
+                    <p className="text-sm text-neutral-700">
+                      Nada en {areaFiltro} todavía.
+                    </p>
+                  );
+                }
+                return (
+                  <ul className="divide-y divide-neutral-100 max-h-[420px] overflow-y-auto">
+                    {vistos.map((m, i) => (
+                      <li key={i} className="py-2.5">
+                        <div className="flex items-baseline gap-2 flex-wrap">
+                          <span className="text-[11px] font-mono text-neutral-600 shrink-0">
+                            {m.fecha.slice(5)} {m.hora}
+                          </span>
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-700">
+                            {ICONO_AREA[m.area] ?? ''} {m.area}
+                          </span>
+                          <span className="text-sm font-semibold text-neutral-900">{m.que}</span>
+                        </div>
+                        {m.detalle && (
+                          <p className="text-xs text-neutral-700 mt-0.5 break-words">{m.detalle}</p>
+                        )}
+                        <p className="text-[11px] text-neutral-600 mt-0.5">por {m.quien}</p>
+                      </li>
+                    ))}
+                  </ul>
+                );
+              })()
+            )}
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5 space-y-4">
@@ -536,86 +556,6 @@ export default function AjustesPage() {
         </div>
       </div>
 
-      {/* Quien cambio que. Ocho personas entran al panel: sin esto, un
-          precio cambiado o una existencia rara no tiene a quien preguntarle. */}
-      <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5">
-        <div className="flex flex-wrap items-center gap-3">
-          <div>
-            <h2 className="font-bold text-neutral-900">📋 Qué se ha cambiado</h2>
-            <p className="text-xs text-neutral-700 mt-0.5">
-              Quién cambió qué y cuándo, en todo el panel. Sirve para corregir, no para vigilar:
-              si algo amanece raro, aquí ves cómo estaba antes.
-            </p>
-          </div>
-          <button
-            onClick={() => setVerBitacora((v) => !v)}
-            className="ml-auto text-xs font-bold px-3 py-2 rounded-lg bg-neutral-100 text-neutral-800 active:scale-95"
-          >
-            {verBitacora ? 'Ocultar' : 'Ver'}
-          </button>
-        </div>
-
-        {verBitacora && (
-          <div className="mt-4 space-y-3">
-            <div className="flex flex-wrap gap-1.5">
-              {['Todas', 'Productos', 'Insumos', 'Recetario', 'Pedidos', 'Caja', 'Cuenta', 'Ajustes'].map(
-                (a) => (
-                  <button
-                    key={a}
-                    onClick={() => setAreaFiltro(a)}
-                    className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg ${
-                      areaFiltro === a ? 'bg-marron text-white' : 'bg-neutral-100 text-neutral-800'
-                    }`}
-                  >
-                    {a === 'Todas' ? 'Todas' : `${ICONO_AREA[a] ?? ''} ${a}`}
-                  </button>
-                )
-              )}
-            </div>
-
-            {bitacora.length === 0 ? (
-              <p className="text-sm text-neutral-700">
-                Todavía no hay nada anotado. Se va llenando solo con cada cambio que se haga.
-              </p>
-            ) : (
-              (() => {
-                const vistos = bitacora.filter(
-                  (m) => areaFiltro === 'Todas' || m.area === areaFiltro
-                );
-                if (vistos.length === 0) {
-                  return (
-                    <p className="text-sm text-neutral-700">
-                      Nada en {areaFiltro} todavía.
-                    </p>
-                  );
-                }
-                return (
-                  <ul className="divide-y divide-neutral-100 max-h-[420px] overflow-y-auto">
-                    {vistos.map((m, i) => (
-                      <li key={i} className="py-2.5">
-                        <div className="flex items-baseline gap-2 flex-wrap">
-                          <span className="text-[11px] font-mono text-neutral-600 shrink-0">
-                            {m.fecha.slice(5)} {m.hora}
-                          </span>
-                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-700">
-                            {ICONO_AREA[m.area] ?? ''} {m.area}
-                          </span>
-                          <span className="text-sm font-semibold text-neutral-900">{m.que}</span>
-                        </div>
-                        {m.detalle && (
-                          <p className="text-xs text-neutral-700 mt-0.5 break-words">{m.detalle}</p>
-                        )}
-                        <p className="text-[11px] text-neutral-600 mt-0.5">por {m.quien}</p>
-                      </li>
-                    ))}
-                  </ul>
-                );
-              })()
-            )}
-          </div>
-        )}
-      </div>
-
       <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5">
         <h2 className="font-bold text-neutral-900 mb-2">⭐ Cómo funciona la lealtad</h2>
         <ul className="text-sm text-neutral-700 space-y-1.5">
@@ -630,6 +570,66 @@ export default function AjustesPage() {
           </li>
         </ul>
       </div>
-    </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5 space-y-4">
+        <div>
+          <h2 className="font-bold text-neutral-900">📍 Dirección del local</h2>
+          <p className="text-sm text-neutral-700 mt-1">
+            Se le muestra al cliente cuando elige pagar al recoger y en la pantalla de su pedido,
+            para que sepa a dónde ir. Si lo dejas vacío, no se muestra nada.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-sm font-semibold text-neutral-700">Dirección</label>
+          <textarea
+            value={direccion}
+            onChange={(e) => setDireccion(e.target.value)}
+            rows={2}
+            placeholder="Ej. Av. Universidad 123, Col. Centro, San Nicolás de los Garza, N.L."
+            className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-marron"
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-sm font-semibold text-neutral-700">
+            Enlace del mapa <span className="font-normal text-neutral-600">(opcional)</span>
+          </label>
+          <input
+            value={mapa}
+            onChange={(e) => setMapa(e.target.value)}
+            placeholder="https://maps.app.goo.gl/…"
+            className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-marron"
+          />
+          <p className="text-xs text-neutral-600">
+            En Google Maps busca tu local, toca Compartir y copia el enlace. Con esto al cliente le
+            aparece un botón de “Cómo llegar”.
+          </p>
+        </div>
+
+        {errorLocal && <p className="text-sm text-red-600">{errorLocal}</p>}
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={guardarLocal}
+            disabled={guardandoLocal || !localCambiado}
+            className="bg-marron text-white font-semibold px-5 py-3 rounded-xl active:scale-95 disabled:opacity-50"
+          >
+            {guardandoLocal ? 'Guardando…' : okLocal ? '✅ Guardado' : 'Guardar dirección'}
+          </button>
+          {localCambiado && (
+            <button
+              onClick={() => {
+                setDireccion(localGuardado.direccion);
+                setMapa(localGuardado.mapa);
+                setErrorLocal('');
+              }}
+              className="text-sm font-semibold text-neutral-700 px-3 py-3"
+            >
+              Deshacer
+            </button>
+          )}
+        </div>
+      </div>    </div>
   );
 }

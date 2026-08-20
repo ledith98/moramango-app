@@ -41,6 +41,7 @@ import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 import { leerRecetas } from '@/lib/recetario';
 import { getAdminSession } from '@/lib/roles';
 import { anotar } from '@/lib/bitacora';
+import { anotarPrecio, leerPresentaciones } from '@/lib/presentaciones';
 import { idDeProveedor, leerProveedores } from '@/lib/proveedores';
 import { CUENTA_DIGITAL, CUENTA_EFECTIVO, registrarMovimiento } from '@/lib/caja';
 
@@ -129,7 +130,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ historial });
   }
 
-  const [activos, biblioteca, catalogo, pedidos, detalles, proveedores] = await Promise.all([
+  const [activos, biblioteca, catalogo, pedidos, detalles, proveedores, presentaciones] =
+    await Promise.all([
     getSheetData(HOJA_ACTIVOS, { crudo: true }),
     getSheetData(HOJA_BIBLIOTECA, { crudo: true }),
     leerRecetas(),
@@ -137,6 +139,8 @@ export async function GET(req: NextRequest) {
     getSheetData('DT PEDIDOS'),
     // El directorio, para elegir el proveedor en vez de escribirlo
     leerProveedores().catch(() => []),
+    // Las formas en que se compra cada insumo
+    leerPresentaciones().catch(() => []),
   ]);
 
   // Consumo real de los últimos DIAS_ANALISIS días (ventas × recetas)
@@ -248,6 +252,12 @@ export async function GET(req: NextRequest) {
     // Solo los activos: la lista para elegir no debe ofrecer lugares a los
     // que ya no se les compra, o el desorden vuelve por otro lado.
     proveedores: proveedores.filter((p) => p.activo).map((p) => ({ id: p.id, nombre: p.nombre })),
+    // Con el nombre del proveedor ya resuelto: la pantalla no tiene por
+    // qué volver a cruzar IDs.
+    presentaciones: presentaciones.map((x) => ({
+      ...x,
+      proveedor: proveedores.find((p) => p.id === x.idProveedor)?.nombre ?? '',
+    })),
   });
 }
 
@@ -268,7 +278,7 @@ export async function PATCH(req: NextRequest) {
     (session.user as { email?: string }).email ||
     '';
 
-  const { id, accion, cantidadCompra, precioTotal, stockPrevio, pagadoConCaja, pagadoCon, fechaCompraISO, donde, equivalenciaCompra, cantidad, valor, fechaISO, fila, lecturas } =
+  const { id, accion, cantidadCompra, precioTotal, stockPrevio, pagadoConCaja, pagadoCon, fechaCompraISO, donde, equivalenciaCompra, idPresentacion, cantidad, valor, fechaISO, fila, lecturas } =
     await req.json();
   const ACCIONES = ['compra', 'conteo', 'ajustar', 'status', 'uso', 'stock', 'fechaCompra', 'borrarCompra', 'conteoRapido'];
   if (!accion || !ACCIONES.includes(accion)) {
@@ -419,8 +429,22 @@ export async function PATCH(req: NextRequest) {
      * inventario y el costo por pieza sale falso, que es justo lo que
      * hace imposible comparar proveedores.
      */
+    /**
+     * La presentación que se compró. Si viene, su contenido manda: es la
+     * verdad de ESA compra. Si no, se acepta el número suelto y, en último
+     * caso, la equivalencia del catálogo.
+     */
+    const presentaciones = await leerPresentaciones().catch(() => []);
+    const laPres = presentaciones.find(
+      (x) => x.id === (idPresentacion ?? '').toString().trim() && x.idBiblioteca === bib.ID_Biblioteca
+    );
     const equivCompra = parseFloat(equivalenciaCompra);
-    const equivUsada = !isNaN(equivCompra) && equivCompra > 0 ? equivCompra : equivalencia;
+    const equivUsada =
+      laPres && laPres.contenido > 0
+        ? laPres.contenido
+        : !isNaN(equivCompra) && equivCompra > 0
+          ? equivCompra
+          : equivalencia;
 
     const enReceta = aUnidadesReceta(cant, equivUsada);
     const nuevoStock = redondear(base + enReceta, 3);
@@ -465,6 +489,9 @@ export async function PATCH(req: NextRequest) {
       // fue la de siempre: guardar ahí el precio de un paquete distinto
       // haría que el costo de todas las recetas saliera mal.
       if (equivUsada === equivalencia) celdasBib[COL_BIB.ultimoPrecio] = precioPorUnidadCompra;
+      // El precio de ESTA presentación sí se anota siempre, en ella misma:
+      // es lo que permite comparar el bote de 1.8 kg contra el de 2 kg.
+      if (laPres) await anotarPrecio(laPres.id, precioPorUnidadCompra);
       costoReceta = costoPorUnidadReceta(precioPorUnidadCompra, equivUsada);
     }
     if (lugar) celdasBib[COL_BIB.proveedor] = lugar;
@@ -489,6 +516,7 @@ export async function PATCH(req: NextRequest) {
       lugar,
       quien,
       idProveedor,
+      laPres?.id ?? '',
     ]);
 
     /**

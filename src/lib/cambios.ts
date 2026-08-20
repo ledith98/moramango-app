@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-20',
+    tipo: 'nuevo',
+    titulo: 'Un insumo puede comprarse en varias presentaciones y marcas',
+    detalle:
+      'La Mayonesa estaba registrada como “paquete de 2 kg”, y si no había y comprabas un bote de 1.8 kg de otra marca, esa compra no cabía. Ahora cada insumo tiene sus PRESENTACIONES: marca, cómo viene, cuánto trae y en cuánto sale. Al comprar eliges cuál fue — o agregas una nueva ahí mismo — y la app saca el precio por gramo de cada una y te marca con ✅ la más barata. El stock y las recetas no se parten: la mayonesa sigue siendo una sola bolsa de gramos. Los que sí son cosas distintas, como el vaso de 16 oz y el de 2 oz, siguen separados.',
+    donde: 'Insumos',
+  },
+  {
+    fecha: '2026-08-20',
     tipo: 'mejora',
     titulo: 'El proveedor se elige de una lista, y “Ver compras” ya dice con quién compraste',
     detalle:

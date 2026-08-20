@@ -91,6 +91,21 @@ interface ItemActivo {
   ultimoPrecioCompra: number;
 }
 
+interface Presentacion {
+  id: string;
+  idBiblioteca: string;
+  marca: string;
+  unidadCompra: string;
+  /** Cuantas unidades de receta trae: 2000 g, 1800 g, 40 pz */
+  contenido: number;
+  ultimoPrecio: number;
+  idProveedor: string;
+  proveedor: string;
+  activa: boolean;
+  /** Lo que cuesta la unidad de receta con esta presentacion */
+  porUnidad: number;
+}
+
 interface CompraHistorial {
   fila: number;
   fecha: string;
@@ -237,6 +252,14 @@ export default function InsumosPage() {
   const [proveedores, setProveedores] = useState<{ id: string; nombre: string }[]>([]);
   /** true = se esta escribiendo un proveedor que no esta en el directorio */
   const [provNuevo, setProvNuevo] = useState(false);
+  /** Las formas en que se compra cada insumo */
+  const [presentaciones, setPresentaciones] = useState<Presentacion[]>([]);
+  /** Presentacion elegida al comprar; '' = ninguna (compra suelta) */
+  const [compraPres, setCompraPres] = useState('');
+  /** Alta de presentacion: insumo al que se le agrega */
+  const [presDe, setPresDe] = useState<{ id: string; nombre: string; unidadReceta: string } | null>(null);
+  const [presForm, setPresForm] = useState({ marca: '', unidadCompra: '', contenido: '', proveedor: '', ultimoPrecio: '' });
+  const [presEditando, setPresEditando] = useState<Presentacion | null>(null);
   const [cargando, setCargando] = useState(true);
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState('');
@@ -339,6 +362,7 @@ El stock quedará igual a lo que contaste.`)) return;
       setActivos(dA.items ?? []);
       if (dA.diasAnalisis) setDiasAnalisis(dA.diasAnalisis);
       if (dA.proveedores) setProveedores(dA.proveedores);
+      if (dA.presentaciones) setPresentaciones(dA.presentaciones);
     } catch {
       setError('No se pudo cargar el inventario');
     } finally {
@@ -474,7 +498,62 @@ El stock quedará igual a lo que contaste.`)) return;
     setCompraEquiv('');
     setCompraDonde(a.proveedor || '');
     setProvNuevo(false);
+    // Se arranca con la presentación que coincide con la equivalencia del
+    // catálogo: es la de siempre, y en la mayoría de las compras acierta.
+    const suyas = presentaciones.filter((x) => x.idBiblioteca === a.idBiblioteca && x.activa);
+    const deSiempre = suyas.find((x) => x.contenido === a.equivalencia) ?? suyas[0];
+    setCompraPres(deSiempre?.id ?? '');
+    setCompraEquiv('');
     setError('');
+  }
+
+  /** Las formas de comprar este insumo, la más barata primero. */
+  function presentacionesDe(idBiblioteca: string): Presentacion[] {
+    return presentaciones
+      .filter((x) => x.idBiblioteca === idBiblioteca)
+      .sort((a, b) => {
+        if (a.porUnidad === 0) return 1;
+        if (b.porUnidad === 0) return -1;
+        return a.porUnidad - b.porUnidad;
+      });
+  }
+
+  /** "Hellmann's · paquete de 2000 g" */
+  function describirPres(x: Presentacion, unidadReceta: string): string {
+    const marca = x.marca && x.marca !== 'No aplica' ? `${x.marca} · ` : '';
+    return `${marca}${x.unidadCompra || 'paquete'} de ${x.contenido} ${unidadReceta}`.trim();
+  }
+
+  /** Precio por unidad de receta, legible aunque sean centavos. */
+  const porUnidadTexto = (n: number) =>
+    n >= 1 ? `$${n.toFixed(2)}` : `$${n.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}`;
+
+  async function guardarPresentacion() {
+    if (!presDe) return;
+    setOcupado(true);
+    setError('');
+    try {
+      const esEdicion = !!presEditando;
+      const res = await fetch('/api/admin/presentaciones', {
+        method: esEdicion ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(
+          esEdicion
+            ? { id: presEditando!.id, ...presForm }
+            : { idBiblioteca: presDe.id, ...presForm }
+        ),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'No se pudo guardar');
+        return;
+      }
+      setPresDe(null);
+      setPresEditando(null);
+      await cargar();
+    } finally {
+      setOcupado(false);
+    }
   }
 
   async function registrarCompra() {
@@ -491,6 +570,7 @@ El stock quedará igual a lo que contaste.`)) return;
       pagadoCon: compraPagadoCon,
       fechaCompraISO: compraFecha,
       equivalenciaCompra: compraEquiv.trim(),
+      idPresentacion: compraPres,
       donde: compraDonde.trim(),
     });
     if (ok) setCompraDe(null);
@@ -1359,7 +1439,85 @@ El stock quedará igual a lo que contaste.`)) return;
                 </button>
               </div>
 
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+              {/* Las formas en que se compra, con su marca y a cómo sale
+                  la unidad: es la comparación que decide dónde comprar. */}
+              {(() => {
+                const suyas = presentacionesDe(b.id);
+                return (
+                  <div className="border-t border-neutral-100 mt-2 pt-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-[11px] text-neutral-600 uppercase tracking-wide">
+                        Cómo se compra
+                      </p>
+                      <button
+                        onClick={() => {
+                          setPresDe({ id: b.id, nombre: b.nombre, unidadReceta: b.unidadReceta });
+                          setPresEditando(null);
+                          setPresForm({
+                            marca: '',
+                            unidadCompra: b.unidadCompra,
+                            contenido: '',
+                            proveedor: b.proveedor,
+                            ultimoPrecio: '',
+                          });
+                        }}
+                        className="text-[11px] font-bold text-marron underline"
+                      >
+                        + Otra presentación
+                      </button>
+                    </div>
+                    {suyas.length === 0 ? (
+                      <p className="text-xs text-neutral-600">Todavía ninguna.</p>
+                    ) : (
+                      <ul className="space-y-1">
+                        {suyas.map((x, i) => (
+                          <li key={x.id} className="flex items-center justify-between gap-2 text-xs">
+                            <button
+                              onClick={() => {
+                                setPresDe({ id: b.id, nombre: b.nombre, unidadReceta: b.unidadReceta });
+                                setPresEditando(x);
+                                setPresForm({
+                                  marca: x.marca,
+                                  unidadCompra: x.unidadCompra,
+                                  contenido: String(x.contenido),
+                                  proveedor: x.proveedor,
+                                  ultimoPrecio: x.ultimoPrecio ? String(x.ultimoPrecio) : '',
+                                });
+                              }}
+                              className={`min-w-0 truncate text-left underline decoration-neutral-300 ${
+                                x.activa ? 'text-neutral-800' : 'text-neutral-500 line-through'
+                              }`}
+                            >
+                              {describirPres(x, b.unidadReceta)}
+                              {x.proveedor && (
+                                <span className="text-neutral-600"> · {x.proveedor}</span>
+                              )}
+                            </button>
+                            <span className="shrink-0 tabular-nums">
+                              {x.porUnidad > 0 ? (
+                                <span
+                                  className={`font-semibold ${
+                                    i === 0 && suyas.length > 1 && x.activa
+                                      ? 'text-green-700'
+                                      : 'text-neutral-800'
+                                  }`}
+                                >
+                                  {porUnidadTexto(x.porUnidad)}/{b.unidadReceta}
+                                  {i === 0 && suyas.length > 1 && x.activa && ' ✅'}
+                                </span>
+                              ) : (
+                                <span className="text-neutral-500">sin precio</span>
+                              )}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })()}
+
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] mt-2">
                 <button
                   onClick={() => abrirRecetas(b.id, b.nombre)}
                   className="font-semibold text-neutral-700 underline decoration-neutral-300"
@@ -1548,9 +1706,16 @@ El stock quedará igual a lo que contaste.`)) return;
           se escribe, el número final parece salido de la nada. */}
       {compraDe && (() => {
         const cant = parseFloat(compraCantidad.replace(',', '.')) || 0;
-        // La presentación de esta compra manda sobre la del catálogo
+        // Manda la presentación elegida; si no hay, el número suelto; y
+        // en último caso la equivalencia del catálogo.
+        const presElegida = presentaciones.find((x) => x.id === compraPres);
         const eq = parseFloat(compraEquiv.replace(',', '.'));
-        const equivUsada = !isNaN(eq) && eq > 0 ? eq : compraDe.equivalencia;
+        const equivUsada =
+          presElegida && presElegida.contenido > 0
+            ? presElegida.contenido
+            : !isNaN(eq) && eq > 0
+              ? eq
+              : compraDe.equivalencia;
         const entra = cant * equivUsada;
         // Lo que había antes: normalmente lo del sistema, pero al llegar
         // mercancía es cuando se ve el estante y se puede corregir.
@@ -1619,6 +1784,59 @@ El stock quedará igual a lo que contaste.`)) return;
               El sistema cree que hay {compraDe.stockActual} {compraDe.unidadReceta}. Si al guardar
               la mercancía ves que era otra cantidad, corrígela aquí y se cuenta como conteo.
             </p>
+
+            {/* ── Qué presentación se compró ──
+                El mismo insumo viene en varias: el paquete de 2 kg de una
+                marca y el bote de 1.8 kg de otra. Cambiar el insumo cada
+                vez descuadraba el costo de todas las recetas; aquí se
+                elige y ya, y el stock sigue siendo uno solo. */}
+            {(() => {
+              const suyas = presentacionesDe(compraDe.idBiblioteca).filter((x) => x.activa);
+              if (suyas.length === 0) return null;
+              return (
+                <>
+                  <label className="block text-sm font-semibold text-neutral-800 mb-1 mt-4">
+                    ¿Cuál compraste?
+                  </label>
+                  <select
+                    value={compraPres}
+                    onChange={(e) => {
+                      if (e.target.value === '__nueva__') {
+                        setPresDe({
+                          id: compraDe.idBiblioteca,
+                          nombre: compraDe.nombre,
+                          unidadReceta: compraDe.unidadReceta,
+                        });
+                        setPresEditando(null);
+                        setPresForm({
+                          marca: '',
+                          unidadCompra: compraDe.unidadCompra,
+                          contenido: '',
+                          proveedor: compraDonde,
+                          ultimoPrecio: '',
+                        });
+                        return;
+                      }
+                      setCompraPres(e.target.value);
+                      setCompraEquiv('');
+                    }}
+                    className={inputCls}
+                  >
+                    {suyas.map((x) => (
+                      <option key={x.id} value={x.id}>
+                        {describirPres(x, compraDe.unidadReceta)}
+                        {x.porUnidad > 0 ? ` — ${porUnidadTexto(x.porUnidad)}/${compraDe.unidadReceta}` : ''}
+                      </option>
+                    ))}
+                    <option value="__nueva__">➕ Es otra presentación…</option>
+                  </select>
+                  <p className="text-xs text-neutral-600 -mt-1 mb-1">
+                    Si esta vez viene en otro tamaño o de otra marca, agrégala aquí: no cambies el
+                    insumo, o se descuadra el costo de todas las recetas.
+                  </p>
+                </>
+              );
+            })()}
 
             <label className="block text-sm font-semibold text-neutral-800 mb-1 mt-4">
               ¿Cuántos {compraDe.unidadCompra || 'paquetes'} compraste?
@@ -1896,6 +2114,158 @@ El stock quedará igual a lo que contaste.`)) return;
           Contar sirve para corregir: el sistema lleva una cuenta teórica y
           la realidad se le desvía por mermas, derrames o capturas que
           faltaron. Por eso lo importante es ver la diferencia. */}
+      {/* Alta y edición de presentaciones: piden lo mismo, así que
+          comparten formulario. */}
+      {presDe && (() => {
+        const contenido = parseFloat(presForm.contenido.replace(',', '.')) || 0;
+        const precio = parseFloat(presForm.ultimoPrecio.replace(',', '.')) || 0;
+        const porUnidad = contenido > 0 && precio > 0 ? precio / contenido : 0;
+        return (
+          <Modal
+            titulo={`${presEditando ? 'Editar' : 'Otra presentación de'} ${presDe.nombre}`}
+            onCerrar={() => {
+              setPresDe(null);
+              setPresEditando(null);
+              setError('');
+            }}
+          >
+            <p className="text-xs text-neutral-700 mb-3">
+              Es el mismo insumo —la receta le pide {presDe.unidadReceta} y le da igual de qué bote
+              salieron—, solo que comprado de otra forma. El stock sigue siendo uno solo.
+            </p>
+
+            <label className="block text-sm font-semibold text-neutral-800 mb-1">
+              Marca <span className="font-normal text-neutral-600">(o &ldquo;No aplica&rdquo;)</span>
+            </label>
+            <input
+              value={presForm.marca}
+              onChange={(e) => setPresForm({ ...presForm, marca: e.target.value })}
+              placeholder="Ej. Hellmann's"
+              className={inputCls}
+              autoFocus
+            />
+            <div className="flex flex-wrap gap-1.5 mt-1.5 mb-1">
+              {['No aplica', ...new Set(presentaciones.map((x) => x.marca).filter((m) => m && m !== 'No aplica'))]
+                .filter((m) => m !== presForm.marca)
+                .slice(0, 6)
+                .map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setPresForm({ ...presForm, marca: m })}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-neutral-100 text-neutral-800 active:scale-95"
+                  >
+                    {m}
+                  </button>
+                ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <div>
+                <label className="block text-sm font-semibold text-neutral-800 mb-1">
+                  ¿Cómo viene?
+                </label>
+                <input
+                  value={presForm.unidadCompra}
+                  onChange={(e) => setPresForm({ ...presForm, unidadCompra: e.target.value })}
+                  placeholder="paquete, bote, caja…"
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-neutral-800 mb-1">
+                  ¿Cuánto trae?
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="any"
+                    value={presForm.contenido}
+                    onChange={(e) => setPresForm({ ...presForm, contenido: e.target.value })}
+                    placeholder="2000"
+                    className={inputCls}
+                  />
+                  <span className="text-sm font-bold text-neutral-700 whitespace-nowrap">
+                    {presDe.unidadReceta}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <label className="block text-sm font-semibold text-neutral-800 mb-1 mt-3">
+              ¿En cuánto sale? <span className="font-normal text-neutral-600">(opcional)</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <span className="text-lg font-bold text-neutral-700">$</span>
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="any"
+                value={presForm.ultimoPrecio}
+                onChange={(e) => setPresForm({ ...presForm, ultimoPrecio: e.target.value })}
+                placeholder="lo que cuesta uno"
+                className={inputCls}
+              />
+            </div>
+
+            <label className="block text-sm font-semibold text-neutral-800 mb-1 mt-3">
+              ¿Dónde se consigue? <span className="font-normal text-neutral-600">(opcional)</span>
+            </label>
+            <input
+              list="directorio-proveedores"
+              value={presForm.proveedor}
+              onChange={(e) => setPresForm({ ...presForm, proveedor: e.target.value })}
+              placeholder="elige o escribe uno nuevo"
+              className={inputCls}
+            />
+
+            {/* Lo que hace comparable esta presentación con las demás */}
+            {porUnidad > 0 && (
+              <p className="text-sm font-semibold text-green-800 bg-green-50 border border-green-200 rounded-xl p-3 mt-3">
+                Te sale a {porUnidadTexto(porUnidad)} por {presDe.unidadReceta} — con eso la
+                comparas contra las otras presentaciones.
+              </p>
+            )}
+
+            {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
+
+            <button
+              onClick={guardarPresentacion}
+              disabled={ocupado || contenido <= 0}
+              className="w-full bg-marron text-white font-bold py-3.5 rounded-xl mt-4 active:scale-95 disabled:opacity-50"
+            >
+              {ocupado ? 'Guardando…' : contenido <= 0 ? 'Falta cuánto trae' : 'Guardar'}
+            </button>
+
+            {presEditando && (
+              <button
+                onClick={async () => {
+                  setOcupado(true);
+                  await fetch('/api/admin/presentaciones', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: presEditando.id, activa: !presEditando.activa }),
+                  });
+                  setOcupado(false);
+                  setPresDe(null);
+                  setPresEditando(null);
+                  await cargar();
+                }}
+                disabled={ocupado}
+                className="w-full bg-neutral-100 text-neutral-800 font-semibold py-3 rounded-xl mt-2 active:scale-95 disabled:opacity-50"
+              >
+                {presEditando.activa ? 'Ya no la compro así' : 'Volver a comprarla así'}
+              </button>
+            )}
+            <p className="text-xs text-neutral-600 mt-2 text-center">
+              No se borra: su historial de precios se conserva para poder comparar.
+            </p>
+          </Modal>
+        );
+      })()}
+
       {conteoDe && (() => {
         // Vale igual si se contó por pieza o por paquete
         const total = totalContado();

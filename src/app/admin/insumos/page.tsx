@@ -99,6 +99,11 @@ interface CompraHistorial {
   precioTotal: number;
   precioUnidadCompra: number;
   costoUnidadReceta: number;
+  /** Con quien se compro; vacio en las compras de antes del directorio */
+  proveedor: string;
+  /** Cuanto traia el paquete esa vez */
+  contenido: number;
+  quien: string;
 }
 
 const UNIDADES_COMPRA = ['Caja', 'Litro', 'Kilo', 'Pieza', 'Paquete', 'Bolsa'];
@@ -228,6 +233,10 @@ export default function InsumosPage() {
   const [activos, setActivos] = useState<ItemActivo[]>([]);
   const [categoriasEnUso, setCategoriasEnUso] = useState<string[]>([]);
   const [diasAnalisis, setDiasAnalisis] = useState(7);
+  /** El directorio, para elegir el proveedor en vez de escribirlo */
+  const [proveedores, setProveedores] = useState<{ id: string; nombre: string }[]>([]);
+  /** true = se esta escribiendo un proveedor que no esta en el directorio */
+  const [provNuevo, setProvNuevo] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState('');
@@ -265,6 +274,8 @@ export default function InsumosPage() {
   const [compraDonde, setCompraDonde] = useState('');
   const [historial, setHistorial] = useState<CompraHistorial[] | null>(null);
   const [historialDe, setHistorialDe] = useState('');
+  /** Unidad de receta del insumo del historial, para decir "$0.30 por pz" */
+  const [historialUnidad, setHistorialUnidad] = useState('');
   const [historialId, setHistorialId] = useState('');
   const [recetasDe, setRecetasDe] = useState<{ id: string; nombre: string } | null>(null);
   const [productosCat, setProductosCat] = useState<ProductoConReceta[]>([]);
@@ -327,6 +338,7 @@ El stock quedará igual a lo que contaste.`)) return;
       setCategoriasEnUso(dB.categoriasEnUso ?? []);
       setActivos(dA.items ?? []);
       if (dA.diasAnalisis) setDiasAnalisis(dA.diasAnalisis);
+      if (dA.proveedores) setProveedores(dA.proveedores);
     } catch {
       setError('No se pudo cargar el inventario');
     } finally {
@@ -356,17 +368,21 @@ El stock quedará igual a lo que contaste.`)) return;
   const gastoVisible = comprasVisibles.reduce((t, c) => t + c.total, 0);
 
   /**
-   * Lugares donde ya se ha surtido algo, para sugerirlos al anotar una
-   * compra. Se arma con los proveedores que ya tienen los insumos, que es
-   * justo lo que se va guardando al comprar: la lista crece con el uso y
-   * no hay un catalogo aparte que mantener.
+   * Los proveedores para elegir al anotar una compra.
+   *
+   * Sale del DIRECTORIO, no de lo que esté escrito en los insumos:
+   * escribirlo a mano es lo que producía "CAG", "Gac" y "CAG Bodega 200"
+   * como tres lugares distintos. Se le suma lo que ya tuvieran los insumos
+   * y que aún no esté dado de alta, para no perder nada por el camino.
    */
   const lugaresConocidos = [
-    ...new Set(
-      [...activos.map((a) => a.proveedor), ...biblioteca.map((b) => b.proveedor)]
-        .map((p) => (p || '').trim())
-        .filter(Boolean)
-    ),
+    ...new Set([
+      ...proveedores.map((p) => p.nombre),
+      ...activos.map((a) => a.proveedor),
+      ...biblioteca.map((b) => b.proveedor),
+    ]
+      .map((p) => (p || '').trim())
+      .filter(Boolean)),
   ].sort((a, b) => a.localeCompare(b, 'es'));
 
   // ── Biblioteca: crear / editar / eliminar ──────────────────────────────────
@@ -457,6 +473,7 @@ El stock quedará igual a lo que contaste.`)) return;
     setCompraFecha(hoyISO());
     setCompraEquiv('');
     setCompraDonde(a.proveedor || '');
+    setProvNuevo(false);
     setError('');
   }
 
@@ -616,8 +633,9 @@ El stock quedará igual a lo que contaste.`)) return;
     await accionActivo(id, { accion: 'uso', valor: enUso });
   }
 
-  async function verHistorial(idBiblioteca: string, nombre: string) {
+  async function verHistorial(idBiblioteca: string, nombre: string, unidad = '') {
     setHistorialDe(nombre);
+    setHistorialUnidad(unidad);
     setHistorialId(idBiblioteca);
     setHistorial([]);
     const res = await fetch(`/api/admin/insumos?historial=${encodeURIComponent(idBiblioteca)}`);
@@ -637,7 +655,7 @@ El stock quedará igual a lo que contaste.`)) return;
     });
     setOcupado(false);
     // Recargar el historial abierto y la tabla (precios/costos pudieron cambiar)
-    if (historialId) await verHistorial(historialId, historialDe);
+    if (historialId) await verHistorial(historialId, historialDe, historialUnidad);
     await cargar();
   }
 
@@ -1200,7 +1218,7 @@ El stock quedará igual a lo que contaste.`)) return;
 
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
                         <button
-                          onClick={() => verHistorial(a.idBiblioteca, a.nombre)}
+                          onClick={() => verHistorial(a.idBiblioteca, a.nombre, a.unidadReceta)}
                           className="font-semibold text-neutral-700 underline decoration-neutral-300"
                         >
                           Ver compras
@@ -1349,7 +1367,7 @@ El stock quedará igual a lo que contaste.`)) return;
                   En qué se usa
                 </button>
                 <button
-                  onClick={() => verHistorial(b.id, b.nombre)}
+                  onClick={() => verHistorial(b.id, b.nombre, b.unidadReceta)}
                   className="font-semibold text-neutral-700 underline decoration-neutral-300"
                 >
                   Ver compras
@@ -1465,12 +1483,23 @@ El stock quedará igual a lo que contaste.`)) return;
 
           <div className="grid grid-cols-2 gap-3 mt-3">
             <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1">Proveedor</label>
+              <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                Proveedor de siempre
+              </label>
+              {/* Se elige del directorio, igual que al comprar: un nombre
+                  escrito a mano aquí volvería a partir el historial. */}
               <input
+                list="directorio-proveedores"
                 value={form.proveedor}
                 onChange={(e) => setForm({ ...form, proveedor: e.target.value })}
+                placeholder="elige o escribe uno nuevo"
                 className={inputCls}
               />
+              <datalist id="directorio-proveedores">
+                {lugaresConocidos.map((l) => (
+                  <option key={l} value={l} />
+                ))}
+              </datalist>
             </div>
             <div>
               <label className="block text-xs font-semibold text-neutral-700 mb-1 text-neutral-900">Contacto</label>
@@ -1695,45 +1724,63 @@ El stock quedará igual a lo que contaste.`)) return;
             )}
 
             {/* ── Dónde se surtió ──
-                Opcional a propósito: obligarlo haría que se escriba
-                cualquier cosa con tal de guardar. La lista de lugares se
-                arma sola con lo que se va usando. */}
+                Se ELIGE de la lista, no se escribe: escribirlo a mano es
+                lo que producía "CAG", "Gac" y "CAG Bodega 200" como tres
+                proveedores distintos, cada uno con su historia de precios
+                partida. Se puede agregar uno nuevo, y entra al directorio. */}
             <label className="block text-sm font-semibold text-neutral-800 mb-1 mt-4">
               ¿Dónde la compraste?{' '}
               <span className="font-normal text-neutral-600">(opcional)</span>
             </label>
-            <input
-              list="lugares-compra"
-              value={compraDonde}
-              onChange={(e) => setCompraDonde(e.target.value)}
-              placeholder="Ej. Central de Abastos"
-              className={inputCls}
-            />
-            <datalist id="lugares-compra">
-              {lugaresConocidos.map((l) => (
-                <option key={l} value={l} />
-              ))}
-            </datalist>
-            {lugaresConocidos.filter((l) => l !== compraDonde.trim()).length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {lugaresConocidos
-                  .filter((l) => l !== compraDonde.trim())
-                  .slice(0, 6)
-                  .map((l) => (
-                    <button
-                      key={l}
-                      onClick={() => setCompraDonde(l)}
-                      className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-neutral-100 text-neutral-800 active:scale-95"
-                    >
-                      🏪 {l}
-                    </button>
-                  ))}
+
+            {!provNuevo ? (
+              <select
+                value={lugaresConocidos.includes(compraDonde.trim()) ? compraDonde.trim() : ''}
+                onChange={(e) => {
+                  if (e.target.value === '__nuevo__') {
+                    setProvNuevo(true);
+                    setCompraDonde('');
+                  } else {
+                    setCompraDonde(e.target.value);
+                  }
+                }}
+                className={inputCls}
+              >
+                <option value="">— elige un proveedor —</option>
+                {lugaresConocidos.map((l) => (
+                  <option key={l} value={l}>
+                    {l}
+                  </option>
+                ))}
+                <option value="__nuevo__">➕ Es uno nuevo…</option>
+              </select>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  value={compraDonde}
+                  onChange={(e) => setCompraDonde(e.target.value)}
+                  placeholder="Nombre del proveedor nuevo"
+                  className={inputCls}
+                  autoFocus
+                />
+                <button
+                  onClick={() => {
+                    setProvNuevo(false);
+                    setCompraDonde(compraDe.proveedor || '');
+                  }}
+                  className="text-xs font-semibold px-3 rounded-xl bg-neutral-100 text-neutral-800 active:scale-95 whitespace-nowrap"
+                >
+                  Cancelar
+                </button>
               </div>
             )}
+
             <p className="text-xs text-neutral-600 mt-1.5">
-              {compraDe.proveedor
-                ? `Viene ${compraDe.proveedor}, que es donde lo compraste la última vez. Cámbialo si fue en otro lado.`
-                : 'Se guarda para que la próxima venga puesto y tengas a la mano dónde surtes cada cosa.'}
+              {provNuevo
+                ? 'Al guardar la compra queda dado de alta en Proveedores, con su historial de precios.'
+                : compraDe.proveedor
+                  ? `Viene ${compraDe.proveedor}, que es donde lo compraste la última vez. Cámbialo si fue en otro lado.`
+                  : 'Elígelo de la lista para que su precio se pueda comparar con el de otros.'}
             </p>
 
             {/* De dónde salió el dinero. Se pregunta aquí porque aquí ya
@@ -2257,12 +2304,36 @@ El stock quedará igual a lo que contaste.`)) return;
                     <p className="text-neutral-900 font-semibold">
                       {h.cantidad} {h.unidadCompra} · ${h.precioTotal}
                     </p>
-                    <p className="text-xs text-neutral-600">{h.fecha}</p>
+                    {/* Con quién se compró: sin esto, el historial dice el
+                        precio pero no de dónde salió, que es lo que hace
+                        falta para saber si conviene volver ahí. */}
+                    <p className="text-xs text-neutral-700">
+                      {h.proveedor ? (
+                        <span className="font-semibold">🏪 {h.proveedor}</span>
+                      ) : (
+                        <span className="text-neutral-500">sin proveedor anotado</span>
+                      )}
+                      {h.contenido > 1 && (
+                        <span className="text-neutral-600"> · paquete de {h.contenido}</span>
+                      )}
+                    </p>
+                    <p className="text-xs text-neutral-600">
+                      {h.fecha}
+                      {h.quien && ` · ${h.quien}`}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <p className="text-neutral-600 text-right whitespace-nowrap">
                       ${h.precioUnidadCompra}
                       <span className="text-neutral-600 text-xs"> / {h.unidadCompra}</span>
+                      {h.costoUnidadReceta > 0 && (
+                        <span className="block text-[10px] font-semibold text-green-700">
+                          {h.costoUnidadReceta >= 1
+                            ? `$${h.costoUnidadReceta.toFixed(2)}`
+                            : `$${h.costoUnidadReceta.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}`}{' '}
+                          por {historialUnidad}
+                        </span>
+                      )}
                     </p>
                     <button
                       onClick={() => borrarCompra(h)}

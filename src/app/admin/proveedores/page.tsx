@@ -81,6 +81,8 @@ export default function ProveedoresPage() {
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState('');
   const [busqueda, setBusqueda] = useState('');
+  /** 'activos' es lo normal; los ocultos estorban en el dia a dia */
+  const [verQuienes, setVerQuienes] = useState<'activos' | 'todos' | 'ocultos'>('activos');
 
   const [editando, setEditando] = useState<Proveedor | null>(null);
   const [nuevo, setNuevo] = useState(false);
@@ -122,12 +124,15 @@ export default function ProveedoresPage() {
   }
 
   const visibles = proveedores.filter((p) => {
+    if (verQuienes === 'activos' && !p.activo) return false;
+    if (verQuienes === 'ocultos' && p.activo) return false;
     const q = sinAcentos(busqueda);
     if (!q) return true;
     return (
       sinAcentos(p.nombre).includes(q) || p.insumos.some((i) => sinAcentos(i.nombre).includes(q))
     );
   });
+  const cuantosOcultos = proveedores.filter((p) => !p.activo).length;
 
   if (cargando) return <p className="text-neutral-700 animate-pulse">Cargando proveedores…</p>;
 
@@ -182,6 +187,28 @@ export default function ProveedoresPage() {
             className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-marron"
           />
 
+          {/* Los ocultos estorban en el día a día, pero su historial sigue
+              contando para comparar precios: por eso se filtran, no se borran. */}
+          <div className="flex flex-wrap gap-1.5">
+            {(
+              [
+                ['activos', `A los que le compro (${proveedores.length - cuantosOcultos})`],
+                ['ocultos', `Ocultos (${cuantosOcultos})`],
+                ['todos', 'Todos'],
+              ] as const
+            ).map(([v, etiqueta]) => (
+              <button
+                key={v}
+                onClick={() => setVerQuienes(v)}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-lg ${
+                  verQuienes === v ? 'bg-marron text-white' : 'bg-neutral-100 text-neutral-800'
+                }`}
+              >
+                {etiqueta}
+              </button>
+            ))}
+          </div>
+
           {visibles.length === 0 ? (
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-800">
               {proveedores.length === 0
@@ -218,20 +245,30 @@ export default function ProveedoresPage() {
                       )}
                       {p.notas && <p className="text-xs text-neutral-600 mt-0.5">{p.notas}</p>}
                     </div>
-                    <button
-                      onClick={() => {
-                        setEditando(p);
-                        setForm({
-                          nombre: p.nombre,
-                          contacto: p.contacto,
-                          telefono: p.telefono,
-                          notas: p.notas,
-                        });
-                      }}
-                      className="text-xs font-bold px-3 py-1.5 rounded-lg bg-neutral-100 text-neutral-800 active:scale-95 shrink-0"
-                    >
-                      Editar
-                    </button>
+                    <div className="flex gap-1.5 shrink-0">
+                      <button
+                        onClick={() => guardar('PATCH', { id: p.id, activo: !p.activo })}
+                        disabled={ocupado}
+                        title={p.activo ? 'Quitarlo de la lista del día a día' : 'Volver a mostrarlo'}
+                        className="text-xs font-bold px-3 py-1.5 rounded-lg bg-neutral-100 text-neutral-800 active:scale-95 disabled:opacity-50"
+                      >
+                        {p.activo ? '🙈 Ocultar' : '👁️ Mostrar'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditando(p);
+                          setForm({
+                            nombre: p.nombre,
+                            contacto: p.contacto,
+                            telefono: p.telefono,
+                            notas: p.notas,
+                          });
+                        }}
+                        className="text-xs font-bold px-3 py-1.5 rounded-lg bg-neutral-100 text-neutral-800 active:scale-95"
+                      >
+                        Editar
+                      </button>
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-neutral-700">

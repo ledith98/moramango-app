@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-20',
+    tipo: 'mejora',
+    titulo: 'El proveedor se elige de una lista, y “Ver compras” ya dice con quién compraste',
+    detalle:
+      'Al registrar una compra ya no escribes el nombre del proveedor: lo eliges de la lista, y si es uno nuevo lo agregas ahí mismo y queda dado de alta en el directorio. Así no vuelven a salir tres versiones del mismo lugar. En “Ver compras” de cada insumo ahora aparece con quién se compró, de qué tamaño era el paquete, a cómo salió la pieza y quién lo registró. Y en Proveedores hay botón de Ocultar en cada tarjeta, con filtro para ver los activos, los ocultos o todos.',
+    donde: 'Insumos y Proveedores',
+  },
+  {
+    fecha: '2026-08-20',
     tipo: 'nuevo',
     titulo: 'Comparar precios entre proveedores aunque el paquete sea de otro tamaño',
     detalle:

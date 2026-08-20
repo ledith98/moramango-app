@@ -41,7 +41,7 @@ import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 import { leerRecetas } from '@/lib/recetario';
 import { getAdminSession } from '@/lib/roles';
 import { anotar } from '@/lib/bitacora';
-import { idDeProveedor } from '@/lib/proveedores';
+import { idDeProveedor, leerProveedores } from '@/lib/proveedores';
 import { CUENTA_DIGITAL, CUENTA_EFECTIVO, registrarMovimiento } from '@/lib/caja';
 
 const DIAS_ANALISIS = 7;
@@ -93,7 +93,13 @@ export async function GET(req: NextRequest) {
   // ── Historial de precios de un insumo ──
   const historialId = new URL(req.url).searchParams.get('historial');
   if (historialId) {
-    const compras = await getSheetData(HOJA_COMPRAS, { crudo: true });
+    // El directorio, para poner el nombre del proveedor aunque se haya
+    // renombrado despues de la compra: el vinculo es por ID.
+    const [compras, proveedores] = await Promise.all([
+      getSheetData(HOJA_COMPRAS, { crudo: true }),
+      leerProveedores().catch(() => []),
+    ]);
+    const nombreProv = new Map(proveedores.map((x) => [x.id, x.nombre]));
     const historial = compras
       // Se guarda la fila real (índice + 2) ANTES de filtrar, para poder
       // borrar esa compra puntual desde el modal de historial.
@@ -108,18 +114,29 @@ export async function GET(req: NextRequest) {
         precioTotal: parseFloat(c.Precio_Total) || 0,
         precioUnidadCompra: parseFloat(c.Precio_Unidad_Compra) || 0,
         costoUnidadReceta: parseFloat(c.Costo_Unidad_Receta) || 0,
+        // Con quien se compro. El texto sirve de respaldo para las compras
+        // viejas, anteriores al directorio.
+        proveedor:
+          nombreProv.get((c.ID_Proveedor || '').toString().trim()) ||
+          (c.Donde || '').toString().trim(),
+        // Cuanto traia el paquete ESA vez: sin esto no se explica el
+        // precio por pieza cuando la presentacion cambio.
+        contenido: parseFloat(c.Equivalencia) || 0,
+        quien: (c.Quien || '').toString().trim(),
         orden: parsearFechaHora(c.Fecha)?.timestamp ?? 0,
       }))
       .sort((a, b) => b.orden - a.orden);
     return NextResponse.json({ historial });
   }
 
-  const [activos, biblioteca, catalogo, pedidos, detalles] = await Promise.all([
+  const [activos, biblioteca, catalogo, pedidos, detalles, proveedores] = await Promise.all([
     getSheetData(HOJA_ACTIVOS, { crudo: true }),
     getSheetData(HOJA_BIBLIOTECA, { crudo: true }),
     leerRecetas(),
     getSheetData('PEDIDOS'),
     getSheetData('DT PEDIDOS'),
+    // El directorio, para elegir el proveedor en vez de escribirlo
+    leerProveedores().catch(() => []),
   ]);
 
   // Consumo real de los últimos DIAS_ANALISIS días (ventas × recetas)
@@ -225,7 +242,13 @@ export async function GET(req: NextRequest) {
     })
     .filter((x): x is NonNullable<typeof x> => x !== null);
 
-  return NextResponse.json({ items, diasAnalisis: DIAS_ANALISIS });
+  return NextResponse.json({
+    items,
+    diasAnalisis: DIAS_ANALISIS,
+    // Solo los activos: la lista para elegir no debe ofrecer lugares a los
+    // que ya no se les compra, o el desorden vuelve por otro lado.
+    proveedores: proveedores.filter((p) => p.activo).map((p) => ({ id: p.id, nombre: p.nombre })),
+  });
 }
 
 export async function PATCH(req: NextRequest) {

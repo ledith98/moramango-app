@@ -102,6 +102,8 @@ interface Presentacion {
   idProveedor: string;
   proveedor: string;
   activa: boolean;
+  /** Cuando se anoto ese precio; vacio si nunca */
+  fechaPrecio: string;
   /** Lo que cuesta la unidad de receta con esta presentacion */
   porUnidad: number;
 }
@@ -522,6 +524,26 @@ El stock quedará igual a lo que contaste.`)) return;
   function describirPres(x: Presentacion, unidadReceta: string): string {
     const marca = x.marca && x.marca !== 'No aplica' ? `${x.marca} · ` : '';
     return `${marca}${x.unidadCompra || 'paquete'} de ${x.contenido} ${unidadReceta}`.trim();
+  }
+
+  /**
+   * La marca del insumo, para verla sin abrir nada.
+   *
+   * Sale de sus presentaciones: si todas son de la misma, esa es la marca;
+   * si hay varias, se dice cuántas, porque "Hellmann's" a secas mentiría.
+   */
+  function marcaDe(idBiblioteca: string): string {
+    const marcas = [
+      ...new Set(
+        presentaciones
+          .filter((x) => x.idBiblioteca === idBiblioteca && x.activa)
+          .map((x) => x.marca.trim())
+          .filter((m) => m && m !== 'No aplica')
+      ),
+    ];
+    if (marcas.length === 0) return '';
+    if (marcas.length === 1) return marcas[0];
+    return `${marcas[0]} y ${marcas.length - 1} más`;
   }
 
   /** Precio por unidad de receta, legible aunque sean centavos. */
@@ -1184,6 +1206,14 @@ El stock quedará igual a lo que contaste.`)) return;
                         <div className="min-w-0">
                           <p className="font-bold text-neutral-900 leading-tight break-words">
                             {a.nombre}
+                            {/* La marca a la vista: sin ella hay que abrir el
+                                insumo para saber cuál de las dos mayonesas es. */}
+                            {marcaDe(a.idBiblioteca) && (
+                              <span className="font-normal text-neutral-600">
+                                {' '}
+                                · {marcaDe(a.idBiblioteca)}
+                              </span>
+                            )}
                           </p>
                           <p className="text-xs text-neutral-600">{a.categoria || SIN_CATEGORIA}</p>
                         </div>
@@ -1341,6 +1371,9 @@ El stock quedará igual a lo que contaste.`)) return;
                 <div className="flex items-start justify-between gap-2">
                   <p className="font-bold text-neutral-900 leading-tight break-words min-w-0">
                     {b.nombre}
+                    {marcaDe(b.id) && (
+                      <span className="font-normal text-neutral-600"> · {marcaDe(b.id)}</span>
+                    )}
                   </p>
                   <span
                     className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
@@ -1504,6 +1537,13 @@ El stock quedará igual a lo que contaste.`)) return;
                                 >
                                   {porUnidadTexto(x.porUnidad)}/{b.unidadReceta}
                                   {i === 0 && suyas.length > 1 && x.activa && ' ✅'}
+                                  {/* Un precio sin fecha no se puede leer: no
+                                      se sabe si es de esta semana o de hace medio año. */}
+                                  {x.fechaPrecio && (
+                                    <span className="block text-[10px] font-normal text-neutral-600">
+                                      al {x.fechaPrecio.slice(5)}
+                                    </span>
+                                  )}
                                 </span>
                               ) : (
                                 <span className="text-neutral-500">sin precio</span>

@@ -28,6 +28,7 @@
 
 import { appendRow, ensureColumn, ensureSheet, getSheetData, updateCells } from './googleSheets';
 import { siguienteId } from './ids';
+import { fechaDeCelda, fechaHoyMTY } from './pedidoFecha';
 
 export const HOJA_PRESENTACIONES = 'Presentaciones';
 const COLS = [
@@ -39,6 +40,10 @@ const COLS = [
   'Ultimo_Precio',
   'ID_Proveedor',
   'Activa',
+  // Cuándo se anotó ese precio. Un precio sin fecha no se puede leer: no
+  // se sabe si es de esta semana o de hace medio año, y comparar contra
+  // uno viejo lleva a ir al lugar equivocado.
+  'Fecha_Precio',
 ];
 
 /** Columnas 1-based, para updateCells */
@@ -50,6 +55,7 @@ export const COL_PRES = {
   ultimoPrecio: 6,
   idProveedor: 7,
   activa: 8,
+  fechaPrecio: 9,
 } as const;
 
 /** Para los insumos que no tienen marca (la fruta a granel, el hielo). */
@@ -66,6 +72,8 @@ export interface Presentacion {
   ultimoPrecio: number;
   idProveedor: string;
   activa: boolean;
+  /** Cuándo se anotó ese precio (YYYY-MM-DD); vacío si nunca */
+  fechaPrecio: string;
   /** Lo que cuesta la unidad de receta con esta presentación */
   porUnidad: number;
 }
@@ -81,6 +89,7 @@ export async function prepararPresentaciones(): Promise<void> {
   await ensureSheet(HOJA_PRESENTACIONES, COLS);
   // ensureSheet solo escribe encabezados al CREAR la hoja
   await ensureColumn(HOJA_PRESENTACIONES, 'Activa');
+  await ensureColumn(HOJA_PRESENTACIONES, 'Fecha_Precio');
 }
 
 export async function leerPresentaciones(): Promise<Presentacion[]> {
@@ -101,6 +110,7 @@ export async function leerPresentaciones(): Promise<Presentacion[]> {
           idProveedor: (f.ID_Proveedor || '').toString().trim(),
           // Vacío se lee como activa, para las que se creen sin la columna
           activa: (f.Activa || '').toString().trim().toLowerCase() !== 'no',
+          fechaPrecio: fechaDeCelda(f.Fecha_Precio),
           // Lo único comparable entre presentaciones y entre proveedores
           porUnidad: contenido > 0 && precio > 0 ? precio / contenido : 0,
         };
@@ -119,7 +129,21 @@ export interface DatosPresentacion {
   ultimoPrecio?: number;
   idProveedor?: string;
   activa?: boolean;
+  fechaPrecio?: string;
 }
+
+/**
+ * Un número, siempre como número.
+ *
+ * Sheets interpreta lo que se le manda según el idioma del archivo, y en
+ * español "4.03" lo lee como el 4 de marzo: guardó 46085 en vez del
+ * precio. Le pasó a cinco presentaciones. Mandando un number de verdad,
+ * y nunca la cadena, no hay nada que interpretar.
+ */
+const comoNumero = (v: unknown): number | '' => {
+  const n = typeof v === 'number' ? v : parseFloat((v ?? '').toString().replace(',', '.'));
+  return isNaN(n) ? '' : n;
+};
 
 /** Da de alta una presentación y devuelve su ID. */
 export async function crearPresentacion(datos: DatosPresentacion): Promise<string> {
@@ -131,10 +155,13 @@ export async function crearPresentacion(datos: DatosPresentacion): Promise<strin
     datos.idBiblioteca,
     (datos.marca ?? '').trim(),
     (datos.unidadCompra ?? '').trim(),
-    datos.contenido ?? '',
-    datos.ultimoPrecio ?? '',
+    comoNumero(datos.contenido),
+    comoNumero(datos.ultimoPrecio),
     (datos.idProveedor ?? '').trim(),
     datos.activa === false ? 'no' : 'si',
+    // Solo se fecha si viene precio: una presentación sin precio no tiene
+    // qué fechar, y ponerle hoy haría creer que está al día.
+    comoNumero(datos.ultimoPrecio) !== '' ? (datos.fechaPrecio ?? fechaHoyMTY()) : '',
   ]);
   return id;
 }
@@ -151,10 +178,15 @@ export async function guardarPresentacion(
   const cambios: Record<number, string | number> = {};
   if (datos.marca !== undefined) cambios[COL_PRES.marca] = datos.marca.trim();
   if (datos.unidadCompra !== undefined) cambios[COL_PRES.unidadCompra] = datos.unidadCompra.trim();
-  if (datos.contenido !== undefined) cambios[COL_PRES.contenido] = datos.contenido;
-  if (datos.ultimoPrecio !== undefined) cambios[COL_PRES.ultimoPrecio] = datos.ultimoPrecio;
+  if (datos.contenido !== undefined) cambios[COL_PRES.contenido] = comoNumero(datos.contenido);
+  if (datos.ultimoPrecio !== undefined) cambios[COL_PRES.ultimoPrecio] = comoNumero(datos.ultimoPrecio);
   if (datos.idProveedor !== undefined) cambios[COL_PRES.idProveedor] = datos.idProveedor.trim();
   if (datos.activa !== undefined) cambios[COL_PRES.activa] = datos.activa ? 'si' : 'no';
+  // La fecha viaja pegada al precio: cambiar uno sin el otro dejaría un
+  // precio nuevo con fecha vieja, que es peor que no tener fecha.
+  if (datos.ultimoPrecio !== undefined && comoNumero(datos.ultimoPrecio) !== '') {
+    cambios[COL_PRES.fechaPrecio] = datos.fechaPrecio ?? fechaHoyMTY();
+  }
   if (Object.keys(cambios).length > 0) {
     await updateCells(HOJA_PRESENTACIONES, i + 2, cambios);
   }
@@ -168,9 +200,18 @@ export async function guardarPresentacion(
  * es lo que hacía que el costo de las recetas bailara según la última
  * compra que se hubiera capturado.
  */
-export async function anotarPrecio(id: string, precio: number): Promise<void> {
+export async function anotarPrecio(
+  id: string,
+  precio: number,
+  fechaISO?: string
+): Promise<void> {
   if (!(precio > 0)) return;
-  await guardarPresentacion(id, { ultimoPrecio: Math.round(precio * 100) / 100 });
+  await guardarPresentacion(id, {
+    ultimoPrecio: Math.round(precio * 100) / 100,
+    // La fecha de la COMPRA, no la de captura: si se anota el lunes lo que
+    // se compró el sábado, el precio es del sábado.
+    fechaPrecio: fechaISO,
+  });
 }
 
 /**

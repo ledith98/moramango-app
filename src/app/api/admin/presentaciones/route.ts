@@ -12,8 +12,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { anotar } from '@/lib/bitacora';
-import { getSheetData } from '@/lib/googleSheets';
-import { HOJA_BIBLIOTECA, HOJA_COMPRAS } from '@/lib/inventario';
+import { appendRow, getSheetData } from '@/lib/googleSheets';
+import { siguienteId } from '@/lib/ids';
+import { normalizarNombre } from '@/lib/insumos';
+import { HOJA_ACTIVOS, HOJA_BIBLIOTECA, HOJA_COMPRAS } from '@/lib/inventario';
 import {
   borrarPresentacion,
   crearPresentacion,
@@ -40,14 +42,80 @@ export async function POST(req: NextRequest) {
   if (!sesion) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
-  const { idBiblioteca, marca, unidadCompra, contenido, proveedor, ultimoPrecio } =
-    await req.json();
+  const {
+    idBiblioteca,
+    marca,
+    unidadCompra,
+    contenido,
+    proveedor,
+    ultimoPrecio,
+    // Para dar de alta un insumo que todavía no existe, sin salir de aquí
+    nombreNuevo,
+    unidadReceta,
+    categoria,
+  } = await req.json();
 
-  if (!idBiblioteca) {
-    return NextResponse.json({ error: 'Falta el insumo' }, { status: 400 });
-  }
   const biblioteca = await getSheetData(HOJA_BIBLIOTECA, { crudo: true });
-  const insumo = biblioteca.find((b) => b.ID_Biblioteca === idBiblioteca);
+
+  /**
+   * El insumo puede venir del catálogo o crearse en el momento.
+   *
+   * Anotar que un proveedor vende algo que todavía no está dado de alta es
+   * lo que pasa al descubrirlo: se ve en la bodega y se quiere apuntar
+   * antes de olvidarlo. Obligar a salir a Insumos primero hace que no se
+   * apunte nunca.
+   *
+   * Nace SIN uso: es un candidato para una receta futura, no algo que
+   * ya se esté ocupando, y meterlo a la operación diaria lo llenaría de
+   * insumos en cero que nadie cuenta.
+   */
+  let idInsumo = (idBiblioteca ?? '').toString().trim();
+  let insumo = biblioteca.find((b) => b.ID_Biblioteca === idInsumo);
+
+  if (!idInsumo) {
+    const nombre = (nombreNuevo ?? '').toString().trim();
+    if (!nombre) {
+      return NextResponse.json({ error: 'Falta el insumo' }, { status: 400 });
+    }
+    const clave = normalizarNombre(nombre);
+    const repetido = biblioteca.find(
+      (b) => normalizarNombre(b.Nombre) === clave && (b.Eliminado || '').toLowerCase() !== 'si'
+    );
+    if (repetido) {
+      // Ya existe: se usa ese en vez de crear un duplicado, que es
+      // justo el desorden que el catálogo evita.
+      idInsumo = repetido.ID_Biblioteca;
+      insumo = repetido;
+    } else {
+      const activos = await getSheetData(HOJA_ACTIVOS, { crudo: true });
+      idInsumo = siguienteId(biblioteca, 'ID_Biblioteca', 'BIB');
+      const idAct = siguienteId(activos, 'ID_Activo', 'ACT');
+      const uReceta = (unidadReceta ?? '').toString().trim() || 'pieza';
+      await appendRow(HOJA_BIBLIOTECA, [
+        idInsumo,
+        nombre,
+        (unidadCompra ?? '').toString().trim(),
+        uReceta,
+        1,
+        '',
+        (categoria ?? '').toString().trim(),
+        '',
+        '',
+        '',
+        '',
+        '',
+      ]);
+      await appendRow(HOJA_ACTIVOS, [idAct, idInsumo, 0, '', 'Fresco', '', '', 'no']);
+      insumo = { ID_Biblioteca: idInsumo, Nombre: nombre, Unidad_Receta: uReceta };
+      await anotar(
+        quienDe(sesion),
+        'Insumos',
+        `Dio de alta "${nombre}" desde Proveedores`,
+        'Nace guardado, sin usarse: es un candidato para una receta futura'
+      );
+    }
+  }
+
   if (!insumo) {
     return NextResponse.json({ error: 'Insumo no encontrado' }, { status: 404 });
   }
@@ -63,7 +131,7 @@ export async function POST(req: NextRequest) {
   const precio = parseFloat((ultimoPrecio ?? '').toString().replace(',', '.'));
 
   const id = await crearPresentacion({
-    idBiblioteca,
+    idBiblioteca: idInsumo,
     marca: (marca ?? '').toString(),
     unidadCompra: (unidadCompra ?? '').toString(),
     contenido: r.valor,
@@ -112,7 +180,17 @@ export async function PATCH(req: NextRequest) {
   }
   if (activa !== undefined) datos.activa = !!activa;
 
-  await guardarPresentacion(id, datos);
+  try {
+    await guardarPresentacion(id, datos);
+  } catch (e) {
+    // Sin esto, un fallo de Google (cuota, red) devolvía HTML y la pantalla
+    // se quedaba en "Guardando…" para siempre, sin decir qué pasó.
+    console.error('Error guardando la presentación:', e);
+    return NextResponse.json(
+      { error: 'No se pudo guardar. Vuelve a intentarlo en un momento.' },
+      { status: 500 }
+    );
+  }
   await anotar(quienDe(sesion), 'Insumos', `Editó una presentación (${id})`);
   return NextResponse.json({ success: true });
 }

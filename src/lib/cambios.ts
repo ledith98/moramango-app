@@ -31,6 +31,30 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-20',
+    tipo: 'arreglo',
+    titulo: 'Ya se puede guardar al editar un insumo en Proveedores',
+    detalle:
+      'Al corregir un insumo desde Proveedores, si algo fallaba el botón se quedaba en “Guardando…” para siempre y no decía qué había pasado. Ya avisa con un mensaje y te deja reintentar. También encontré cinco insumos cuyo precio se había guardado como FECHA — Google leía “4.03” como “4 de marzo” — y los corregí: papaya, tapa 414, vaso 116, domo y sandwichero. Ya no puede volver a pasar.',
+    donde: 'Proveedores',
+  },
+  {
+    fecha: '2026-08-20',
+    tipo: 'mejora',
+    titulo: 'La marca se ve en Insumos, y los precios traen su fecha',
+    detalle:
+      'En Insumos, cada uno muestra su marca junto al nombre — “Mayonesa · Hellmann’s”, o “Hellmann’s y 1 más” si le compras de varias. Y cada precio dice de cuándo es: un precio sin fecha no se puede leer, no sabes si es de esta semana o de hace medio año. Se fecha con el día de la compra, no el de captura.',
+    donde: 'Insumos',
+  },
+  {
+    fecha: '2026-08-20',
+    tipo: 'nuevo',
+    titulo: 'Dar de alta un insumo nuevo desde Proveedores',
+    detalle:
+      'En “+ Insumo”, si lo que venden no está en tu catálogo eliges “➕ No está en la lista” y lo das de alta ahí mismo, con su nombre y en qué lo piden las recetas. Nace guardado y sin usarse: queda listo para cuando lo ocupes en una receta, sin ensuciar el conteo diario. Sirve para apuntar algo que viste en la bodega antes de olvidarlo.',
+    donde: 'Proveedores',
+  },
+  {
+    fecha: '2026-08-20',
     tipo: 'mejora',
     titulo: 'Los insumos anotados en un proveedor ya se pueden corregir y borrar',
     detalle:

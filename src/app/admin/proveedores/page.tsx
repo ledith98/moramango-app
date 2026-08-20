@@ -99,6 +99,8 @@ export default function ProveedoresPage() {
   /** Alta de "aqui venden esto": proveedor al que se le agrega */
   const [agregarA, setAgregarA] = useState<Proveedor | null>(null);
   const [insForm, setInsForm] = useState({ id: '', marca: '', unidadCompra: '', contenido: '', ultimoPrecio: '' });
+  /** Insumo que todavia no existe en el catalogo, se crea al guardar */
+  const [insNuevo, setInsNuevo] = useState({ activo: false, nombre: '', unidadReceta: '', categoria: '' });
   /** Presentacion que se esta corrigiendo; null = alta */
   const [insEditando, setInsEditando] = useState<InsumoDeProveedor | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -130,23 +132,44 @@ export default function ProveedoresPage() {
     cargar();
   }, [cargar]);
 
-  async function guardar(metodo: 'POST' | 'PATCH', cuerpo: Record<string, unknown>) {
+  /**
+   * Llama a la API y devuelve si salió bien.
+   *
+   * Lee la respuesta con cuidado: si el servidor truena devuelve HTML, y
+   * `res.json()` lanza — eso dejaba el botón en "Guardando…" para siempre
+   * sin decir qué pasó. Aquí cualquier tropiezo termina en un mensaje.
+   */
+  async function pedir(
+    url: string,
+    metodo: 'POST' | 'PATCH' | 'DELETE',
+    cuerpo?: Record<string, unknown>
+  ): Promise<boolean> {
     setOcupado(true);
     setError('');
-    const res = await fetch('/api/admin/proveedores', {
-      method: metodo,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(cuerpo),
-    });
-    const data = await res.json();
-    setOcupado(false);
-    if (!res.ok) {
-      setError(data.error || 'No se pudo guardar');
+    try {
+      const res = await fetch(url, {
+        method: metodo,
+        ...(cuerpo
+          ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) }
+          : {}),
+      });
+      const data = await res.json().catch(() => ({}) as { error?: string });
+      if (!res.ok) {
+        setError(data.error || `No se pudo guardar (error ${res.status})`);
+        return false;
+      }
+      await cargar();
+      return true;
+    } catch {
+      setError('No se pudo conectar. Revisa tu internet y vuelve a intentarlo.');
       return false;
+    } finally {
+      setOcupado(false);
     }
-    await cargar();
-    return true;
   }
+
+  const guardar = (metodo: 'POST' | 'PATCH', cuerpo: Record<string, unknown>) =>
+    pedir('/api/admin/proveedores', metodo, cuerpo);
 
   const visibles = proveedores.filter((p) => {
     if (verQuienes === 'activos' && !p.activo) return false;
@@ -288,6 +311,7 @@ export default function ProveedoresPage() {
                           setAgregarA(p);
                           setInsEditando(null);
                           setInsForm({ id: '', marca: '', unidadCompra: '', contenido: '', ultimoPrecio: '' });
+                          setInsNuevo({ activo: false, nombre: '', unidadReceta: '', categoria: '' });
                           setError('');
                         }}
                         title="Anotar que aquí venden un insumo"
@@ -347,6 +371,7 @@ export default function ProveedoresPage() {
                                 if (!i.idPresentacion) return;
                                 setAgregarA(p);
                                 setInsEditando(i);
+                                setInsNuevo({ activo: false, nombre: '', unidadReceta: '', categoria: '' });
                                 setInsForm({
                                   id: i.id,
                                   marca: i.marca,
@@ -481,7 +506,9 @@ export default function ProveedoresPage() {
           haya comprado. Es una presentación con su proveedor: lo mismo que
           se captura al comprar, solo que por adelantado. */}
       {agregarA && (() => {
-        const ins = catalogo.find((c) => c.id === insForm.id);
+        const ins = insNuevo.activo
+          ? { id: '', nombre: insNuevo.nombre, unidadReceta: insNuevo.unidadReceta || 'pieza', unidadCompra: '', equivalencia: 0 }
+          : catalogo.find((c) => c.id === insForm.id);
         const contenido = parseFloat(insForm.contenido.replace(',', '.')) || 0;
         const precio = parseFloat(insForm.ultimoPrecio.replace(',', '.')) || 0;
         const porUnidad = contenido > 0 && precio > 0 ? precio / contenido : 0;
@@ -498,6 +525,7 @@ export default function ProveedoresPage() {
                   onClick={() => {
                     setAgregarA(null);
                     setInsEditando(null);
+                    setInsNuevo({ activo: false, nombre: '', unidadReceta: '', categoria: '' });
                     setError('');
                   }}
                   className="text-neutral-600 text-xl leading-none px-2"
@@ -513,9 +541,15 @@ export default function ProveedoresPage() {
 
               <label className="block text-sm font-semibold text-neutral-800">Insumo</label>
               <select
-                value={insForm.id}
+                value={insNuevo.activo ? '__nuevo__' : insForm.id}
                 disabled={!!insEditando}
                 onChange={(e) => {
+                  if (e.target.value === '__nuevo__') {
+                    setInsNuevo({ ...insNuevo, activo: true });
+                    setInsForm({ ...insForm, id: '', unidadCompra: '', contenido: '' });
+                    return;
+                  }
+                  setInsNuevo({ activo: false, nombre: '', unidadReceta: '', categoria: '' });
                   const c = catalogo.find((x) => x.id === e.target.value);
                   setInsForm({
                     ...insForm,
@@ -532,7 +566,41 @@ export default function ProveedoresPage() {
                     {c.nombre}
                   </option>
                 ))}
+                {!insEditando && <option value="__nuevo__">➕ No está en la lista…</option>}
               </select>
+
+              {/* Dar de alta el insumo aquí mismo. Anotar que un proveedor
+                  vende algo se hace al descubrirlo, y si obliga a salir a
+                  Insumos primero, no se apunta nunca. */}
+              {insNuevo.activo && (
+                <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-3 space-y-2">
+                  <p className="text-xs text-neutral-700">
+                    Se da de alta en tu catálogo, <b>guardado y sin usarse</b>: queda listo para
+                    cuando lo ocupes en una receta.
+                  </p>
+                  <input
+                    value={insNuevo.nombre}
+                    onChange={(e) => setInsNuevo({ ...insNuevo, nombre: e.target.value })}
+                    placeholder="Cómo se llama (ej. Jarabe de agave)"
+                    className={inputCls}
+                    autoFocus
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      value={insNuevo.unidadReceta}
+                      onChange={(e) => setInsNuevo({ ...insNuevo, unidadReceta: e.target.value })}
+                      placeholder="En qué lo piden las recetas (g, ml, pieza)"
+                      className={inputCls}
+                    />
+                    <input
+                      value={insNuevo.categoria}
+                      onChange={(e) => setInsNuevo({ ...insNuevo, categoria: e.target.value })}
+                      placeholder="Categoría (opcional)"
+                      className={inputCls}
+                    />
+                  </div>
+                </div>
+              )}
 
               <label className="block text-sm font-semibold text-neutral-800">
                 Marca <span className="font-normal text-neutral-600">(o &ldquo;No aplica&rdquo;)</span>
@@ -596,44 +664,48 @@ export default function ProveedoresPage() {
 
               <button
                 onClick={async () => {
-                  setOcupado(true);
-                  setError('');
                   const comun = {
                     marca: insForm.marca,
                     unidadCompra: insForm.unidadCompra,
                     contenido: insForm.contenido,
                     ultimoPrecio: insForm.ultimoPrecio,
                     proveedor: agregarA.nombre,
+                    ...(insNuevo.activo
+                      ? {
+                          nombreNuevo: insNuevo.nombre,
+                          unidadReceta: insNuevo.unidadReceta,
+                          categoria: insNuevo.categoria,
+                        }
+                      : {}),
                   };
-                  const res = await fetch('/api/admin/presentaciones', {
-                    method: insEditando ? 'PATCH' : 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(
-                      insEditando
-                        ? { id: insEditando.idPresentacion, ...comun }
-                        : { idBiblioteca: insForm.id, ...comun }
-                    ),
-                  });
-                  const data = await res.json();
-                  setOcupado(false);
-                  if (!res.ok) {
-                    setError(data.error || 'No se pudo guardar');
-                    return;
-                  }
+                  const ok = await pedir(
+                    '/api/admin/presentaciones',
+                    insEditando ? 'PATCH' : 'POST',
+                    insEditando
+                      ? { id: insEditando.idPresentacion, ...comun }
+                      : { idBiblioteca: insForm.id, ...comun }
+                  );
+                  if (!ok) return;
                   setAgregarA(null);
                   setInsEditando(null);
-                  await cargar();
+                  setInsNuevo({ activo: false, nombre: '', unidadReceta: '', categoria: '' });
                 }}
-                disabled={ocupado || !insForm.id || contenido <= 0}
+                disabled={
+                  ocupado ||
+                  (insNuevo.activo ? !insNuevo.nombre.trim() : !insForm.id) ||
+                  contenido <= 0
+                }
                 className="w-full bg-marron text-white font-bold py-3.5 rounded-xl active:scale-95 disabled:opacity-50"
               >
                 {ocupado
                   ? 'Guardando…'
-                  : !insForm.id
-                    ? 'Elige el insumo'
-                    : contenido <= 0
-                      ? 'Falta cuánto trae'
-                      : 'Guardar'}
+                  : insNuevo.activo && !insNuevo.nombre.trim()
+                    ? 'Ponle nombre al insumo'
+                    : !insNuevo.activo && !insForm.id
+                      ? 'Elige el insumo'
+                      : contenido <= 0
+                        ? 'Falta cuánto trae'
+                        : 'Guardar'}
               </button>
 
               {/* Dos formas de quitarla, y no son lo mismo: esconderla
@@ -643,19 +715,13 @@ export default function ProveedoresPage() {
                 <>
                   <button
                     onClick={async () => {
-                      setOcupado(true);
-                      await fetch('/api/admin/presentaciones', {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          id: insEditando.idPresentacion,
-                          activa: !insEditando.activa,
-                        }),
+                      const ok = await pedir('/api/admin/presentaciones', 'PATCH', {
+                        id: insEditando.idPresentacion,
+                        activa: !insEditando.activa,
                       });
-                      setOcupado(false);
+                      if (!ok) return;
                       setAgregarA(null);
                       setInsEditando(null);
-                      await cargar();
                     }}
                     disabled={ocupado}
                     className="w-full bg-neutral-100 text-neutral-800 font-semibold py-3 rounded-xl active:scale-95 disabled:opacity-50"
@@ -664,21 +730,13 @@ export default function ProveedoresPage() {
                   </button>
                   <button
                     onClick={async () => {
-                      setOcupado(true);
-                      setError('');
                       const url =
                         '/api/admin/presentaciones?id=' +
                         encodeURIComponent(insEditando.idPresentacion);
-                      const res = await fetch(url, { method: 'DELETE' });
-                      const data = await res.json();
-                      setOcupado(false);
-                      if (!res.ok) {
-                        setError(data.error || 'No se pudo borrar');
-                        return;
-                      }
+                      const ok = await pedir(url, 'DELETE');
+                      if (!ok) return;
                       setAgregarA(null);
                       setInsEditando(null);
-                      await cargar();
                     }}
                     disabled={ocupado}
                     className="w-full bg-red-50 text-red-700 font-semibold py-3 rounded-xl active:scale-95 disabled:opacity-50"

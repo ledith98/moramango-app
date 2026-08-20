@@ -491,7 +491,7 @@ export async function PATCH(req: NextRequest) {
       if (equivUsada === equivalencia) celdasBib[COL_BIB.ultimoPrecio] = precioPorUnidadCompra;
       // El precio de ESTA presentación sí se anota siempre, en ella misma:
       // es lo que permite comparar el bote de 1.8 kg contra el de 2 kg.
-      if (laPres) await anotarPrecio(laPres.id, precioPorUnidadCompra);
+      if (laPres) await anotarPrecio(laPres.id, precioPorUnidadCompra, iso);
       costoReceta = costoPorUnidadReceta(precioPorUnidadCompra, equivUsada);
     }
     if (lugar) celdasBib[COL_BIB.proveedor] = lugar;

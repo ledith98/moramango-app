@@ -13,6 +13,8 @@ interface MovimientoCaja {
   tipo: 'Salida' | 'Entrada';
   monto: number;
   motivo: string;
+  /** Insumo al que se fue el dinero; vacio si fue otra cosa */
+  idInsumo?: string;
 }
 
 interface EstadoCaja {
@@ -25,6 +27,8 @@ interface EstadoCaja {
   entradas: number;
   esperado: number | null;
   movimientos?: MovimientoCaja[];
+  /** Insumos en uso, para decir en que se fue el dinero */
+  insumos?: { id: string; nombre: string }[];
   cerrada: boolean;
   efectivoContado: number | null;
   horaCorte: string;
@@ -44,6 +48,8 @@ export default function CajaPage() {
   const [tipoMov, setTipoMov] = useState<'Salida' | 'Entrada'>('Salida');
   const [montoMov, setMontoMov] = useState('');
   const [motivoMov, setMotivoMov] = useState('');
+  /** Insumo al que se fue el dinero; '' = no fue un insumo */
+  const [insumoMov, setInsumoMov] = useState('');
   const [error, setError] = useState('');
 
   const cargar = useCallback(async () => {
@@ -223,10 +229,12 @@ export default function CajaPage() {
                     tipo: tipoMov,
                     monto: montoMov,
                     motivo: motivoMov,
+                    idInsumo: insumoMov,
                   });
                   if (ok) {
                     setMontoMov('');
                     setMotivoMov('');
+                    setInsumoMov('');
                   }
                 }}
                 disabled={ocupado}
@@ -235,6 +243,46 @@ export default function CajaPage() {
                 Anotar
               </button>
             </div>
+
+            {/* ¿En qué se fue? Si fue un insumo, el movimiento queda ligado
+                a él. La compra NO se registra aquí: eso necesita cuántos
+                kilos llegaron, que esta pantalla no pregunta. Se ofrece el
+                atajo para ir a capturarla, y así no hay dos caminos que
+                creen el mismo registro por separado. */}
+            {tipoMov === 'Salida' && (caja.insumos?.length ?? 0) > 0 && (
+              <div>
+                <label className="block text-sm font-semibold text-neutral-800 mb-1">
+                  ¿Fue para un insumo?
+                </label>
+                <select
+                  value={insumoMov}
+                  onChange={(e) => {
+                    setInsumoMov(e.target.value);
+                    // El motivo se rellena solo con el nombre, para no
+                    // escribirlo dos veces
+                    const n = caja.insumos?.find((i) => i.id === e.target.value)?.nombre;
+                    if (n && !motivoMov.trim()) setMotivoMov(`Compré ${n}`);
+                  }}
+                  className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-marron"
+                >
+                  <option value="">No, fue otra cosa</option>
+                  {caja.insumos?.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.nombre}
+                    </option>
+                  ))}
+                </select>
+                {insumoMov && (
+                  <p className="text-xs text-neutral-700 mt-1.5">
+                    Queda ligado a ese insumo. Para que además le sume la existencia,{' '}
+                    <a href="/admin/insumos" className="font-bold underline text-marron">
+                      registra la compra en Insumos
+                    </a>{' '}
+                    y ahí elige <b>&ldquo;no lo anotes&rdquo;</b> — el dinero ya quedó aquí.
+                  </p>
+                )}
+              </div>
+            )}
 
             {caja.movimientos && caja.movimientos.length > 0 && (
               <ul className="space-y-1.5">

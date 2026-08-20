@@ -40,6 +40,7 @@ import {
 import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 import { leerRecetas } from '@/lib/recetario';
 import { getAdminSession } from '@/lib/roles';
+import { anotar } from '@/lib/bitacora';
 import { CUENTA_DIGITAL, CUENTA_EFECTIVO, registrarMovimiento } from '@/lib/caja';
 
 const DIAS_ANALISIS = 7;
@@ -232,6 +233,16 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
   await prepararInventario();
+
+  /**
+   * Quién está haciendo el cambio. Sale de la sesión, no se pregunta: son
+   * ocho personas con su propia cuenta, y un campo a mano se dejaría en
+   * blanco justo cuando hiciera falta.
+   */
+  const quien =
+    (session.user as { name?: string; email?: string }).name ||
+    (session.user as { email?: string }).email ||
+    '';
 
   const { id, accion, cantidadCompra, precioTotal, stockPrevio, pagadoConCaja, pagadoCon, fechaCompraISO, donde, cantidad, valor, fechaISO, fila, lecturas } =
     await req.json();
@@ -431,6 +442,7 @@ export async function PATCH(req: NextRequest) {
       equivalencia,
       costoReceta ?? '',
       lugar,
+      quien,
     ]);
 
     /**
@@ -461,7 +473,7 @@ export async function PATCH(req: NextRequest) {
           'Salida',
           redondear(precio, 2),
           `Compra de ${bib.Nombre || 'insumo'}`,
-          (session.user as { name?: string }).name || '',
+          quien,
           // La salida se fecha el día de la COMPRA, no el de captura: si no,
           // el corte de un día cargaría un gasto de otro.
           iso,
@@ -473,6 +485,22 @@ export async function PATCH(req: NextRequest) {
         console.error('Error anotando la salida de dinero:', error);
       }
     }
+
+    await anotar(
+      quien,
+      'Insumos',
+      `Compró ${cant} ${bib.Unidad_Compra || ''} de ${bib.Nombre || id}`.trim(),
+      [
+        conPrecio ? `$${redondear(precio, 2)}` : 'sin precio',
+        lugar ? `en ${lugar}` : '',
+        `fecha ${iso}`,
+        hayPrevio ? `corrigió lo que había a ${redondear(previo, 3)}` : '',
+        bolsa ? `pagado con ${bolsa === CUENTA_EFECTIVO ? 'efectivo del cajón' : 'la cuenta'}` : '',
+        `queda ${nuevoStock} ${bib.Unidad_Receta || ''}`.trim(),
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    );
 
     return NextResponse.json({
       success: true,
@@ -505,6 +533,8 @@ export async function PATCH(req: NextRequest) {
     if (isNaN(num) || num < 0) {
       return NextResponse.json({ error: 'Cantidad inválida' }, { status: 400 });
     }
+    await anotar(quien, 'Insumos', `Ajustó la existencia de ${bib.Nombre || id}`,
+      `de ${stockActual} a ${redondear(num, 3)} ${bib.Unidad_Receta || ''}`.trim());
     await updateCell(HOJA_ACTIVOS, filaAct, COL_ACT.stock, redondear(num, 3));
     return NextResponse.json({ success: true, stockActual: redondear(num, 3) });
   }

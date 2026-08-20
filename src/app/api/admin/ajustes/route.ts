@@ -17,6 +17,7 @@ import {
   leerAjustes,
 } from '@/lib/ajustes';
 import { aMinutos, DIAS_NOMBRE } from '@/lib/horario';
+import { anotar } from '@/lib/bitacora';
 import { getAdminSession } from '@/lib/roles';
 
 export async function GET() {
@@ -27,9 +28,13 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  if (!(await getAdminSession())) {
+  const sesion = await getAdminSession();
+  if (!sesion) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
+  const quien = sesion.user?.name || sesion.user?.email || '';
+  // Cómo estaban antes, para que la bitácora diga "de X a Y"
+  const previos = await leerAjustes();
 
   const { topeArticuloGratis, ordenCategorias, horario, direccion, mapa } = await req.json();
 
@@ -105,5 +110,21 @@ export async function POST(req: NextRequest) {
     await guardarAjuste(CLAVE_MAPA, url, 'Enlace para llegar al local');
   }
 
-  return NextResponse.json({ success: true, ajustes: await leerAjustes() });
+  const ahora = await leerAjustes();
+  const detalle = [
+    topeArticuloGratis !== undefined && previos.topeArticuloGratis !== ahora.topeArticuloGratis
+      ? `Tope de artículo gratis: $${previos.topeArticuloGratis} → $${ahora.topeArticuloGratis}`
+      : '',
+    ordenCategorias !== undefined ? `Orden del menú: ${ahora.ordenCategorias.join(', ')}` : '',
+    horario !== undefined ? 'Cambió el horario de la tienda' : '',
+    direccion !== undefined && previos.direccion !== ahora.direccion
+      ? `Dirección: ${ahora.direccion}`
+      : '',
+    mapa !== undefined && previos.mapa !== ahora.mapa ? 'Cambió el enlace del mapa' : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  if (detalle) await anotar(quien, 'Ajustes', 'Cambió los ajustes de la tienda', detalle);
+
+  return NextResponse.json({ success: true, ajustes: ahora });
 }

@@ -21,7 +21,7 @@ import {
   updateCells,
 } from './googleSheets';
 import { normalizarMetodoPago } from './negocio';
-import { fechaHoyMTY, parsearFechaHora } from './pedidoFecha';
+import { fechaDeCelda, fechaHoyMTY, parsearFechaHora } from './pedidoFecha';
 
 const HOJA = 'Caja';
 const COLS = [
@@ -187,7 +187,18 @@ export async function cerrarCaja(contado: number, quien: string, notas: string):
  */
 
 export const HOJA_MOV = 'Movimientos_Caja';
-const COLS_MOV = ['Fecha', 'Hora', 'Tipo', 'Monto', 'Motivo', 'Quien', 'Cuenta'];
+const COLS_MOV = [
+  'Fecha',
+  'Hora',
+  'Tipo',
+  'Monto',
+  'Motivo',
+  'Quien',
+  'Cuenta',
+  // Si el dinero se fue en un insumo, cuál. Deja el movimiento ligado al
+  // inventario para poder registrar la compra desde ahí sin recapturarlo.
+  'ID_Insumo',
+];
 
 /**
  * Dónde vive el dinero. Son dos bolsas distintas y no se mezclan: el
@@ -213,6 +224,8 @@ export interface MovimientoCaja {
   motivo: string;
   quien: string;
   cuenta: string;
+  /** Insumo al que se fue el dinero; vacío si fue otra cosa */
+  idInsumo: string;
 }
 
 async function prepararMovimientos() {
@@ -221,29 +234,11 @@ async function prepararMovimientos() {
   // columna nueva se llenaría en la celda pero getSheetData no la
   // devolvería, y todos los movimientos parecerían de efectivo.
   await ensureColumn(HOJA_MOV, 'Cuenta');
+  await ensureColumn(HOJA_MOV, 'ID_Insumo');
 }
 
 const leerTipo = (v: string | undefined): TipoMovimiento =>
   v === 'Entrada' ? 'Entrada' : v === 'Rendimiento' ? 'Rendimiento' : 'Salida';
-
-/**
- * La fecha, venga como venga.
- *
- * Al escribir "2026-08-18", Google Sheets lo reconoce como fecha y guarda
- * un numero de serie; al releer en crudo vuelve "46252" y la comparacion
- * con la fecha de hoy no casaba nunca. Se normalizan las dos formas para
- * que sirva con lo ya guardado y con lo que se guarde despues.
- */
-function fechaDeCelda(valor: string): string {
-  const texto = (valor || '').toString().trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) return texto;
-  if (/^\d+(\.\d+)?$/.test(texto)) {
-    // Serie de Sheets: dias desde el 30/12/1899
-    const ms = Date.UTC(1899, 11, 30) + parseFloat(texto) * 86400000;
-    return new Date(ms).toISOString().slice(0, 10);
-  }
-  return texto;
-}
 
 const mapear = (f: Record<string, string>, fila: number): MovimientoCaja => ({
   fila,
@@ -254,6 +249,7 @@ const mapear = (f: Record<string, string>, fila: number): MovimientoCaja => ({
   motivo: f.Motivo || '',
   quien: f.Quien || '',
   cuenta: cuentaDe(f.Cuenta),
+  idInsumo: (f.ID_Insumo || '').toString().trim(),
 });
 
 /** Movimientos de un día, del más reciente al más viejo. */
@@ -308,7 +304,8 @@ export async function registrarMovimiento(
   motivo: string,
   quien: string,
   fechaISO = fechaHoyMTY(),
-  cuenta = CUENTA_EFECTIVO
+  cuenta = CUENTA_EFECTIVO,
+  idInsumo = ''
 ): Promise<void> {
   await prepararMovimientos();
   await appendRow(HOJA_MOV, [
@@ -319,6 +316,7 @@ export async function registrarMovimiento(
     motivo.trim(),
     quien,
     cuenta,
+    idInsumo,
   ]);
 }
 

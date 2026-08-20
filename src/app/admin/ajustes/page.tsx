@@ -13,12 +13,35 @@ interface Producto {
   categoria: string;
 }
 
+interface MovimientoBitacora {
+  fecha: string;
+  hora: string;
+  quien: string;
+  area: string;
+  que: string;
+  detalle: string;
+}
+
+const ICONO_AREA: Record<string, string> = {
+  Productos: '🥤',
+  Insumos: '📦',
+  Recetario: '📖',
+  Pedidos: '🧾',
+  Caja: '💰',
+  Cuenta: '🏦',
+  Ajustes: '⚙️',
+  Usuarios: '👥',
+};
+
 /** Igual que en el servidor: comparar sin acentos ni mayúsculas. */
 const clave = (c: string) =>
   (c || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
 export default function AjustesPage() {
   const [tope, setTope] = useState('');
+  const [bitacora, setBitacora] = useState<MovimientoBitacora[]>([]);
+  const [areaFiltro, setAreaFiltro] = useState('Todas');
+  const [verBitacora, setVerBitacora] = useState(false);
   const [topeGuardado, setTopeGuardado] = useState(35);
   const [productos, setProductos] = useState<Producto[]>([]);
   const [orden, setOrden] = useState<string[]>([]);
@@ -87,6 +110,24 @@ export default function AjustesPage() {
   useEffect(() => {
     cargar();
   }, [cargar]);
+
+  /**
+   * La bitacora se pide solo al abrirla: son cientos de renglones y no
+   * hacen falta para cambiar un ajuste.
+   */
+  const cargarBitacora = useCallback(async () => {
+    try {
+      const r = await fetch('/api/admin/bitacora');
+      const d = await r.json();
+      setBitacora(d.movimientos ?? []);
+    } catch {
+      setBitacora([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (verBitacora) cargarBitacora();
+  }, [verBitacora, cargarBitacora]);
 
   async function guardar() {
     const n = parseFloat(tope.replace(',', '.'));
@@ -493,6 +534,86 @@ export default function AjustesPage() {
             </ul>
           )}
         </div>
+      </div>
+
+      {/* Quien cambio que. Ocho personas entran al panel: sin esto, un
+          precio cambiado o una existencia rara no tiene a quien preguntarle. */}
+      <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5">
+        <div className="flex flex-wrap items-center gap-3">
+          <div>
+            <h2 className="font-bold text-neutral-900">📋 Qué se ha cambiado</h2>
+            <p className="text-xs text-neutral-700 mt-0.5">
+              Quién cambió qué y cuándo, en todo el panel. Sirve para corregir, no para vigilar:
+              si algo amanece raro, aquí ves cómo estaba antes.
+            </p>
+          </div>
+          <button
+            onClick={() => setVerBitacora((v) => !v)}
+            className="ml-auto text-xs font-bold px-3 py-2 rounded-lg bg-neutral-100 text-neutral-800 active:scale-95"
+          >
+            {verBitacora ? 'Ocultar' : 'Ver'}
+          </button>
+        </div>
+
+        {verBitacora && (
+          <div className="mt-4 space-y-3">
+            <div className="flex flex-wrap gap-1.5">
+              {['Todas', 'Productos', 'Insumos', 'Recetario', 'Pedidos', 'Caja', 'Cuenta', 'Ajustes'].map(
+                (a) => (
+                  <button
+                    key={a}
+                    onClick={() => setAreaFiltro(a)}
+                    className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg ${
+                      areaFiltro === a ? 'bg-marron text-white' : 'bg-neutral-100 text-neutral-800'
+                    }`}
+                  >
+                    {a === 'Todas' ? 'Todas' : `${ICONO_AREA[a] ?? ''} ${a}`}
+                  </button>
+                )
+              )}
+            </div>
+
+            {bitacora.length === 0 ? (
+              <p className="text-sm text-neutral-700">
+                Todavía no hay nada anotado. Se va llenando solo con cada cambio que se haga.
+              </p>
+            ) : (
+              (() => {
+                const vistos = bitacora.filter(
+                  (m) => areaFiltro === 'Todas' || m.area === areaFiltro
+                );
+                if (vistos.length === 0) {
+                  return (
+                    <p className="text-sm text-neutral-700">
+                      Nada en {areaFiltro} todavía.
+                    </p>
+                  );
+                }
+                return (
+                  <ul className="divide-y divide-neutral-100 max-h-[420px] overflow-y-auto">
+                    {vistos.map((m, i) => (
+                      <li key={i} className="py-2.5">
+                        <div className="flex items-baseline gap-2 flex-wrap">
+                          <span className="text-[11px] font-mono text-neutral-600 shrink-0">
+                            {m.fecha.slice(5)} {m.hora}
+                          </span>
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-700">
+                            {ICONO_AREA[m.area] ?? ''} {m.area}
+                          </span>
+                          <span className="text-sm font-semibold text-neutral-900">{m.que}</span>
+                        </div>
+                        {m.detalle && (
+                          <p className="text-xs text-neutral-700 mt-0.5 break-words">{m.detalle}</p>
+                        )}
+                        <p className="text-[11px] text-neutral-600 mt-0.5">por {m.quien}</p>
+                      </li>
+                    ))}
+                  </ul>
+                );
+              })()
+            )}
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5">

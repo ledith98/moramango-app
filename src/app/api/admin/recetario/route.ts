@@ -21,10 +21,14 @@ import {
 } from '@/lib/inventario';
 import { COL_REC, HOJA_RECETARIO, prepararRecetario } from '@/lib/recetario';
 import { siguienteId } from '@/lib/ids';
+import { anotar } from '@/lib/bitacora';
 import { getAdminSession } from '@/lib/roles';
 
 const vivos = (filas: Record<string, string>[]) =>
   filas.filter((b) => (b.Eliminado || '').toLowerCase() !== 'si');
+
+const quienDe = (x: { user?: { name?: string | null; email?: string | null } } | null) =>
+  x?.user?.name || x?.user?.email || '';
 
 export async function GET() {
   if (!(await getAdminSession())) {
@@ -169,7 +173,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  if (!(await getAdminSession())) {
+  const sesionAlta = await getAdminSession();
+  if (!sesionAlta) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
   await prepararRecetario();
@@ -244,11 +249,19 @@ export async function POST(req: NextRequest) {
     idComponente || '',
   ]);
 
+  await anotar(
+    quienDe(sesionAlta),
+    'Recetario',
+    `Agregó un ingrediente a una receta`,
+    `producto ${idProducto} · ${idComponente ? `lleva ${idComponente}` : `insumo ${idBiblioteca}`} · cantidad ${cant}`
+  );
+
   return NextResponse.json({ success: true, id: idLinea });
 }
 
 export async function PATCH(req: NextRequest) {
-  if (!(await getAdminSession())) {
+  const sesionEdit = await getAdminSession();
+  if (!sesionEdit) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
   await prepararRecetario();
@@ -278,11 +291,25 @@ export async function PATCH(req: NextRequest) {
   }
   await updateCells(HOJA_RECETARIO, fila, cambios);
 
+  await anotar(
+    quienDe(sesionEdit),
+    'Recetario',
+    `Cambió un ingrediente (${id})`,
+    [
+      cantidad !== undefined ? `cantidad: ${recetario[idx].Cantidad} → ${cantidad}` : '',
+      merma !== undefined ? `merma: ${recetario[idx].Merma_Pct || '0'} → ${merma || '0'}` : '',
+      `producto ${recetario[idx].ID_Producto}`,
+    ]
+      .filter(Boolean)
+      .join(' · ')
+  );
+
   return NextResponse.json({ success: true });
 }
 
 export async function DELETE(req: NextRequest) {
-  if (!(await getAdminSession())) {
+  const sesionBaja = await getAdminSession();
+  if (!sesionBaja) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
   await prepararRecetario();
@@ -305,6 +332,13 @@ export async function DELETE(req: NextRequest) {
     [COL_REC.cantidad]: '',
     [COL_REC.notas]: 'eliminado',
   });
+
+  await anotar(
+    quienDe(sesionBaja),
+    'Recetario',
+    `Quitó un ingrediente de una receta (${id})`,
+    `era ${recetario[idx].Cantidad} de ${recetario[idx].ID_Biblioteca || recetario[idx].ID_Componente} en ${recetario[idx].ID_Producto}`
+  );
 
   return NextResponse.json({ success: true });
 }

@@ -17,7 +17,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { appendRow, ensureColumn, findRow, getSheetData, updateCell } from '@/lib/googleSheets';
 import { normalizarUrlImagen } from '@/lib/imagenes';
+import { anotar, cambios } from '@/lib/bitacora';
 import { getAdminSession } from '@/lib/roles';
+
+/** Quién está haciendo el cambio; sale de la sesión, no se pregunta. */
+const nombreDeSesion = (s: { user?: { name?: string | null; email?: string | null } } | null) =>
+  s?.user?.name || s?.user?.email || '';
 import { iguales, serializarTamanos, type Tamano } from '@/lib/tamanos';
 import { type GrupoOpcion, serializarOpciones } from '@/lib/opciones';
 import { type Extra, serializarExtras } from '@/lib/extras';
@@ -119,9 +124,11 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  if (!(await getAdminSession())) {
+  const sesionAlta = await getAdminSession();
+  if (!sesionAlta) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
+  const quien = nombreDeSesion(sesionAlta);
 
   const { nombre, categoria, descripcion, precio, emoji, existencias, tamanos, opciones, extras } =
     await req.json();
@@ -221,13 +228,17 @@ export async function POST(req: NextRequest) {
     await updateCell('Productos', fila, col, extrasValor);
   }
 
+  await anotar(quien, 'Productos', `Creó "${nombre}"`, `$${precio} · ${categoria}`);
+
   return NextResponse.json({ success: true, idProducto: nuevoId });
 }
 
 export async function PATCH(req: NextRequest) {
-  if (!(await getAdminSession())) {
+  const sesionEdit = await getAdminSession();
+  if (!sesionEdit) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
+  const quien = nombreDeSesion(sesionEdit);
 
   const {
     idProducto,
@@ -253,6 +264,10 @@ export async function PATCH(req: NextRequest) {
   if (!fila) {
     return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 });
   }
+
+  // Cómo estaba, para que la bitácora pueda decir "de X a Y". Sin el
+  // valor viejo el registro no sirve para deshacer nada.
+  const antes = fila.data ?? {};
 
   if (typeof nombre === 'string' && nombre.trim()) {
     await updateCell('Productos', fila.rowIndex, 2, nombre.trim());
@@ -338,11 +353,40 @@ export async function PATCH(req: NextRequest) {
     await updateCell('Productos', fila.rowIndex, col, r.valor);
   }
 
+  const detalle = cambios(
+    {
+      Nombre: antes.Nombre,
+      Precio: antes.Precio_Venta,
+      Categoría: antes['Categoría'] ?? antes.Categoria,
+      Disponible: antes.Disponible,
+      Existencias: antes.Existencias,
+      Tamaños: antes.Tamanos,
+      Opciones: antes.Opciones,
+      Extras: antes.Extras,
+    },
+    {
+      Nombre: nombre,
+      Precio: precio,
+      Categoría: categoria,
+      Disponible: disponible,
+      Existencias: existencias,
+      Tamaños: tamanos,
+      Opciones: opciones,
+      Extras: extras,
+    }
+  );
+  // Solo se anota si algo cambió de verdad: guardar sin tocar nada llenaría
+  // la bitácora de renglones que no dicen nada.
+  if (detalle) {
+    await anotar(quien, 'Productos', `Editó "${antes.Nombre || idProducto}"`, detalle);
+  }
+
   return NextResponse.json({ success: true });
 }
 
 export async function DELETE(req: NextRequest) {
-  if (!(await getAdminSession())) {
+  const sesionBaja = await getAdminSession();
+  if (!sesionBaja) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
@@ -361,6 +405,13 @@ export async function DELETE(req: NextRequest) {
   const colEliminado = await ensureColumn('Productos', 'Eliminado');
   await updateCell('Productos', fila.rowIndex, colEliminado, 'TRUE');
   await updateCell('Productos', fila.rowIndex, 7, 'FALSE');
+
+  await anotar(
+    nombreDeSesion(sesionBaja),
+    'Productos',
+    `Borró "${fila.data?.Nombre || idProducto}"`,
+    'Se quitó del menú; la fila se conserva para no romper el historial'
+  );
 
   return NextResponse.json({ success: true });
 }

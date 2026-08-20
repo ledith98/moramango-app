@@ -17,6 +17,7 @@ import {
 } from '@/lib/caja';
 import { guardarSaldo, leerCuenta } from '@/lib/cuenta';
 import { fechaHoyMTY } from '@/lib/pedidoFecha';
+import { anotar } from '@/lib/bitacora';
 import { getAdminSession } from '@/lib/roles';
 
 /** Primer día del mes en curso: es el rango que se usa casi siempre. */
@@ -59,6 +60,7 @@ export async function POST(req: NextRequest) {
     }
     const cuando = ES_FECHA.test((fechaISO ?? '').toString()) ? fechaISO : fechaHoyMTY();
     await guardarSaldo(valor, cuando);
+    await anotar(quien, 'Cuenta', `Anotó el saldo de la cuenta: $${valor.toFixed(2)}`, `al ${cuando}`);
     return NextResponse.json({ success: true });
   }
 
@@ -68,6 +70,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Movimiento inválido' }, { status: 400 });
     }
     await borrarMovimiento(n);
+    await anotar(quien, 'Cuenta', 'Borró un movimiento', `fila ${n}`);
     return NextResponse.json({ success: true });
   }
 
@@ -105,6 +108,12 @@ export async function POST(req: NextRequest) {
     quien,
     fecha,
     bolsa
+  );
+  await anotar(
+    quien,
+    bolsa === CUENTA_EFECTIVO ? 'Caja' : 'Cuenta',
+    `${clase === 'Salida' ? 'Sacó' : clase === 'Entrada' ? 'Metió' : 'Anotó rendimiento de'} $${cantidad.toFixed(2)}`,
+    [texto, `fecha ${fecha}`, bolsa === CUENTA_EFECTIVO ? 'del cajón' : 'de la cuenta'].filter(Boolean).join(' · ')
   );
   return NextResponse.json({ success: true });
 }

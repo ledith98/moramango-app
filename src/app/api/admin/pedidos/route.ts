@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSheetData, findRow, updateCell, ensureColumn } from '@/lib/googleSheets';
 import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 import { METODO_PAGO_EN_LINEA, normalizarMetodoPago } from '@/lib/negocio';
+import { anotar } from '@/lib/bitacora';
 import { getAdminSession } from '@/lib/roles';
 import { moverStockDePedido } from '@/lib/stock';
 import { revertirLealtad } from '@/lib/lealtad';
@@ -106,9 +107,11 @@ export async function GET(req: NextRequest) {
 const METODOS_PAGO = ['Efectivo', 'Terminal', 'Transferencia', METODO_PAGO_EN_LINEA, 'Mercado Pago'];
 
 export async function PATCH(req: NextRequest) {
-  if (!(await getAdminSession())) {
+  const sesion = await getAdminSession();
+  if (!sesion) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
+  const quien = sesion.user?.name || sesion.user?.email || '';
 
   const { idPedido, nuevoEstado, metodoPago, estadoPago } = await req.json();
 
@@ -176,6 +179,22 @@ export async function PATCH(req: NextRequest) {
         console.error('Error avisando del cobro confirmado:', error);
       }
     }
+  }
+
+  const detalle = [
+    nuevoEstado ? `estado: ${pedidoRow.data.Estado || '(vacío)'} → ${nuevoEstado}` : '',
+    metodoPago ? `cobro: ${pedidoRow.data.Metodo_Pago || '(sin registrar)'} → ${metodoPago}` : '',
+    estadoPago ? `pago: ${pedidoRow.data.Estado_Pago || '(vacío)'} → ${estadoPago}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  if (detalle) {
+    await anotar(
+      quien,
+      'Pedidos',
+      `${nuevoEstado === 'Cancelado' ? 'Canceló' : 'Cambió'} el pedido ${idPedido}`,
+      `${detalle} · $${pedidoRow.data.Total_Final || '0'}`
+    );
   }
 
   return NextResponse.json({ success: true });

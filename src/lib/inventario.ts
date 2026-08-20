@@ -77,6 +77,10 @@ export const COLS_COMPRAS = [
   // Dónde se surtió. Opcional, texto libre: la lista de proveedores se
   // arma sola con lo que se va escribiendo, no hay catálogo que mantener.
   'Donde',
+  // Quién la registró. Sale de la sesión, no se pregunta: ocho personas
+  // entran al panel y sin esto no hay a quién preguntarle por una captura
+  // rara.
+  'Quien',
 ];
 
 // Columnas 1-based para updateCell (coinciden con los arreglos de arriba)
@@ -122,6 +126,7 @@ export async function prepararInventario(): Promise<void> {
     ensureColumn(HOJA_ACTIVOS, 'En_Uso'),
     ensureColumn(HOJA_BIBLIOTECA, 'Ingredientes'),
     ensureColumn(HOJA_COMPRAS, 'Donde'),
+    ensureColumn(HOJA_COMPRAS, 'Quien'),
   ]);
 }
 

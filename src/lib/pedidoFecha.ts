@@ -58,3 +58,24 @@ export function parsearFechaHora(fechaHoraStr: string | undefined | null): Fecha
 
   return { fechaISO, horaLegible, timestamp };
 }
+
+/**
+ * Una fecha de celda en ISO, venga como venga.
+ *
+ * Al escribir "2026-08-19", Google Sheets lo reconoce como fecha y guarda
+ * un número de serie; al releer en crudo vuelve "46253" y cualquier
+ * comparación con una fecha falla. Se normalizan las dos formas para que
+ * sirva con lo ya guardado y con lo que se guarde después.
+ */
+export function fechaDeCelda(valor: string | undefined): string {
+  const texto = (valor ?? '').toString().trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) return texto;
+  if (/^\d+(\.\d+)?$/.test(texto)) {
+    // Serie de Sheets: días desde el 30/12/1899
+    const ms = Date.UTC(1899, 11, 30) + parseFloat(texto) * 86400000;
+    return new Date(ms).toISOString().slice(0, 10);
+  }
+  // Formato es-MX ("19/8/2026, 11:19:00 p. m.")
+  const info = parsearFechaHora(texto);
+  return info ? info.fechaISO : texto;
+}

@@ -25,8 +25,15 @@ const almacenamientoListo = () => !!process.env.BLOB_READ_WRITE_TOKEN;
 const noConfigurado = () =>
   NextResponse.json(
     {
+      /**
+       * El mensaje dice qué revisar, no solo que falló.
+       *
+       * "Falta activarlo" mandaba a crear algo que casi siempre ya estaba
+       * creado: lo que falla es el paso siguiente —conectarlo al proyecto
+       * y volver a desplegar— y sin decirlo no hay por dónde avanzar.
+       */
       error:
-        'Falta activar el almacenamiento de imágenes. Mientras tanto puedes pegar la URL de la foto.',
+        'Todavía no se pueden guardar fotos aquí. Si ya creaste el almacén en Vercel, revisa que esté conectado a ESTE proyecto (Storage → tu almacén → Connect Project) y vuelve a desplegar. Mientras tanto puedes pegar la dirección de una foto.',
       codigo: 'SIN_ALMACENAMIENTO',
     },
     { status: 503 }

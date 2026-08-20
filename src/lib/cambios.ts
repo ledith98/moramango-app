@@ -32,6 +32,14 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-20',
     tipo: 'nuevo',
+    titulo: 'Comparar precios entre proveedores aunque el paquete sea de otro tamaño',
+    detalle:
+      'Un paquete de 40 tenedores a $12 y uno de 25 a $8 no se pueden comparar como $12 contra $8 — el de $8 parece más barato y sale más caro. Ahora todo se compara por PIEZA: $0.30 contra $0.32. Al registrar la compra puedes decir cuánto trae el paquete de ESE proveedor sin ir a cambiar el insumo, y al momento te dice a cómo te sale la pieza. El aviso de si subió o bajó también mide por pieza. Y al contar el inventario puedes contar por paquetes: “6 paquetes de 40 y 12 sueltos” y la app saca los 252.',
+    donde: 'Insumos y Proveedores',
+  },
+  {
+    fecha: '2026-08-20',
+    tipo: 'nuevo',
     titulo: 'Directorio de proveedores, con comparación de precios',
     detalle:
       'Nueva sección 🏪 Proveedores. Guarda a quién le compras con su teléfono, con quién tratas y tus notas, y te muestra qué le compras a cada uno y cuánto llevas gastado — eso sale solo de tus compras, no hay que capturarlo. La pestaña de comparar pone el precio del mismo insumo lado a lado y te dice cuánto te ahorras yendo con el más barato. Se sembró con los 15 proveedores que ya tenías escritos y se ligaron tus compras. De aquí en adelante, al anotar dónde compraste, el nombre se guarda en el directorio en vez de quedar como texto suelto.',

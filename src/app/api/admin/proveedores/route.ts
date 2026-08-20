@@ -38,6 +38,10 @@ export async function GET() {
 
   const nombrePorId = new Map(proveedores.map((p) => [p.id, p.nombre]));
   const nombreInsumo = new Map(biblioteca.map((b) => [b.ID_Biblioteca, (b.Nombre || '').trim()]));
+  // La unidad de receta, para poder decir "$0.30 la pieza" y no solo "$0.30"
+  const unidadInsumo = new Map(
+    biblioteca.map((b) => [b.ID_Biblioteca, (b.Unidad_Receta || '').trim()])
+  );
   const porInsumo = preciosPorInsumo(compras, nombrePorId);
 
   /**
@@ -68,7 +72,9 @@ export async function GET() {
       return {
         id: idBib,
         nombre: nombreInsumo.get(idBib) ?? idBib,
-        ultimoPrecio: mio?.ultimoPrecio ?? 0,
+        porUnidad: mio?.porUnidad ?? 0,
+        precioPaquete: mio?.precioPaquete ?? 0,
+        contenido: mio?.contenido ?? 0,
         esElMasBarato: mio?.esElMasBarato ?? false,
         /** Cuántos proveedores distintos venden esto: sin al menos dos, no hay comparación */
         cuantosLoVenden: opciones.length,
@@ -90,11 +96,14 @@ export async function GET() {
     .map(([idBib, lista]) => ({
       id: idBib,
       nombre: nombreInsumo.get(idBib) ?? idBib,
+      unidad: unidadInsumo.get(idBib) ?? '',
       opciones: lista,
-      /** Cuánto te ahorras yendo con el más barato, por unidad de compra */
+      /** Cuánto te ahorras yendo con el más barato, POR UNIDAD DE RECETA */
       ahorro:
-        Math.round((Math.max(...lista.map((x) => x.ultimoPrecio)) -
-          Math.min(...lista.map((x) => x.ultimoPrecio))) * 100) / 100,
+        Math.round(
+          (Math.max(...lista.map((x) => x.porUnidad)) -
+            Math.min(...lista.map((x) => x.porUnidad))) * 10000
+        ) / 10000,
     }))
     .sort((a, b) => b.ahorro - a.ahorro);
 

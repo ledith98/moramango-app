@@ -17,7 +17,10 @@ import { useCallback, useEffect, useState } from 'react';
 interface OpcionPrecio {
   idProveedor: string;
   proveedor: string;
-  ultimoPrecio: number;
+  /** Lo que cuesta la pieza / el gramo / el ml: lo único comparable */
+  porUnidad: number;
+  precioPaquete: number;
+  contenido: number;
   promedio: number;
   compras: number;
   ultimaFecha: string;
@@ -27,7 +30,9 @@ interface OpcionPrecio {
 interface InsumoDeProveedor {
   id: string;
   nombre: string;
-  ultimoPrecio: number;
+  porUnidad: number;
+  precioPaquete: number;
+  contenido: number;
   esElMasBarato: boolean;
   cuantosLoVenden: number;
 }
@@ -48,11 +53,19 @@ interface Proveedor {
 interface Comparable {
   id: string;
   nombre: string;
+  unidad: string;
   opciones: OpcionPrecio[];
   ahorro: number;
 }
 
 const money = (n: number) => `$${n.toFixed(2)}`;
+
+/**
+ * El precio por unidad de receta suele ser de centavos ($0.30 la pieza,
+ * $0.0429 el gramo). Con dos decimales todo saldría $0.04 y nada se
+ * podría comparar, así que se muestran los que hagan falta.
+ */
+const porPieza = (n: number) => (n >= 1 ? `$${n.toFixed(2)}` : `$${n.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}`);
 
 const inputCls =
   'w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-marron';
@@ -241,10 +254,15 @@ export default function ProveedoresPage() {
                         {p.insumos.map((i) => (
                           <li key={i.id} className="flex items-center justify-between text-sm gap-2">
                             <span className="text-neutral-800 truncate">{i.nombre}</span>
-                            <span className="shrink-0 tabular-nums">
+                            <span className="shrink-0 tabular-nums text-right">
                               <span className="font-semibold text-neutral-900">
-                                {money(i.ultimoPrecio)}
+                                {porPieza(i.porUnidad)}
                               </span>
+                              {i.contenido > 1 && (
+                                <span className="block text-[10px] text-neutral-600">
+                                  {money(i.precioPaquete)} el paquete de {i.contenido}
+                                </span>
+                              )}
                               {i.cuantosLoVenden > 1 && (
                                 <span
                                   className={`ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded ${
@@ -274,7 +292,8 @@ export default function ProveedoresPage() {
         <>
           <p className="text-sm text-neutral-700">
             Insumos que le compras a más de un proveedor, ordenados por lo que te puedes ahorrar.
-            El precio es <b>por unidad de compra</b>, que es lo único comparable entre lugares.
+            El precio es <b>por pieza</b> (o por gramo, o por ml), que es lo único comparable: un
+            paquete de 40 tenedores a $12 sale más barato que uno de 25 a $8.
           </p>
 
           {comparables.length === 0 ? (
@@ -293,7 +312,7 @@ export default function ProveedoresPage() {
                     <h2 className="font-bold text-neutral-900">{c.nombre}</h2>
                     {c.ahorro > 0 && (
                       <span className="text-xs font-bold text-green-800 bg-green-50 border border-green-200 px-2 py-0.5 rounded-lg">
-                        te ahorras {money(c.ahorro)} por unidad
+                        te ahorras {porPieza(c.ahorro)} por {c.unidad || 'unidad'}
                       </span>
                     )}
                   </div>
@@ -315,16 +334,21 @@ export default function ProveedoresPage() {
                             {o.proveedor}
                           </span>
                           <span className="block text-[11px] text-neutral-600">
-                            {o.compras} compra{o.compras === 1 ? '' : 's'} · promedio{' '}
-                            {money(o.promedio)}
+                            {o.contenido > 1
+                              ? `${money(o.precioPaquete)} el paquete de ${o.contenido} · `
+                              : ''}
+                            {o.compras} compra{o.compras === 1 ? '' : 's'}
                           </span>
                         </span>
                         <span
-                          className={`font-bold tabular-nums shrink-0 ${
+                          className={`font-bold tabular-nums shrink-0 text-right ${
                             o.esElMasBarato ? 'text-green-800' : 'text-neutral-900'
                           }`}
                         >
-                          {money(o.ultimoPrecio)}
+                          {porPieza(o.porUnidad)}
+                          <span className="block text-[10px] font-normal text-neutral-600">
+                            por {c.unidad || 'unidad'}
+                          </span>
                         </span>
                       </li>
                     ))}

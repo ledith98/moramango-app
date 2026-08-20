@@ -46,9 +46,19 @@ export interface Proveedor {
 export interface PrecioProveedor {
   idProveedor: string;
   proveedor: string;
-  /** Precio por unidad de compra de la última vez */
-  ultimoPrecio: number;
-  /** Promedio de todo lo que se le ha comprado de ese insumo */
+  /**
+   * Lo que cuesta la UNIDAD DE RECETA (la pieza, el gramo, el ml).
+   *
+   * Es lo único comparable entre lugares: un paquete de 40 tenedores a $12
+   * y uno de 25 a $8 no se pueden enfrentar como $12 contra $8 — el
+   * segundo se ve más barato y es más caro ($0.30 contra $0.32 la pieza).
+   */
+  porUnidad: number;
+  /** Lo que costó el paquete completo, para reconocer la compra */
+  precioPaquete: number;
+  /** Cuántas unidades de receta traía ese paquete */
+  contenido: number;
+  /** Promedio por unidad de receta de todo lo que se le ha comprado */
   promedio: number;
   compras: number;
   ultimaFecha: string;
@@ -136,9 +146,12 @@ export async function guardarProveedor(
 /**
  * A cómo sale cada insumo con cada proveedor, sacado del historial.
  *
- * Se compara el precio por UNIDAD DE COMPRA, que es lo único comparable:
- * tres kilos a $150 y un kilo a $55 solo se pueden enfrentar como $50 y
- * $55 el kilo.
+ * Se compara el precio por UNIDAD DE RECETA —la pieza, el gramo, el ml—
+ * y no el del paquete. Un paquete de 40 tenedores a $12 y uno de 25 a $8
+ * no se pueden enfrentar como $12 contra $8: el de $8 parece más barato y
+ * sale más caro ($0.32 la pieza contra $0.30). Cada compra guarda cuánto
+ * traía SU paquete, así que la cuenta sale aunque las presentaciones
+ * cambien entre lugares.
  *
  * @param compras filas de Compras_Insumos
  * @param nombreProveedor  id → nombre, para las compras que ya traen ID
@@ -151,10 +164,19 @@ export function preciosPorInsumo(
 
   for (const c of compras) {
     const idBib = (c.ID_Biblioteca || '').toString().trim();
-    const precio = parseFloat(c.Precio_Unidad_Compra) || 0;
-    if (!idBib || precio <= 0) continue;
+    if (!idBib) continue;
 
-    // La compra puede traer el ID (nuevas) o solo el texto (viejas)
+    // Costo_Unidad_Receta ya viene calculado con la equivalencia de ESA
+    // compra. Si falta (compras viejas), se reconstruye.
+    const cantidad = parseFloat(c.Cantidad_Compra) || 0;
+    const equivalencia = parseFloat(c.Equivalencia) || 0;
+    const precioPaquete = parseFloat(c.Precio_Unidad_Compra) || 0;
+    let porUnidad = parseFloat(c.Costo_Unidad_Receta) || 0;
+    if (porUnidad <= 0 && precioPaquete > 0 && equivalencia > 0) {
+      porUnidad = precioPaquete / equivalencia;
+    }
+    if (porUnidad <= 0) continue;
+
     const idProv = (c.ID_Proveedor || '').toString().trim();
     const texto = (c.Donde || '').toString().trim();
     const nombre = idProv ? (nombreProveedor.get(idProv) ?? texto) : texto;
@@ -166,7 +188,9 @@ export function preciosPorInsumo(
     const actual = grupo.get(clave) ?? {
       idProveedor: idProv,
       proveedor: nombre,
-      ultimoPrecio: 0,
+      porUnidad: 0,
+      precioPaquete: 0,
+      contenido: 0,
       promedio: 0,
       compras: 0,
       ultimaFecha: '',
@@ -174,10 +198,13 @@ export function preciosPorInsumo(
       suma: 0,
     };
     actual.compras += 1;
-    actual.suma += precio;
+    actual.suma += porUnidad;
     // El historial viene en orden de captura; la última gana
-    actual.ultimoPrecio = precio;
+    actual.porUnidad = porUnidad;
+    actual.precioPaquete = precioPaquete;
+    actual.contenido = equivalencia;
     actual.ultimaFecha = (c.Fecha || '').toString();
+    void cantidad;
     grupo.set(clave, actual);
   }
 
@@ -186,18 +213,20 @@ export function preciosPorInsumo(
     const lista = [...grupo.values()].map((v) => ({
       idProveedor: v.idProveedor,
       proveedor: v.proveedor,
-      ultimoPrecio: Math.round(v.ultimoPrecio * 100) / 100,
-      promedio: Math.round((v.suma / v.compras) * 100) / 100,
+      porUnidad: Math.round(v.porUnidad * 10000) / 10000,
+      precioPaquete: Math.round(v.precioPaquete * 100) / 100,
+      contenido: v.contenido,
+      promedio: Math.round((v.suma / v.compras) * 10000) / 10000,
       compras: v.compras,
       ultimaFecha: v.ultimaFecha,
       esElMasBarato: false,
     }));
     // Marcar el más barato solo tiene sentido si hay con quién comparar
     if (lista.length > 1) {
-      const min = Math.min(...lista.map((x) => x.ultimoPrecio));
-      for (const x of lista) x.esElMasBarato = x.ultimoPrecio === min;
+      const min = Math.min(...lista.map((x) => x.porUnidad));
+      for (const x of lista) x.esElMasBarato = x.porUnidad === min;
     }
-    lista.sort((a, b) => a.ultimoPrecio - b.ultimoPrecio);
+    lista.sort((a, b) => a.porUnidad - b.porUnidad);
     salida.set(idBib, lista);
   }
   return salida;

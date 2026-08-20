@@ -245,7 +245,7 @@ export async function PATCH(req: NextRequest) {
     (session.user as { email?: string }).email ||
     '';
 
-  const { id, accion, cantidadCompra, precioTotal, stockPrevio, pagadoConCaja, pagadoCon, fechaCompraISO, donde, cantidad, valor, fechaISO, fila, lecturas } =
+  const { id, accion, cantidadCompra, precioTotal, stockPrevio, pagadoConCaja, pagadoCon, fechaCompraISO, donde, equivalenciaCompra, cantidad, valor, fechaISO, fila, lecturas } =
     await req.json();
   const ACCIONES = ['compra', 'conteo', 'ajustar', 'status', 'uso', 'stock', 'fechaCompra', 'borrarCompra', 'conteoRapido'];
   if (!accion || !ACCIONES.includes(accion)) {
@@ -386,7 +386,20 @@ export async function PATCH(req: NextRequest) {
 
     // a) Sumar al stock, convirtiendo compra → receta. Las celdas del
     // activo en un solo viaje a Google.
-    const enReceta = aUnidadesReceta(cant, equivalencia);
+    /**
+     * Cuánto trae el paquete ESTA VEZ.
+     *
+     * El mismo insumo se vende en presentaciones distintas según el lugar:
+     * un paquete de 40 tenedores en uno y de 25 en otro. La equivalencia
+     * del catálogo es la de siempre, pero si esta compra vino en otra
+     * presentación hay que usar la de la compra — si no, se suma mal al
+     * inventario y el costo por pieza sale falso, que es justo lo que
+     * hace imposible comparar proveedores.
+     */
+    const equivCompra = parseFloat(equivalenciaCompra);
+    const equivUsada = !isNaN(equivCompra) && equivCompra > 0 ? equivCompra : equivalencia;
+
+    const enReceta = aUnidadesReceta(cant, equivUsada);
     const nuevoStock = redondear(base + enReceta, 3);
     const celdas: Record<number, string | number> = {
       [COL_ACT.stock]: nuevoStock,
@@ -425,8 +438,11 @@ export async function PATCH(req: NextRequest) {
     const celdasBib: Record<number, string | number> = {};
     if (conPrecio) {
       precioPorUnidadCompra = redondear(precio / cant, 2);
-      celdasBib[COL_BIB.ultimoPrecio] = precioPorUnidadCompra;
-      costoReceta = costoPorUnidadReceta(precioPorUnidadCompra, equivalencia);
+      // El "último precio" del catálogo solo se mueve si la presentación
+      // fue la de siempre: guardar ahí el precio de un paquete distinto
+      // haría que el costo de todas las recetas saliera mal.
+      if (equivUsada === equivalencia) celdasBib[COL_BIB.ultimoPrecio] = precioPorUnidadCompra;
+      costoReceta = costoPorUnidadReceta(precioPorUnidadCompra, equivUsada);
     }
     if (lugar) celdasBib[COL_BIB.proveedor] = lugar;
     if (Object.keys(celdasBib).length > 0) {
@@ -444,7 +460,8 @@ export async function PATCH(req: NextRequest) {
       bib.Unidad_Compra || '',
       conPrecio ? redondear(precio, 2) : '',
       conPrecio ? precioPorUnidadCompra : '',
-      equivalencia,
+      // La de ESTA compra: es la que explica el costo por pieza guardado
+      equivUsada,
       costoReceta ?? '',
       lugar,
       quien,
@@ -502,6 +519,9 @@ export async function PATCH(req: NextRequest) {
         `fecha ${iso}`,
         hayPrevio ? `corrigió lo que había a ${redondear(previo, 3)}` : '',
         bolsa ? `pagado con ${bolsa === CUENTA_EFECTIVO ? 'efectivo del cajón' : 'la cuenta'}` : '',
+        equivUsada !== equivalencia
+          ? `paquete de ${equivUsada} ${bib.Unidad_Receta || ''} (el de siempre trae ${equivalencia})`.trim()
+          : '',
         `queda ${nuevoStock} ${bib.Unidad_Receta || ''}`.trim(),
       ]
         .filter(Boolean)

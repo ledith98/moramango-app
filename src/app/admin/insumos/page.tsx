@@ -246,6 +246,11 @@ export default function InsumosPage() {
   const [compraDe, setCompraDe] = useState<ItemActivo | null>(null);
   const [conteoDe, setConteoDe] = useState<ItemActivo | null>(null);
   const [conteoCantidad, setConteoCantidad] = useState('');
+  /** Contar por paquetes en vez de por pieza suelta */
+  const [conteoPorPaquete, setConteoPorPaquete] = useState(false);
+  const [conteoPaquetes, setConteoPaquetes] = useState('');
+  const [conteoSueltas, setConteoSueltas] = useState('');
+  const [conteoTraeCada, setConteoTraeCada] = useState('');
   const [compraCantidad, setCompraCantidad] = useState('');
   const [compraPrecio, setCompraPrecio] = useState('');
   /** Lo que habia antes de la compra; vacio = lo que dice el sistema */
@@ -254,6 +259,8 @@ export default function InsumosPage() {
   const [compraPagadoCon, setCompraPagadoCon] = useState<'' | 'Efectivo' | 'Digital'>('');
   /** Cuando se hizo la compra; arranca en hoy pero se puede cambiar */
   const [compraFecha, setCompraFecha] = useState('');
+  /** Cuanto trae el paquete ESTA VEZ; vacio = la presentacion de siempre */
+  const [compraEquiv, setCompraEquiv] = useState('');
   /** Donde se surtio; arranca en el proveedor que ya tenia el insumo */
   const [compraDonde, setCompraDonde] = useState('');
   const [historial, setHistorial] = useState<CompraHistorial[] | null>(null);
@@ -448,6 +455,7 @@ El stock quedará igual a lo que contaste.`)) return;
     setCompraPrevio('');
     setCompraPagadoCon('');
     setCompraFecha(hoyISO());
+    setCompraEquiv('');
     setCompraDonde(a.proveedor || '');
     setError('');
   }
@@ -465,6 +473,7 @@ El stock quedará igual a lo que contaste.`)) return;
       stockPrevio: compraPrevio.trim(),
       pagadoCon: compraPagadoCon,
       fechaCompraISO: compraFecha,
+      equivalenciaCompra: compraEquiv.trim(),
       donde: compraDonde.trim(),
     });
     if (ok) setCompraDe(null);
@@ -479,13 +488,40 @@ El stock quedará igual a lo que contaste.`)) return;
   function abrirConteo(a: ItemActivo) {
     setConteoDe(a);
     setConteoCantidad('');
+    // Se arranca por unidad de receta: es como se cuenta casi todo. El
+    // modo por paquete se elige cuando toca, y trae la presentación del
+    // catálogo ya puesta.
+    setConteoPorPaquete(false);
+    setConteoPaquetes('');
+    setConteoSueltas('');
+    setConteoTraeCada(String(a.equivalencia));
     setError('');
+  }
+
+  /**
+   * Lo contado, venga por pieza o por paquete.
+   *
+   * Contar 240 tenedores de uno en uno no lo hace nadie: se cuentan "6
+   * paquetes y 12 sueltos". La multiplicación la hace la app, que es donde
+   * no se equivoca.
+   */
+  function totalContado(): number | null {
+    if (!conteoDe) return null;
+    if (!conteoPorPaquete) {
+      const n = parseFloat(conteoCantidad.replace(',', '.'));
+      return isNaN(n) || n < 0 ? null : n;
+    }
+    const paq = parseFloat(conteoPaquetes.replace(',', '.'));
+    const sueltas = parseFloat(conteoSueltas.replace(',', '.')) || 0;
+    const cada = parseFloat(conteoTraeCada.replace(',', '.')) || conteoDe.equivalencia;
+    if (isNaN(paq) || paq < 0 || cada <= 0) return null;
+    return Math.round((paq * cada + sueltas) * 1000) / 1000;
   }
 
   async function guardarConteoDeUno() {
     if (!conteoDe) return;
-    const num = parseFloat(conteoCantidad.replace(',', '.'));
-    if (isNaN(num) || num < 0) {
+    const num = totalContado();
+    if (num === null) {
       setError('Escribe cuánto tienes');
       return;
     }
@@ -1483,7 +1519,10 @@ El stock quedará igual a lo que contaste.`)) return;
           se escribe, el número final parece salido de la nada. */}
       {compraDe && (() => {
         const cant = parseFloat(compraCantidad.replace(',', '.')) || 0;
-        const entra = cant * compraDe.equivalencia;
+        // La presentación de esta compra manda sobre la del catálogo
+        const eq = parseFloat(compraEquiv.replace(',', '.'));
+        const equivUsada = !isNaN(eq) && eq > 0 ? eq : compraDe.equivalencia;
+        const entra = cant * equivUsada;
         // Lo que había antes: normalmente lo del sistema, pero al llegar
         // mercancía es cuando se ve el estante y se puede corregir.
         const previoEscrito = compraPrevio.trim();
@@ -1494,7 +1533,19 @@ El stock quedará igual a lo que contaste.`)) return;
         const pagado = parseFloat(compraPrecio.replace(',', '.')) || 0;
         const porUnidad = cant > 0 && pagado > 0 ? pagado / cant : 0;
         const antes = compraDe.ultimoPrecioCompra || 0;
-        const dif = porUnidad > 0 && antes > 0 ? ((porUnidad - antes) / antes) * 100 : null;
+        /**
+         * Subió o bajó, medido POR PIEZA y no por paquete.
+         *
+         * Comparar paquetes engaña cuando cambia la presentación: 25 pz a
+         * $8 contra 40 a $12 se ve como una baja del 33% y en realidad la
+         * pieza subió de $0.30 a $0.32.
+         */
+        const antesPorPieza = compraDe.equivalencia > 0 ? antes / compraDe.equivalencia : 0;
+        const ahoraPorPieza = equivUsada > 0 ? porUnidad / equivUsada : 0;
+        const dif =
+          ahoraPorPieza > 0 && antesPorPieza > 0
+            ? ((ahoraPorPieza - antesPorPieza) / antesPorPieza) * 100
+            : null;
         // Lo que costaría al precio de la vez pasada, para ofrecerlo de un toque
         const sugerido = antes > 0 && cant > 0 ? Math.round(antes * cant * 100) / 100 : 0;
         const yaEsElSugerido = sugerido > 0 && Math.abs(pagado - sugerido) < 0.005;
@@ -1558,6 +1609,40 @@ El stock quedará igual a lo que contaste.`)) return;
                 {compraDe.unidadCompra}
               </span>
             </div>
+
+            {/* ── La presentación de ESTA compra ──
+                El mismo insumo viene en tamaños distintos según el lugar:
+                40 tenedores en uno y 25 en otro. Antes había que ir a
+                cambiar el insumo antes de registrar, y eso desajustaba
+                todas las recetas. Aquí se dice y ya. */}
+            <label className="block text-sm font-semibold text-neutral-800 mb-1 mt-4">
+              ¿Cuánto trae cada {compraDe.unidadCompra || 'paquete'}?
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="any"
+                value={compraEquiv}
+                onChange={(e) => setCompraEquiv(e.target.value)}
+                placeholder={String(compraDe.equivalencia)}
+                className={inputCls}
+              />
+              <span className="text-sm font-bold text-neutral-700 whitespace-nowrap">
+                {compraDe.unidadReceta}
+              </span>
+            </div>
+            <p className="text-xs text-neutral-600 -mt-1 mb-1">
+              {(() => {
+                const e = parseFloat(compraEquiv.replace(',', '.'));
+                const distinta = !isNaN(e) && e > 0 && e !== compraDe.equivalencia;
+                if (!distinta) {
+                  return `Normalmente trae ${compraDe.equivalencia} ${compraDe.unidadReceta}. Déjalo así si es el de siempre; cámbialo si este proveedor lo maneja de otro tamaño.`;
+                }
+                return `Ojo: el de siempre trae ${compraDe.equivalencia}. Se usará ${e} solo para esta compra — el insumo no se toca.`;
+              })()}
+            </p>
 
             <label className="block text-sm font-semibold text-neutral-800 mb-1 mt-4">
               ¿Cuánto pagaste en total?{' '}
@@ -1703,7 +1788,7 @@ El stock quedará igual a lo que contaste.`)) return;
                   </b>
                   <span className="text-neutral-600">
                     {' '}
-                    (1 {compraDe.unidadCompra} = {compraDe.equivalencia} {compraDe.unidadReceta})
+                    (1 {compraDe.unidadCompra} = {equivUsada} {compraDe.unidadReceta})
                   </span>
                 </p>
                 <p className="text-base text-neutral-900 font-semibold">
@@ -1718,6 +1803,16 @@ El stock quedará igual a lo que contaste.`)) return;
                     {redondo(previoNum)} {compraDe.unidadReceta}). Queda anotado como conteo de hoy.
                   </p>
                 )}
+                {porUnidad > 0 && equivUsada > 0 && (
+                  <p className="text-sm text-green-800 font-semibold pt-1">
+                    Te sale a{' '}
+                    {(() => {
+                      const u = porUnidad / equivUsada;
+                      return u >= 1 ? `$${u.toFixed(2)}` : `$${u.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}`;
+                    })()}{' '}
+                    por {compraDe.unidadReceta} — con eso comparas contra otros proveedores
+                  </p>
+                )}
                 {porUnidad > 0 && (
                   <p className="text-sm text-neutral-800 pt-1">
                     Te sale a <b>${(Math.round(porUnidad * 100) / 100).toFixed(2)}</b> por{' '}
@@ -1725,8 +1820,8 @@ El stock quedará igual a lo que contaste.`)) return;
                     {dif !== null && Math.abs(dif) >= 1 && (
                       <span className={`font-bold ${dif > 0 ? 'text-red-600' : 'text-green-700'}`}>
                         {' '}
-                        · {dif > 0 ? 'subió' : 'bajó'} {Math.abs(Math.round(dif))}% contra la vez
-                        pasada (${antes})
+                        · por {compraDe.unidadReceta} {dif > 0 ? 'subió' : 'bajó'}{' '}
+                        {Math.abs(Math.round(dif))}% contra la vez pasada
                       </span>
                     )}
                   </p>
@@ -1755,9 +1850,11 @@ El stock quedará igual a lo que contaste.`)) return;
           la realidad se le desvía por mermas, derrames o capturas que
           faltaron. Por eso lo importante es ver la diferencia. */}
       {conteoDe && (() => {
-        const escrito = conteoCantidad.trim();
-        const num = parseFloat(escrito.replace(',', '.'));
-        const valido = escrito !== '' && !isNaN(num) && num >= 0;
+        // Vale igual si se contó por pieza o por paquete
+        const total = totalContado();
+        const escrito = conteoPorPaquete ? conteoPaquetes.trim() : conteoCantidad.trim();
+        const valido = escrito !== '' && total !== null;
+        const num = total ?? 0;
         const dif = valido ? num - conteoDe.stockActual : null;
 
         return (
@@ -1774,31 +1871,124 @@ El stock quedará igual a lo que contaste.`)) return;
               lo que tú cuentes.
             </p>
 
-            <label className="block text-sm font-semibold text-neutral-800 mb-1">
-              ¿Cuánto tienes?
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                inputMode="decimal"
-                min="0"
-                step="any"
-                value={conteoCantidad}
-                onChange={(e) => setConteoCantidad(e.target.value)}
-                placeholder={String(conteoDe.stockActual)}
-                className={inputCls}
-                autoFocus
-              />
-              <span className="text-sm font-bold text-neutral-700 whitespace-nowrap">
-                {conteoDe.unidadReceta}
-              </span>
+            {/* Contar por paquetes: nadie cuenta 240 tenedores de uno en
+                uno, cuenta "6 paquetes y 12 sueltos". La cuenta la hace la
+                app, que es donde no se equivoca. */}
+            <div className="flex flex-wrap gap-1 bg-neutral-100 p-1 rounded-xl w-fit max-w-full mb-2">
+              {(
+                [
+                  [false, `Por ${conteoDe.unidadReceta}`],
+                  [true, `Por ${conteoDe.unidadCompra || 'paquete'}`],
+                ] as const
+              ).map(([v, etiqueta]) => (
+                <button
+                  key={String(v)}
+                  onClick={() => {
+                    setConteoPorPaquete(v);
+                    if (v && !conteoTraeCada) setConteoTraeCada(String(conteoDe.equivalencia));
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
+                    conteoPorPaquete === v ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-700'
+                  }`}
+                >
+                  {etiqueta}
+                </button>
+              ))}
             </div>
+
+            {!conteoPorPaquete ? (
+              <>
+                <label className="block text-sm font-semibold text-neutral-800 mb-1">
+                  ¿Cuánto tienes?
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="any"
+                    value={conteoCantidad}
+                    onChange={(e) => setConteoCantidad(e.target.value)}
+                    placeholder={String(conteoDe.stockActual)}
+                    className={inputCls}
+                    autoFocus
+                  />
+                  <span className="text-sm font-bold text-neutral-700 whitespace-nowrap">
+                    {conteoDe.unidadReceta}
+                  </span>
+                </div>
+              </>
+            ) : (
+              (() => {
+                const paq = parseFloat(conteoPaquetes.replace(',', '.')) || 0;
+                const sueltas = parseFloat(conteoSueltas.replace(',', '.')) || 0;
+                const cada = parseFloat(conteoTraeCada.replace(',', '.')) || conteoDe.equivalencia;
+                const total = Math.round((paq * cada + sueltas) * 1000) / 1000;
+                return (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs font-semibold text-neutral-800 mb-1">
+                          {conteoDe.unidadCompra || 'Paquetes'} enteros
+                        </label>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          min="0"
+                          step="any"
+                          value={conteoPaquetes}
+                          onChange={(e) => setConteoPaquetes(e.target.value)}
+                          placeholder="0"
+                          className={inputCls}
+                          autoFocus
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-neutral-800 mb-1">
+                          Cada uno trae
+                        </label>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          min="0"
+                          step="any"
+                          value={conteoTraeCada}
+                          onChange={(e) => setConteoTraeCada(e.target.value)}
+                          placeholder={String(conteoDe.equivalencia)}
+                          className={inputCls}
+                        />
+                      </div>
+                    </div>
+                    <label className="block text-xs font-semibold text-neutral-800 mb-1 mt-2">
+                      Y sueltos, fuera de paquete ({conteoDe.unidadReceta})
+                    </label>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      step="any"
+                      value={conteoSueltas}
+                      onChange={(e) => setConteoSueltas(e.target.value)}
+                      placeholder="0"
+                      className={inputCls}
+                    />
+                    <p className="text-sm font-semibold text-neutral-900 mt-2 bg-neutral-50 rounded-xl px-3 py-2">
+                      {paq} × {cada}
+                      {sueltas > 0 ? ` + ${sueltas}` : ''} = <b>{total}</b> {conteoDe.unidadReceta}
+                    </p>
+                  </>
+                );
+              })()
+            )}
 
             {/* Atajos para lo que más pasa: se acabó, o quedó vacío y hay
                 que teclear de cero sin borrar dígito por dígito. */}
             <div className="flex flex-wrap gap-2 mt-2">
               <button
-                onClick={() => setConteoCantidad('0')}
+                onClick={() => {
+                  setConteoPorPaquete(false);
+                  setConteoCantidad('0');
+                }}
                 className="text-xs font-bold px-3 py-2 rounded-lg bg-red-50 text-red-700 active:scale-95"
               >
                 Se acabó (0)
@@ -1811,7 +2001,11 @@ El stock quedará igual a lo que contaste.`)) return;
               </button>
               {conteoCantidad !== '' && (
                 <button
-                  onClick={() => setConteoCantidad('')}
+                  onClick={() => {
+                    setConteoCantidad('');
+                    setConteoPaquetes('');
+                    setConteoSueltas('');
+                  }}
                   className="text-xs font-bold px-3 py-2 rounded-lg bg-neutral-100 text-neutral-700 active:scale-95"
                 >
                   🧹 Borrar y empezar de nuevo

@@ -122,6 +122,12 @@ export default function DineroPage() {
   const [motivoMov, setMotivoMov] = useState('');
   const [fechaMov, setFechaMov] = useState(diaISO(0));
   const [insumoMov, setInsumoMov] = useState('');
+  /**
+   * Qué movimientos se ven. Por omisión los del periodo en el que estás
+   * parada: ver todo lo que ha salido desde siempre no dice nada y tapa
+   * lo del día, que es lo que se está revisando.
+   */
+  const [verMovs, setVerMovs] = useState<'periodo' | 'todos'>('periodo');
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -700,10 +706,70 @@ export default function DineroPage() {
 
         {error && <p className="text-sm text-red-600">{error}</p>}
 
-        {cuenta && cuenta.movimientos.length > 0 && (
-          <>
-            <ul className="space-y-1.5">
-              {cuenta.movimientos.map((m) => (
+        {cuenta && cuenta.movimientos.length > 0 && (() => {
+          /**
+           * En el cajón se ve HOY, que es lo que se está cortando; en la
+           * cuenta, el rango elegido. "Todos" queda a un toque para cuando
+           * se busca algo viejo.
+           */
+          const hoy = diaISO(0);
+          const delPeriodo =
+            verMovs === 'todos'
+              ? cuenta.movimientos
+              : pestana === 'efectivo'
+                ? cuenta.movimientos.filter((m) => m.fecha === hoy)
+                : cuenta.movimientos;
+          // Dos textos: uno para titular la lista y otro que cierre bien la
+          // frase de "Sacaste $X ___", que con uno solo salía torcida.
+          const etiqueta =
+            verMovs === 'todos'
+              ? 'todos'
+              : pestana === 'efectivo'
+                ? 'los de hoy'
+                : `del ${desde.slice(5)} al ${hasta.slice(5)}`;
+          const cuando =
+            verMovs === 'todos'
+              ? 'en total'
+              : pestana === 'efectivo'
+                ? 'hoy'
+                : `del ${desde.slice(5)} al ${hasta.slice(5)}`;
+          const sacado = delPeriodo
+            .filter((m) => m.tipo === 'Salida')
+            .reduce((t, m) => t + m.monto, 0);
+
+          return (
+            <>
+              <div className="flex flex-wrap items-center gap-2 border-t border-neutral-100 pt-3">
+                <p className="text-xs font-semibold text-neutral-800">
+                  Movimientos: <span className="font-normal">{etiqueta}</span>
+                </p>
+                <button
+                  onClick={() => setVerMovs((v) => (v === 'todos' ? 'periodo' : 'todos'))}
+                  className="ml-auto text-xs font-bold px-3 py-1.5 rounded-lg bg-neutral-100 text-neutral-800 active:scale-95"
+                >
+                  {verMovs === 'todos' ? 'Solo este periodo' : 'Ver todos'}
+                </button>
+              </div>
+
+              {sacado > 0 && (
+                <p className="text-sm font-semibold text-red-700">
+                  Sacaste {money(sacado)} {cuando}
+                </p>
+              )}
+
+              {delPeriodo.length === 0 ? (
+                <p className="text-sm text-neutral-700">
+                  No hay movimientos {cuando === 'en total' ? 'todavía' : cuando}.{' '}
+                  <button
+                    onClick={() => setVerMovs('todos')}
+                    className="font-bold underline text-marron"
+                  >
+                    Ver todos
+                  </button>
+                </p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {delPeriodo.map((m) => (
                 <li
                   key={m.fila}
                   className="flex items-center gap-2 text-sm bg-neutral-50 rounded-xl px-3 py-2"
@@ -734,13 +800,15 @@ export default function DineroPage() {
                   </button>
                 </li>
               ))}
-            </ul>
-            <p className="text-xs text-neutral-600">
-              Se muestran los del periodo elegido en la pestaña de la cuenta. Los 💵 cuentan en el
-              corte del cajón; los 🏦, en el saldo de la cuenta.
-            </p>
-          </>
-        )}
+                </ul>
+              )}
+              <p className="text-xs text-neutral-600">
+                Los 💵 cuentan en el corte del cajón; los 🏦, en el saldo de la cuenta.
+                {verMovs === 'periodo' && pestana === 'cuenta' && ' El periodo se cambia arriba.'}
+              </p>
+            </>
+          );
+        })()}
       </div>
     </div>
   );

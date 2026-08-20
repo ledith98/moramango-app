@@ -31,6 +31,22 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-20',
+    tipo: 'mejora',
+    titulo: 'Los movimientos de dinero se ven por periodo, no todos revueltos',
+    detalle:
+      'En Dinero, la lista de entradas y salidas mostraba todo lo del mes aunque estuvieras cortando el cajón de hoy. Ahora en el cajón ves los de hoy — con su “Sacaste $450 hoy” — y en la cuenta los del periodo que elijas. El botón “Ver todos” sigue ahí para cuando busques algo viejo.',
+    donde: 'Dinero',
+  },
+  {
+    fecha: '2026-08-20',
+    tipo: 'nuevo',
+    titulo: 'Anotar qué vende un proveedor, aunque todavía no le compres',
+    detalle:
+      'En Proveedores, cada tarjeta trae “+ Insumo”: eliges el insumo, la marca, cómo viene, cuánto trae y en cuánto lo tienen. Queda anotado con la etiqueta “aún sin comprar” y ya cuenta para comparar precios — que es cuando más sirve, para saber a dónde ir antes de salir.',
+    donde: 'Proveedores',
+  },
+  {
+    fecha: '2026-08-20',
     tipo: 'nuevo',
     titulo: 'Un insumo puede comprarse en varias presentaciones y marcas',
     detalle:

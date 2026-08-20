@@ -13,6 +13,7 @@ import { anotar } from '@/lib/bitacora';
 import { getSheetData } from '@/lib/googleSheets';
 import { HOJA_BIBLIOTECA, HOJA_COMPRAS } from '@/lib/inventario';
 import { parsearFechaHora } from '@/lib/pedidoFecha';
+import { leerPresentaciones } from '@/lib/presentaciones';
 import {
   guardarProveedor,
   idDeProveedor,
@@ -30,10 +31,11 @@ export async function GET() {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
-  const [proveedores, compras, biblioteca] = await Promise.all([
+  const [proveedores, compras, biblioteca, presentaciones] = await Promise.all([
     leerProveedores(),
     getSheetData(HOJA_COMPRAS, { crudo: true }).catch(() => []),
     getSheetData(HOJA_BIBLIOTECA, { crudo: true }).catch(() => []),
+    leerPresentaciones().catch(() => []),
   ]);
 
   const nombrePorId = new Map(proveedores.map((p) => [p.id, p.nombre]));
@@ -62,19 +64,38 @@ export async function GET() {
       .sort()
       .pop();
 
-    // Qué insumos, con su último precio y si es el más barato del mercado
+    /**
+     * Qué insumos le compras.
+     *
+     * Sale de dos lados: de lo que ya le compraste, y de las
+     * presentaciones que declaraste que se consiguen con él. Lo segundo
+     * permite anotar "aquí venden esto" antes de la primera compra, que
+     * es justo cuando sirve para decidir a dónde ir.
+     */
+    const declarados = presentaciones
+      .filter((x) => x.idProveedor === p.id)
+      .map((x) => x.idBiblioteca);
     const insumos = [
-      ...new Set(suyas.map((c) => (c.ID_Biblioteca || '').trim()).filter(Boolean)),
+      ...new Set(
+        [...suyas.map((c) => (c.ID_Biblioteca || '').trim()), ...declarados].filter(Boolean)
+      ),
     ].map((idBib) => {
       const opciones = porInsumo.get(idBib) ?? [];
       const mio = opciones.find((o) => (o.idProveedor || normalizar(o.proveedor)) === (p.id || normalizar(p.nombre)))
         ?? opciones.find((o) => normalizar(o.proveedor) === normalizar(p.nombre));
+      // Sin compra todavía, vale el precio que se declaró en la presentación
+      const suPres = presentaciones.find(
+        (x) => x.idProveedor === p.id && x.idBiblioteca === idBib && x.activa
+      );
       return {
         id: idBib,
         nombre: nombreInsumo.get(idBib) ?? idBib,
-        porUnidad: mio?.porUnidad ?? 0,
-        precioPaquete: mio?.precioPaquete ?? 0,
-        contenido: mio?.contenido ?? 0,
+        porUnidad: mio?.porUnidad ?? suPres?.porUnidad ?? 0,
+        precioPaquete: mio?.precioPaquete ?? suPres?.ultimoPrecio ?? 0,
+        contenido: mio?.contenido ?? suPres?.contenido ?? 0,
+        marca: suPres?.marca ?? '',
+        /** true = todavía no se le ha comprado; el precio es el declarado */
+        soloDeclarado: !mio,
         esElMasBarato: mio?.esElMasBarato ?? false,
         /** Cuántos proveedores distintos venden esto: sin al menos dos, no hay comparación */
         cuantosLoVenden: opciones.length,
@@ -107,7 +128,24 @@ export async function GET() {
     }))
     .sort((a, b) => b.ahorro - a.ahorro);
 
-  return NextResponse.json({ proveedores: resumen, comparables });
+  // El catálogo, para poder decir "aquí venden esto" sin salir de la pantalla
+  const catalogo = biblioteca
+    .filter(
+      (b) =>
+        b.ID_Biblioteca &&
+        (b.Nombre || '').trim() &&
+        (b.Eliminado || '').toLowerCase() !== 'si'
+    )
+    .map((b) => ({
+      id: b.ID_Biblioteca,
+      nombre: (b.Nombre || '').trim(),
+      unidadReceta: (b.Unidad_Receta || '').trim(),
+      unidadCompra: (b.Unidad_Compra || '').trim(),
+      equivalencia: parseFloat(b.Equivalencia) || 0,
+    }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+
+  return NextResponse.json({ proveedores: resumen, comparables, catalogo });
 }
 
 export async function POST(req: NextRequest) {

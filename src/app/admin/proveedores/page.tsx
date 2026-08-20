@@ -33,8 +33,19 @@ interface InsumoDeProveedor {
   porUnidad: number;
   precioPaquete: number;
   contenido: number;
+  marca: string;
+  /** true = anotado como que aqui lo venden, pero aun sin comprarle */
+  soloDeclarado: boolean;
   esElMasBarato: boolean;
   cuantosLoVenden: number;
+}
+
+interface InsumoCatalogo {
+  id: string;
+  nombre: string;
+  unidadReceta: string;
+  unidadCompra: string;
+  equivalencia: number;
 }
 
 interface Proveedor {
@@ -77,6 +88,10 @@ export default function ProveedoresPage() {
   const [pestana, setPestana] = useState<'directorio' | 'comparar'>('directorio');
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
   const [comparables, setComparables] = useState<Comparable[]>([]);
+  const [catalogo, setCatalogo] = useState<InsumoCatalogo[]>([]);
+  /** Alta de "aqui venden esto": proveedor al que se le agrega */
+  const [agregarA, setAgregarA] = useState<Proveedor | null>(null);
+  const [insForm, setInsForm] = useState({ id: '', marca: '', unidadCompra: '', contenido: '', ultimoPrecio: '' });
   const [cargando, setCargando] = useState(true);
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState('');
@@ -95,6 +110,7 @@ export default function ProveedoresPage() {
     if (r.ok) {
       setProveedores(d.proveedores ?? []);
       setComparables(d.comparables ?? []);
+      setCatalogo(d.catalogo ?? []);
     } else {
       setError(d.error || 'No se pudo cargar');
     }
@@ -247,6 +263,17 @@ export default function ProveedoresPage() {
                     </div>
                     <div className="flex gap-1.5 shrink-0">
                       <button
+                        onClick={() => {
+                          setAgregarA(p);
+                          setInsForm({ id: '', marca: '', unidadCompra: '', contenido: '', ultimoPrecio: '' });
+                          setError('');
+                        }}
+                        title="Anotar que aquí venden un insumo"
+                        className="text-xs font-bold px-3 py-1.5 rounded-lg bg-marron/10 text-marron active:scale-95"
+                      >
+                        + Insumo
+                      </button>
+                      <button
                         onClick={() => guardar('PATCH', { id: p.id, activo: !p.activo })}
                         disabled={ocupado}
                         title={p.activo ? 'Quitarlo de la lista del día a día' : 'Volver a mostrarlo'}
@@ -290,7 +317,17 @@ export default function ProveedoresPage() {
                       <ul className="space-y-1">
                         {p.insumos.map((i) => (
                           <li key={i.id} className="flex items-center justify-between text-sm gap-2">
-                            <span className="text-neutral-800 truncate">{i.nombre}</span>
+                            <span className="text-neutral-800 truncate min-w-0">
+                              {i.nombre}
+                              {i.marca && i.marca !== 'No aplica' && (
+                                <span className="text-neutral-600"> · {i.marca}</span>
+                              )}
+                              {i.soloDeclarado && (
+                                <span className="ml-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600">
+                                  aún sin comprar
+                                </span>
+                              )}
+                            </span>
                             <span className="shrink-0 tabular-nums text-right">
                               <span className="font-semibold text-neutral-900">
                                 {porPieza(i.porUnidad)}
@@ -396,6 +433,159 @@ export default function ProveedoresPage() {
           )}
         </>
       )}
+
+      {/* Anotar que un proveedor vende un insumo, aunque todavía no se le
+          haya comprado. Es una presentación con su proveedor: lo mismo que
+          se captura al comprar, solo que por adelantado. */}
+      {agregarA && (() => {
+        const ins = catalogo.find((c) => c.id === insForm.id);
+        const contenido = parseFloat(insForm.contenido.replace(',', '.')) || 0;
+        const precio = parseFloat(insForm.ultimoPrecio.replace(',', '.')) || 0;
+        const porUnidad = contenido > 0 && precio > 0 ? precio / contenido : 0;
+        return (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+            <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[90%] overflow-y-auto p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-neutral-900">
+                  ¿Qué venden en {agregarA.nombre}?
+                </h3>
+                <button
+                  onClick={() => {
+                    setAgregarA(null);
+                    setError('');
+                  }}
+                  className="text-neutral-600 text-xl leading-none px-2"
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="text-xs text-neutral-700">
+                Queda anotado aunque todavía no le compres. Es cuando más sirve: para saber a dónde
+                ir antes de salir.
+              </p>
+
+              <label className="block text-sm font-semibold text-neutral-800">Insumo</label>
+              <select
+                value={insForm.id}
+                onChange={(e) => {
+                  const c = catalogo.find((x) => x.id === e.target.value);
+                  setInsForm({
+                    ...insForm,
+                    id: e.target.value,
+                    unidadCompra: c?.unidadCompra ?? '',
+                    contenido: c?.equivalencia ? String(c.equivalencia) : '',
+                  });
+                }}
+                className={inputCls}
+              >
+                <option value="">— elige el insumo —</option>
+                {catalogo.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nombre}
+                  </option>
+                ))}
+              </select>
+
+              <label className="block text-sm font-semibold text-neutral-800">
+                Marca <span className="font-normal text-neutral-600">(o &ldquo;No aplica&rdquo;)</span>
+              </label>
+              <input
+                value={insForm.marca}
+                onChange={(e) => setInsForm({ ...insForm, marca: e.target.value })}
+                placeholder="Ej. Hellmann's"
+                className={inputCls}
+              />
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-semibold text-neutral-800">¿Cómo viene?</label>
+                  <input
+                    value={insForm.unidadCompra}
+                    onChange={(e) => setInsForm({ ...insForm, unidadCompra: e.target.value })}
+                    placeholder="paquete, bote…"
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-neutral-800">
+                    ¿Cuánto trae? {ins?.unidadReceta && `(${ins.unidadReceta})`}
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="any"
+                    value={insForm.contenido}
+                    onChange={(e) => setInsForm({ ...insForm, contenido: e.target.value })}
+                    placeholder="2000"
+                    className={inputCls}
+                  />
+                </div>
+              </div>
+
+              <label className="block text-sm font-semibold text-neutral-800">
+                ¿En cuánto lo tienen? <span className="font-normal text-neutral-600">(opcional)</span>
+              </label>
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="any"
+                value={insForm.ultimoPrecio}
+                onChange={(e) => setInsForm({ ...insForm, ultimoPrecio: e.target.value })}
+                placeholder="lo que cuesta uno"
+                className={inputCls}
+              />
+
+              {porUnidad > 0 && ins && (
+                <p className="text-sm font-semibold text-green-800 bg-green-50 border border-green-200 rounded-xl p-3">
+                  Sale a {porPieza(porUnidad)} por {ins.unidadReceta} — con eso lo comparas contra
+                  los otros proveedores.
+                </p>
+              )}
+
+              {error && <p className="text-sm text-red-600">{error}</p>}
+
+              <button
+                onClick={async () => {
+                  setOcupado(true);
+                  setError('');
+                  const res = await fetch('/api/admin/presentaciones', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      idBiblioteca: insForm.id,
+                      marca: insForm.marca,
+                      unidadCompra: insForm.unidadCompra,
+                      contenido: insForm.contenido,
+                      ultimoPrecio: insForm.ultimoPrecio,
+                      proveedor: agregarA.nombre,
+                    }),
+                  });
+                  const data = await res.json();
+                  setOcupado(false);
+                  if (!res.ok) {
+                    setError(data.error || 'No se pudo guardar');
+                    return;
+                  }
+                  setAgregarA(null);
+                  await cargar();
+                }}
+                disabled={ocupado || !insForm.id || contenido <= 0}
+                className="w-full bg-marron text-white font-bold py-3.5 rounded-xl active:scale-95 disabled:opacity-50"
+              >
+                {ocupado
+                  ? 'Guardando…'
+                  : !insForm.id
+                    ? 'Elige el insumo'
+                    : contenido <= 0
+                      ? 'Falta cuánto trae'
+                      : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Alta y edición comparten formulario: piden lo mismo */}
       {(nuevo || editando) && (

@@ -153,15 +153,15 @@ export async function POST(req: NextRequest) {
   if (!sesion) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
-  const { nombre, contacto, telefono, notas } = await req.json();
+  const { nombre, contacto, telefono, notas, direccion } = await req.json();
   const limpio = (nombre ?? '').toString().trim();
   if (!limpio) {
     return NextResponse.json({ error: 'Escribe el nombre del proveedor' }, { status: 400 });
   }
 
   const id = await idDeProveedor(limpio, quienDe(sesion));
-  if (contacto || telefono || notas) {
-    await guardarProveedor(id, { contacto, telefono, notas });
+  if (contacto || telefono || notas || direccion) {
+    await guardarProveedor(id, { contacto, telefono, notas, direccion });
   }
   return NextResponse.json({ success: true, id });
 }
@@ -171,7 +171,7 @@ export async function PATCH(req: NextRequest) {
   if (!sesion) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
-  const { id, nombre, contacto, telefono, notas, activo } = await req.json();
+  const { id, nombre, contacto, telefono, notas, activo, direccion } = await req.json();
   if (!id) return NextResponse.json({ error: 'Falta el proveedor' }, { status: 400 });
 
   if (nombre !== undefined && !(nombre ?? '').toString().trim()) {
@@ -179,7 +179,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   try {
-    await guardarProveedor(id, { nombre, contacto, telefono, notas, activo });
+    await guardarProveedor(id, { nombre, contacto, telefono, notas, activo, direccion });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 404 });
   }

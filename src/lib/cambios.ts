@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-20',
+    tipo: 'nuevo',
+    titulo: 'Cada proveedor con su ubicación, y botón para abrir Google Maps',
+    detalle:
+      'En Proveedores puedes anotar dónde está cada uno: escribes la dirección o pegas el enlace que comparte Google Maps — las dos sirven. En la tarjeta aparece un botón 📍 que abre Maps: si pegaste el enlace lo abre en el punto exacto, y si escribiste la dirección la busca. Mientras capturas hay un “Probar en Maps” para comprobar que lleva a donde debe antes de guardar.',
+    donde: 'Proveedores',
+  },
+  {
+    fecha: '2026-08-20',
     tipo: 'mejora',
     titulo: 'Los movimientos de dinero se ven por periodo, no todos revueltos',
     detalle:

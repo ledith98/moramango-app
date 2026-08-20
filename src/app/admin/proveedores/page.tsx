@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { enlaceMapa, etiquetaMapa } from '@/lib/mapas';
 
 interface OpcionPrecio {
   idProveedor: string;
@@ -55,6 +56,8 @@ interface Proveedor {
   telefono: string;
   notas: string;
   activo: boolean;
+  /** Direccion escrita o enlace de Google Maps */
+  direccion: string;
   compras: number;
   gastado: number;
   ultimaCompra: string;
@@ -101,7 +104,7 @@ export default function ProveedoresPage() {
 
   const [editando, setEditando] = useState<Proveedor | null>(null);
   const [nuevo, setNuevo] = useState(false);
-  const [form, setForm] = useState({ nombre: '', contacto: '', telefono: '', notas: '' });
+  const [form, setForm] = useState({ nombre: '', contacto: '', telefono: '', notas: '', direccion: '' });
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -163,7 +166,7 @@ export default function ProveedoresPage() {
         </div>
         <button
           onClick={() => {
-            setForm({ nombre: '', contacto: '', telefono: '', notas: '' });
+            setForm({ nombre: '', contacto: '', telefono: '', notas: '', direccion: '' });
             setNuevo(true);
           }}
           className="bg-marron text-white text-sm font-semibold px-4 py-2 rounded-xl active:scale-95 whitespace-nowrap"
@@ -260,6 +263,18 @@ export default function ProveedoresPage() {
                         </p>
                       )}
                       {p.notas && <p className="text-xs text-neutral-600 mt-0.5">{p.notas}</p>}
+                      {/* Abre Maps con lo que se haya guardado: el enlace
+                          tal cual, o la búsqueda de la dirección escrita. */}
+                      {p.direccion && (
+                        <a
+                          href={enlaceMapa(p.direccion)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 mt-1 text-xs font-bold text-marron underline"
+                        >
+                          📍 {etiquetaMapa(p.direccion)}
+                        </a>
+                      )}
                     </div>
                     <div className="flex gap-1.5 shrink-0">
                       <button
@@ -289,6 +304,7 @@ export default function ProveedoresPage() {
                             contacto: p.contacto,
                             telefono: p.telefono,
                             notas: p.notas,
+                            direccion: p.direccion,
                           });
                         }}
                         className="text-xs font-bold px-3 py-1.5 rounded-lg bg-neutral-100 text-neutral-800 active:scale-95"
@@ -635,6 +651,33 @@ export default function ProveedoresPage() {
               placeholder="Ej. Don Beto, bodega 12"
               className={inputCls}
             />
+
+            <label className="block text-sm font-semibold text-neutral-800">
+              Dónde está <span className="font-normal text-neutral-600">(opcional)</span>
+            </label>
+            <input
+              value={form.direccion}
+              onChange={(e) => setForm({ ...form, direccion: e.target.value })}
+              placeholder="La dirección, o pega el enlace de Google Maps"
+              className={inputCls}
+            />
+            <p className="text-xs text-neutral-600 -mt-1">
+              {form.direccion.trim()
+                ? etiquetaMapa(form.direccion) === 'Ver ubicación'
+                  ? 'Es un enlace de Maps: se abrirá tal cual, en el punto exacto.'
+                  : 'Se buscará en Google Maps tal como lo escribiste.'
+                : 'Puedes escribir la dirección o pegar el enlace que comparte Google Maps; las dos sirven.'}
+            </p>
+            {form.direccion.trim() && (
+              <a
+                href={enlaceMapa(form.direccion)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block text-xs font-bold text-marron underline"
+              >
+                📍 Probar en Maps
+              </a>
+            )}
 
             <label className="block text-sm font-semibold text-neutral-800">
               Notas <span className="font-normal text-neutral-600">(opcional)</span>

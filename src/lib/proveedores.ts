@@ -22,7 +22,17 @@ import { appendRow, ensureColumn, ensureSheet, getSheetData, updateCells } from 
 import { siguienteId } from './ids';
 
 export const HOJA_PROVEEDORES = 'Proveedores';
-const COLS = ['ID_Proveedor', 'Nombre', 'Contacto', 'Telefono', 'Notas', 'Activo'];
+const COLS = [
+  'ID_Proveedor',
+  'Nombre',
+  'Contacto',
+  'Telefono',
+  'Notas',
+  'Activo',
+  // Dirección escrita o enlace de Google Maps: se acepta lo que tenga a
+  // la mano, y `enlaceMapa` decide qué hacer con cada forma.
+  'Direccion',
+];
 
 /** Columnas 1-based, para updateCells */
 export const COL_PROV = {
@@ -31,6 +41,7 @@ export const COL_PROV = {
   telefono: 4,
   notas: 5,
   activo: 6,
+  direccion: 7,
 } as const;
 
 export interface Proveedor {
@@ -40,6 +51,8 @@ export interface Proveedor {
   telefono: string;
   notas: string;
   activo: boolean;
+  /** Dirección escrita o enlace de Google Maps */
+  direccion: string;
 }
 
 /** Cómo se le compra a un proveedor un insumo concreto. */
@@ -79,6 +92,7 @@ export async function prepararProveedores(): Promise<void> {
   // ensureSheet solo escribe encabezados al CREAR la hoja; para una que ya
   // existía, esto agrega la columna que falte.
   await ensureColumn(HOJA_PROVEEDORES, 'Activo');
+  await ensureColumn(HOJA_PROVEEDORES, 'Direccion');
 }
 
 export async function leerProveedores(): Promise<Proveedor[]> {
@@ -94,6 +108,7 @@ export async function leerProveedores(): Promise<Proveedor[]> {
         notas: (f.Notas || '').toString().trim(),
         // Vacío se lee como activo, para los que se creen sin la columna
         activo: (f.Activo || '').toString().trim().toLowerCase() !== 'no',
+        direccion: (f.Direccion || '').toString().trim(),
       }));
   } catch {
     // Todavía sin hoja: se crea sola al dar de alta el primero
@@ -118,7 +133,7 @@ export async function idDeProveedor(nombre: string, quien = ''): Promise<string>
   if (ya) return ya.ID_Proveedor;
 
   const id = siguienteId(filas, 'ID_Proveedor', 'PRV');
-  await appendRow(HOJA_PROVEEDORES, [id, limpio, '', '', '', 'si']);
+  await appendRow(HOJA_PROVEEDORES, [id, limpio, '', '', '', 'si', '']);
   if (quien) await anotar(quien, 'Insumos', `Dio de alta al proveedor "${limpio}"`);
   return id;
 }
@@ -138,6 +153,7 @@ export async function guardarProveedor(
   if (datos.telefono !== undefined) cambios[COL_PROV.telefono] = datos.telefono.trim();
   if (datos.notas !== undefined) cambios[COL_PROV.notas] = datos.notas.trim();
   if (datos.activo !== undefined) cambios[COL_PROV.activo] = datos.activo ? 'si' : 'no';
+  if (datos.direccion !== undefined) cambios[COL_PROV.direccion] = datos.direccion.trim();
   if (Object.keys(cambios).length > 0) {
     await updateCells(HOJA_PROVEEDORES, i + 2, cambios);
   }

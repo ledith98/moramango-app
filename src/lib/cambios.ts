@@ -31,6 +31,22 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-20',
+    tipo: 'mejora',
+    titulo: 'Las fotos ya se pueden subir desde el celular sin batallar',
+    detalle:
+      'Antes, una foto tomada con el teléfono pesaba más de lo que la app aceptaba y te la rechazaba pidiéndote que la “recortaras”, sin decirte cómo. Ahora la app la achica sola antes de subirla: una foto de 1.7 MB queda en 172 KB y se sigue viendo nítida. Te dice cuánto bajó. Esto también hace que la tienda cargue mucho más rápido para el cliente que la abre con datos, porque antes se le mandaba la foto entera. Y si una foto deja de cargar por lo que sea, en la tienda vuelve a salir el emoji del producto en vez del cuadrito roto.',
+    donde: 'Productos',
+  },
+  {
+    fecha: '2026-08-20',
+    tipo: 'nuevo',
+    titulo: 'Traer las fotos de Google Drive a la app',
+    detalle:
+      'Tus 30 fotos viven hoy en Google Drive. Funcionan, pero no son tuyas: si a esos archivos les cambian el permiso, se mueven de carpeta o Google limita cuántas veces se muestran desde fuera, la tienda se queda sin fotos y nadie se entera hasta que un cliente lo ve. En Productos sale un aviso con un botón que las trae todas de un jalón, sin que tengas que volver a subirlas una por una. Si alguna no se puede traer te dice cuál y por qué — casi siempre es que el archivo no está compartido como “cualquier persona con el enlace”. Aparece solo cuando el almacén de imágenes está activo.',
+    donde: 'Productos',
+  },
+  {
+    fecha: '2026-08-20',
     tipo: 'nuevo',
     titulo: 'La caja se abre sola con la primera venta y se cierra a las 7',
     detalle:

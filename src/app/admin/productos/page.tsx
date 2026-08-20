@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { comprimirImagen, enMegas } from '@/lib/comprimirImagen';
 import { esEnlaceDeVisorDrive } from '@/lib/imagenes';
 import { parsearTamanos, TAMANOS_SUGERIDOS, type Tamano } from '@/lib/tamanos';
 import { type GrupoOpcion, parsearOpciones } from '@/lib/opciones';
@@ -93,8 +94,15 @@ export default function ProductosPage() {
   const [error, setError] = useState('');
   // Foto del producto (solo al editar: se necesita el ID para guardarla)
   const [imagenUrl, setImagenUrl] = useState('');
+  /** Qué pasó con la foto al subirla; no es un error, es información */
+  const [aviso, setAviso] = useState('');
   const [subiendo, setSubiendo] = useState(false);
   const [pegarUrl, setPegarUrl] = useState(false);
+  /** Fotos que todavía viven fuera de la app (en Drive) */
+  const [fotosFuera, setFotosFuera] = useState(0);
+  const [mudando, setMudando] = useState(false);
+  const [avanceMudanza, setAvanceMudanza] = useState('');
+  const [fallasMudanza, setFallasMudanza] = useState<string[]>([]);
 
   const cargarProductos = useCallback(() => {
     setCargando(true);
@@ -107,7 +115,50 @@ export default function ProductosPage() {
         setOrdenCategorias(ajustes?.ordenCategorias || []);
       })
       .finally(() => setCargando(false));
+
+    // Cuántas fotos siguen viviendo en Drive. Si el almacén no está
+    // activo devuelve 0 y el aviso ni aparece.
+    fetch('/api/admin/productos/imagen/migrar')
+      .then((r) => r.json())
+      .then((d) => setFotosFuera(d.pendientes || 0))
+      .catch(() => {});
   }, []);
+
+  /**
+   * Trae a la app las fotos que están en Drive.
+   *
+   * Se hace de tres en tres porque bajar y volver a subir treinta fotos no
+   * cabe en una sola llamada. Se corta cuando una tanda no logra mover
+   * ninguna: eso significa que las que quedan están rotas y reintentar
+   * daría vueltas para siempre.
+   */
+  const mudarFotos = async () => {
+    setMudando(true);
+    setFallasMudanza([]);
+    try {
+      let quedan = fotosFuera;
+      const total = fotosFuera;
+      for (;;) {
+        const res = await fetch('/api/admin/productos/imagen/migrar', { method: 'POST' });
+        const d = await res.json();
+        if (!res.ok) {
+          setFallasMudanza([d.error || 'No se pudo traer las fotos']);
+          break;
+        }
+        quedan = d.pendientes ?? 0;
+        setFotosFuera(quedan);
+        setAvanceMudanza(`Traídas ${total - quedan} de ${total}…`);
+        if (d.errores?.length) setFallasMudanza((x) => [...x, ...d.errores]);
+        if (quedan === 0 || d.migradas === 0) break;
+      }
+      setAvanceMudanza('');
+      cargarProductos();
+    } catch {
+      setFallasMudanza(['No se pudo conectar. Revisa tu internet.']);
+    } finally {
+      setMudando(false);
+    }
+  };
 
   useEffect(() => {
     cargarProductos();
@@ -224,6 +275,7 @@ export default function ProductosPage() {
       extras: parsearExtras(p.Extras ?? ''),
     });
     setImagenUrl(p.Imagen_URL || '');
+    setAviso('');
     setPegarUrl(false);
     setError('');
   };
@@ -237,11 +289,22 @@ export default function ProductosPage() {
   };
 
   /** Sube la foto y la guarda de inmediato, sin esperar a "Guardar". */
-  const subirImagen = async (archivo: File) => {
+  const subirImagen = async (original: File) => {
     if (!editando) return;
     setSubiendo(true);
     setError('');
+    setAviso('');
     try {
+      // Se achica aquí, en el teléfono: las fotos de cámara pesan más de
+      // lo que el servidor acepta, y la que sí pasa se le mandaría entera
+      // a cada cliente que abre la tienda con datos.
+      const foto = await comprimirImagen(original);
+      if (foto.despues < foto.antes) {
+        setAviso(
+          `Foto lista: pasó de ${enMegas(foto.antes)} a ${enMegas(foto.despues)} para que la tienda cargue rápido.`
+        );
+      }
+      const archivo = foto.archivo;
       const datos = new FormData();
       datos.append('idProducto', editando.ID_Producto);
       datos.append('archivo', archivo);
@@ -348,6 +411,39 @@ export default function ProductosPage() {
 
   return (
     <div className="space-y-6">
+      {/* Solo sale si hay fotos en Drive y el almacén ya está activo */}
+      {fotosFuera > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-2">
+          <p className="text-sm font-bold text-amber-900">
+            📷 {fotosFuera} foto{fotosFuera === 1 ? '' : 's'} todavía vive
+            {fotosFuera === 1 ? '' : 'n'} en Google Drive
+          </p>
+          <p className="text-xs text-amber-800">
+            Funcionan, pero no son tuyas: si a esos archivos les cambian el permiso o se mueven de
+            carpeta, la tienda se queda sin fotos y nadie se entera hasta que un cliente lo ve.
+            Tráelas a la app de un jalón — no tienes que volver a subirlas.
+          </p>
+          <button
+            onClick={mudarFotos}
+            disabled={mudando}
+            className="w-full sm:w-auto bg-amber-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl active:scale-95 disabled:opacity-50"
+          >
+            {mudando ? avanceMudanza || 'Trayendo…' : 'Traer las fotos a la app'}
+          </button>
+          {fallasMudanza.length > 0 && (
+            <div className="text-xs text-red-800 bg-red-50 border border-red-200 rounded-lg p-2 space-y-1">
+              <p className="font-semibold">Estas no se pudieron traer:</p>
+              {fallasMudanza.map((f, i) => (
+                <p key={i}>· {f}</p>
+              ))}
+              <p className="text-red-700">
+                Las puedes volver a subir a mano desde el producto, con “📷 Subir foto”.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <span className="text-sm text-neutral-700">{productos.length} producto{productos.length === 1 ? '' : 's'}</span>
         <button
@@ -566,6 +662,13 @@ export default function ProductosPage() {
                     )}
                   </div>
                 </div>
+
+                {/* No es un error: es contarle qué pasó con su foto */}
+                {aviso && (
+                  <p className="text-xs font-semibold text-green-800 bg-green-50 border border-green-200 rounded-lg p-2">
+                    {aviso}
+                  </p>
+                )}
 
                 {pegarUrl ? (
                   <div className="space-y-1.5 pt-1">

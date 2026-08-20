@@ -110,6 +110,34 @@ const fechaBonita = (iso: string) => {
 const CARRITO_KEY = 'moramango_carrito';
 
 
+/**
+ * La foto del producto, con el emoji de respaldo.
+ *
+ * Las fotos viven fuera de la app y una dirección puede dejar de servir:
+ * si al archivo le cambian el permiso o lo borran, el navegador pinta el
+ * icono de imagen rota — justo en la pantalla donde el cliente decide qué
+ * comprar. Cuando eso pasa se cae al emoji, que es lo que se veía antes
+ * de que hubiera fotos.
+ */
+function FotoProducto({
+  src,
+  alt,
+  className,
+  respaldo,
+}: {
+  src: string;
+  alt: string;
+  className: string;
+  respaldo: React.ReactNode;
+}) {
+  const [fallo, setFallo] = useState(false);
+  if (!src || fallo) return <>{respaldo}</>;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={src} alt={alt} className={className} onError={() => setFallo(true)} />
+  );
+}
+
 export default function Home() {
   const { data: session } = useSession();
   const [productos, setProductos] = useState<any[]>([]);
@@ -1262,25 +1290,24 @@ export default function Home() {
                                   className="w-24 h-24 bg-neutral-100 rounded-2xl overflow-hidden flex items-center justify-center active:scale-95 transition-transform disabled:opacity-40 disabled:active:scale-100"
                                   aria-label={`Agregar ${producto.nombre}`}
                                 >
-                                  {producto.imagen ? (
-                                    // object-contain + padding: los iconos son
-                                    // cuadrados con fondo propio y con cover
-                                    // se recortaban y llenaban toda la caja
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img
-                                      src={producto.imagen}
-                                      alt={producto.nombre}
-                                      className="w-full h-full object-contain p-2"
-                                    />
-                                  ) : (
-                                    <span
-                                      className={
-                                        producto.emoji ? 'text-5xl' : 'text-5xl opacity-20'
-                                      }
-                                    >
-                                      {iconoProducto(producto)}
-                                    </span>
-                                  )}
+                                  {/* object-contain + padding: los iconos son
+                                      cuadrados con fondo propio y con cover se
+                                      recortaban y llenaban toda la caja */}
+                                  <FotoProducto
+                                    key={producto.imagen}
+                                    src={producto.imagen}
+                                    alt={producto.nombre}
+                                    className="w-full h-full object-contain p-2"
+                                    respaldo={
+                                      <span
+                                        className={
+                                          producto.emoji ? 'text-5xl' : 'text-5xl opacity-20'
+                                        }
+                                      >
+                                        {iconoProducto(producto)}
+                                      </span>
+                                    }
+                                  />
                                 </button>
 
                                 {/* Indicador + para agregar (solo si no está en el carrito) */}
@@ -2218,20 +2245,19 @@ export default function Home() {
               <div className="flex-1 overflow-y-auto px-6 pb-4">
                 {/* Imagen grande */}
                 <div className="w-full h-40 bg-neutral-100 rounded-2xl overflow-hidden flex items-center justify-center mb-4 mt-2">
-                  {productoDetalle.imagen ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={productoDetalle.imagen}
-                      alt={productoDetalle.nombre}
-                      className="w-full h-full object-contain p-4"
-                    />
-                  ) : (
-                    <span
-                      className={productoDetalle.emoji ? 'text-7xl' : 'text-7xl opacity-20'}
-                    >
-                      {iconoProducto(productoDetalle)}
-                    </span>
-                  )}
+                  <FotoProducto
+                    key={productoDetalle.imagen}
+                    src={productoDetalle.imagen}
+                    alt={productoDetalle.nombre}
+                    className="w-full h-full object-contain p-4"
+                    respaldo={
+                      <span
+                        className={productoDetalle.emoji ? 'text-7xl' : 'text-7xl opacity-20'}
+                      >
+                        {iconoProducto(productoDetalle)}
+                      </span>
+                    }
+                  />
                 </div>
 
                 {/* Categoría */}

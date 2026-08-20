@@ -100,6 +100,17 @@ export default function ProductosPage() {
   const [pegarUrl, setPegarUrl] = useState(false);
   /** Fotos que todavía viven fuera de la app (en Drive) */
   const [fotosFuera, setFotosFuera] = useState(0);
+  /**
+   * En qué estado está el almacén de fotos.
+   *
+   * Se muestra a propósito, aunque todo esté bien. Sin esto, "no aparece
+   * nada" significaba las tres cosas a la vez —el almacén no está, la
+   * actualización no ha llegado, o ya no hay nada que traer— y no había
+   * forma de saber cuál. Quien activa el almacén necesita ver si sirvió.
+   */
+  const [almacen, setAlmacen] = useState<'cargando' | 'sin-actualizar' | 'apagado' | 'listo'>(
+    'cargando'
+  );
   const [mudando, setMudando] = useState(false);
   const [avanceMudanza, setAvanceMudanza] = useState('');
   const [fallasMudanza, setFallasMudanza] = useState<string[]>([]);
@@ -119,9 +130,15 @@ export default function ProductosPage() {
     // Cuántas fotos siguen viviendo en Drive. Si el almacén no está
     // activo devuelve 0 y el aviso ni aparece.
     fetch('/api/admin/productos/imagen/migrar')
-      .then((r) => r.json())
-      .then((d) => setFotosFuera(d.pendientes || 0))
-      .catch(() => {});
+      .then(async (r) => {
+        // 404 = este despliegue todavía no trae la pantalla nueva
+        if (r.status === 404) return setAlmacen('sin-actualizar');
+        if (!r.ok) return setAlmacen('sin-actualizar');
+        const d = await r.json();
+        setFotosFuera(d.pendientes || 0);
+        setAlmacen(d.listo ? 'listo' : 'apagado');
+      })
+      .catch(() => setAlmacen('sin-actualizar'));
   }, []);
 
   /**
@@ -411,6 +428,50 @@ export default function ProductosPage() {
 
   return (
     <div className="space-y-6">
+      {/*
+        El almacén está creado en Vercel pero esta app todavía no lo ve.
+        Pasa siempre por lo mismo: la llave que Vercel agrega solo entra en
+        un despliegue NUEVO, y el que está corriendo es de antes. Decirlo
+        aquí evita quedarse mirando una pantalla que no cambia.
+      */}
+      {almacen === 'apagado' && (
+        <div className="bg-neutral-100 border border-neutral-300 rounded-2xl p-4 space-y-2">
+          <p className="text-sm font-bold text-neutral-900">
+            📷 El guardado de fotos todavía no está prendido
+          </p>
+          <p className="text-xs text-neutral-800">
+            Por ahora no puedes subir fotos desde el celular; solo pegar la dirección de una que ya
+            esté en internet. Si ya creaste el almacén en Vercel y sigue saliendo esto, falta el
+            paso de <strong>Redeploy</strong>: la llave que Vercel agregó solo entra en un
+            despliegue nuevo, y el que está corriendo es de antes de crearlo.
+          </p>
+          <p className="text-xs text-neutral-800">
+            En Vercel: pestaña <strong>Deployments</strong> → el primero de la lista → los tres
+            puntitos <strong>⋯</strong> → <strong>Redeploy</strong>. Tarda un par de minutos;
+            luego recarga esta pantalla.
+          </p>
+        </div>
+      )}
+
+      {/*
+        No se pudo preguntar. En producción casi no pasa —si esta pantalla
+        se pintó, la ruta existe— pero un corte de red no puede quedarse
+        callado: sin esto parecería que todo está bien.
+      */}
+      {almacen === 'sin-actualizar' && (
+        <p className="text-xs font-semibold text-neutral-800 bg-neutral-100 border border-neutral-300 rounded-xl p-3">
+          No pude revisar cómo está el guardado de fotos. Recarga la pantalla.
+        </p>
+      )}
+
+      {/* Sirve de confirmación: activaste el almacén y sí quedó */}
+      {almacen === 'listo' && fotosFuera === 0 && (
+        <p className="text-xs font-semibold text-green-800 bg-green-50 border border-green-200 rounded-xl p-3">
+          ✅ Guardado de fotos prendido. Ya puedes subirlas desde el celular con “📷 Subir foto”, y
+          todas tus fotos viven en la app.
+        </p>
+      )}
+
       {/* Solo sale si hay fotos en Drive y el almacén ya está activo */}
       {fotosFuera > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-2">

@@ -18,6 +18,7 @@ import { leerAjustes } from '@/lib/ajustes';
 import { appendRow, ensureColumn, getSheetData, updateCell } from '@/lib/googleSheets';
 import { actualizarLealtad, descuentoPorBeneficio } from '@/lib/lealtad';
 import { getAdminSession } from '@/lib/roles';
+import { abrirCajaSiHaceFalta } from '@/lib/caja';
 import { moverStockDePedido } from '@/lib/stock';
 import { enviarTelegram } from '@/lib/telegram';
 import { validarItems } from '@/lib/preciosServidor';
@@ -329,6 +330,10 @@ export async function POST(req: NextRequest) {
 
   // La venta en mostrador consume igual que un pedido de la app
   await moverStockDePedido(idPedido, 'apartar');
+
+  // La primera venta del día abre la caja sola: nadie se acuerda de
+  // abrirla antes del primer cliente, y sin abrir no hay dónde cuadrar.
+  await abrirCajaSiHaceFalta();
 
   // Lealtad del cliente (ligado, o recién creado desde el mostrador)
   if (idCliente) {

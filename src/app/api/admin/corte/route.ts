@@ -9,6 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { cerrarCajaSinContar } from '@/lib/caja';
 import { armarCorteDelDia } from '@/lib/corteDia';
 import { fechaHoyMTY } from '@/lib/pedidoFecha';
 import { getAdminSession } from '@/lib/roles';
@@ -39,12 +40,36 @@ export async function GET(req: NextRequest) {
   const fecha = new URL(req.url).searchParams.get('fecha') || fechaHoyMTY();
   const texto = await armarCorteDelDia(fecha);
 
-  // La tarea programada de Vercel siempre llama con GET, así que el envío
-  // tiene que pasar aquí: si solo lo hiciera el POST, el corte automático
-  // se generaría cada noche y no llegaría a ningún lado.
-  if (esCron(req) && texto) {
-    await enviarTelegram(texto);
-    return NextResponse.json({ enviado: true });
+  /**
+   * La tarea programada de Vercel siempre llama con GET, así que el cierre
+   * y el envío tienen que pasar aquí: si solo lo hiciera el POST, el corte
+   * automático se generaría cada noche y no llegaría a ningún lado.
+   *
+   * Se cierra la caja SIN inventar el efectivo contado. Poner ahí lo
+   * esperado haría que todos los días cuadraran perfecto, y el corte
+   * dejaría de servir para lo único que sirve: ver cuándo falta dinero.
+   * Si alguien ya la cerró contando, no se toca.
+   */
+  if (esCron(req)) {
+    let cerroSola = false;
+    try {
+      cerroSola = await cerrarCajaSinContar(
+        'Cerró sola a la hora de cierre; nadie contó el efectivo'
+      );
+    } catch (e) {
+      console.error('No se pudo cerrar la caja sola:', e);
+    }
+
+    if (!texto) return NextResponse.json({ enviado: false, cerroSola });
+
+    const aviso = cerroSola
+      ? `${texto}
+
+🔒 <b>La caja se cerró sola</b>
+   Nadie contó el efectivo, así que el corte no dice si cuadra. Cuéntalo y anótalo en Dinero.`
+      : texto;
+    await enviarTelegram(aviso);
+    return NextResponse.json({ enviado: true, cerroSola });
   }
 
   return NextResponse.json({ fecha, corte: texto, huboVentas: texto !== null });

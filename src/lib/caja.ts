@@ -45,6 +45,9 @@ const COL = {
   notas: 8,
 } as const;
 
+/** Marca de quién abrió cuando no fue una persona sino la primera venta. */
+export const ABIERTA_SOLA = 'Se abrió sola';
+
 export interface EstadoCaja {
   fecha: string;
   abierta: boolean;
@@ -63,6 +66,10 @@ export interface EstadoCaja {
   /** contado − esperado; negativo = falta, positivo = sobra */
   diferencia: number | null;
   notas: string;
+  /** Se abrió sola con la primera venta: falta confirmar el fondo */
+  abrioSola: boolean;
+  /** Se cerró sola a la hora de cierre y nadie contó el efectivo */
+  cerroSola: boolean;
 }
 
 async function preparar() {
@@ -114,6 +121,9 @@ function filaAEstado(
     diferencia:
       contado !== null && esperado !== null ? Math.round((contado - esperado) * 100) / 100 : null,
     notas: fila?.Notas || '',
+    abrioSola: (fila?.Abrio || '') === ABIERTA_SOLA,
+    // Hay hora de corte pero nadie escribió cuánto había
+    cerroSola: !!(fila?.Hora_Corte || '').toString().trim() && contado === null,
   };
 }
 
@@ -153,8 +163,73 @@ export async function abrirCaja(fondo: number, quien: string): Promise<void> {
   }
   const fila = idx + 2;
   await updateCell(HOJA, fila, COL.fondo, monto);
-  await updateCell(HOJA, fila, COL.horaApertura, ahoraHora());
+  // La hora de apertura no se pisa: si la caja se abrió sola con la primera
+  // venta, esa es la hora en que de verdad empezó el día. Corregir el fondo
+  // más tarde no cambia cuándo abrió.
+  if (!(filas[idx].Hora_Apertura || '').toString().trim()) {
+    await updateCell(HOJA, fila, COL.horaApertura, ahoraHora());
+  }
   await updateCell(HOJA, fila, COL.abrio, quien);
+}
+
+/**
+ * Abre la caja sola con la primera venta del día.
+ *
+ * Nadie se acuerda de abrirla antes del primer cliente, y sin abrir no hay
+ * corte: las ventas del día se quedan sin dónde cuadrar. Se abre con el
+ * fondo de la última vez, que es el que se deja casi siempre, y queda
+ * marcada como automática para que la pantalla avise que hay que
+ * confirmarlo — inventar el fondo sin decirlo haría que un faltante
+ * apareciera como real.
+ *
+ * No hace nada si ya estaba abierta. Nunca lanza: una venta no se puede
+ * perder porque falle la apertura de la caja.
+ */
+export async function abrirCajaSiHaceFalta(): Promise<void> {
+  try {
+    await preparar();
+    const fecha = fechaHoyMTY();
+    const filas = await getSheetData(HOJA);
+    if (filas.some((f) => f.Fecha === fecha)) return;
+
+    // El fondo de la última apertura: es el que se deja casi siempre
+    const anteriores = filas
+      .filter((f) => f.Fecha && parseFloat(f.Fondo_Apertura) >= 0)
+      .sort((a, b) => (a.Fecha < b.Fecha ? -1 : 1));
+    const ultimo = anteriores[anteriores.length - 1];
+    const fondo = Math.round((parseFloat(ultimo?.Fondo_Apertura ?? '') || 0) * 100) / 100;
+
+    await appendRow(HOJA, [fecha, fondo, ahoraHora(), ABIERTA_SOLA, '', '', '', '']);
+  } catch (error) {
+    // Que falle la caja no puede tumbar la venta
+    console.error('No se pudo abrir la caja sola:', error);
+  }
+}
+
+/**
+ * Cierra la caja sin que nadie haya contado.
+ *
+ * Se usa al cerrar el local: deja el día terminado para que el siguiente
+ * empiece limpio, pero NO inventa el efectivo contado. Poner ahí lo
+ * esperado haría que todos los días cuadraran perfecto y el corte dejaría
+ * de servir para lo único que sirve: detectar cuando falta dinero.
+ */
+export async function cerrarCajaSinContar(nota: string): Promise<boolean> {
+  await preparar();
+  const fecha = fechaHoyMTY();
+  const filas = await getSheetData(HOJA);
+  const idx = filas.findIndex((f) => f.Fecha === fecha);
+  if (idx === -1) return false;
+  // Ya cerrada a mano: no se toca, lo que contó una persona vale más
+  if ((filas[idx].Hora_Corte || '').toString().trim()) return false;
+
+  const fila = idx + 2;
+  await updateCells(HOJA, fila, {
+    [COL.horaCorte]: ahoraHora(),
+    [COL.cerro]: 'Cierre automático',
+    [COL.notas]: nota.slice(0, 200),
+  });
+  return true;
 }
 
 /** Cierra la caja del día con el efectivo contado. */

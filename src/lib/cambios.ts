@@ -31,6 +31,22 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-20',
+    tipo: 'nuevo',
+    titulo: 'La caja se abre sola con la primera venta y se cierra a las 7',
+    detalle:
+      'Ya no hay que acordarse de abrir la caja antes del primer cliente: la primera venta del día la abre sola, con el fondo que dejaste la última vez. Como ese fondo lo puso la app y no tú, arriba te avisa y te deja corregirlo con un toque — si ese día dejaste otra cantidad y no se corrige, el corte marcaría un faltante que no existe. A las 7 de la noche la caja se cierra sola y te llega el corte del día a Telegram. Ojo con esto: el cierre automático NO cuenta el efectivo, lo deja en blanco a propósito. Si pusiera ahí lo que debería haber, todos los días cuadrarían perfecto y el corte dejaría de servir para lo único que sirve, que es ver cuándo falta dinero. Si alcanzas a contar el cajón, anótalo y ya; si no, el día queda cerrado igual.',
+    donde: 'Dinero',
+  },
+  {
+    fecha: '2026-08-20',
+    tipo: 'mejora',
+    titulo: 'Borrar una presentación que anotaste por error',
+    detalle:
+      'En Insumos, al abrir una presentación para editarla, abajo aparece “La anoté por error, bórrala”. Solo funciona si nunca le has registrado una compra: si ya se la compraste, borrarla dejaría esas compras apuntando a la nada y perderías su historial de precios, que es justo con lo que se comparan los proveedores. Para esas está “ya no la compro así”, que la esconde sin borrar nada.',
+    donde: 'Insumos',
+  },
+  {
+    fecha: '2026-08-20',
     tipo: 'arreglo',
     titulo: 'Ya se puede guardar al editar un insumo en Proveedores',
     detalle:

@@ -12,7 +12,7 @@
  * unidad de compra y el backend la convierte con la equivalencia.
  */
 
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState, useRef } from 'react';
 import { CATEGORIAS_INSUMOS } from '@/lib/insumos';
 
 interface ItemBiblioteca {
@@ -262,9 +262,23 @@ export default function InsumosPage() {
   const [presDe, setPresDe] = useState<{ id: string; nombre: string; unidadReceta: string } | null>(null);
   const [presForm, setPresForm] = useState({ marca: '', unidadCompra: '', contenido: '', proveedor: '', ultimoPrecio: '' });
   const [presEditando, setPresEditando] = useState<Presentacion | null>(null);
+  /**
+   * El aviso de por qué no se pudo borrar.
+   *
+   * Va hasta abajo del modal, debajo de los botones, y en un teléfono queda
+   * fuera de la pantalla: al tocar "bórrala" parecería que no pasó nada.
+   * Con esto el mensaje se trae a la vista solo.
+   */
+  const avisoPresRef = useRef<HTMLParagraphElement>(null);
   const [cargando, setCargando] = useState(true);
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState('');
+  // Después de pintarlo, no antes: dentro del propio manejador el párrafo
+  // todavía no existe y el scroll no tiene a qué ir. Fuera del modal la
+  // referencia está vacía y esto no hace nada.
+  useEffect(() => {
+    if (error) avisoPresRef.current?.scrollIntoView({ block: 'center' });
+  }, [error]);
 
   const [busqueda, setBusqueda] = useState('');
   const [filtroGrupo, setFiltroGrupo] = useState('Todos');
@@ -2269,8 +2283,6 @@ El stock quedará igual a lo que contaste.`)) return;
               </p>
             )}
 
-            {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
-
             <button
               onClick={guardarPresentacion}
               disabled={ocupado || contenido <= 0}
@@ -2299,8 +2311,55 @@ El stock quedará igual a lo que contaste.`)) return;
                 {presEditando.activa ? 'Ya no la compro así' : 'Volver a comprarla así'}
               </button>
             )}
+
+            {/* Borrar de verdad, para lo capturado por error. El servidor lo
+                impide si ya tiene compras: esas quedarían sin a qué apuntar
+                y se perdería el historial que sostiene la comparación. */}
+            {presEditando && (
+              <button
+                onClick={async () => {
+                  setOcupado(true);
+                  setError('');
+                  try {
+                    const url =
+                      '/api/admin/presentaciones?id=' + encodeURIComponent(presEditando.id);
+                    const res = await fetch(url, { method: 'DELETE' });
+                    const data = await res.json().catch(() => ({}) as { error?: string });
+                    if (!res.ok) {
+                      setError(data.error || `No se pudo borrar (error ${res.status})`);
+                      return;
+                    }
+                    setPresDe(null);
+                    setPresEditando(null);
+                    await cargar();
+                  } catch {
+                    setError('No se pudo conectar. Revisa tu internet y vuelve a intentarlo.');
+                  } finally {
+                    setOcupado(false);
+                  }
+                }}
+                disabled={ocupado}
+                className="w-full bg-red-50 text-red-700 font-semibold py-3 rounded-xl mt-2 active:scale-95 disabled:opacity-50"
+              >
+                🗑️ La anoté por error, bórrala
+              </button>
+            )}
+
+            {/* Junto a los botones: si el mensaje quedara arriba, al tocar
+                "bórrala" el aviso de por qué no se pudo saldría fuera de vista. */}
+            {error && (
+              <p
+                ref={avisoPresRef}
+                className="text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 mt-3"
+              >
+                {error}
+              </p>
+            )}
+
             <p className="text-xs text-neutral-600 mt-2 text-center">
-              No se borra: su historial de precios se conserva para poder comparar.
+              {presEditando
+                ? '«Ya no la compro así» la esconde y conserva su historial de precios. Borrarla solo se puede si nunca le has comprado.'
+                : 'No se borra: su historial de precios se conserva para poder comparar.'}
             </p>
           </Modal>
         );

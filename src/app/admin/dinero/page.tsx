@@ -42,6 +42,8 @@ interface EstadoCaja {
   horaCorte: string;
   diferencia: number | null;
   notas: string;
+  abrioSola: boolean;
+  cerroSola: boolean;
   insumos?: { id: string; nombre: string }[];
 }
 
@@ -249,6 +251,54 @@ export default function DineroPage() {
                 <h2 className="font-bold text-neutral-900">Caja de hoy</h2>
                 <span className="text-xs text-neutral-600">Abierta {caja.horaApertura}</span>
               </div>
+
+              {/*
+                Se abrió sola con la primera venta. Hay que decirlo: el fondo
+                es el de la última vez, no uno que alguien haya contado, y si
+                ese día se dejó otra cantidad el corte marcaría un faltante
+                que no existe.
+              */}
+              {caja.abrioSola && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
+                  <p className="text-sm font-semibold text-amber-900">
+                    ⏰ La caja se abrió sola con la primera venta
+                  </p>
+                  <p className="text-xs text-amber-800">
+                    Le puso {money(caja.fondoApertura ?? 0)} de fondo porque es lo que dejaste la
+                    última vez. Si hoy dejaste otra cantidad, corrígela aquí — si no, el corte va a
+                    marcar un faltante que no existe.
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      value={fondo}
+                      onChange={(e) => setFondo(e.target.value)}
+                      placeholder={`Ej. ${caja.fondoApertura ?? 500}`}
+                      className={`${inputCls} flex-1 min-w-0`}
+                    />
+                    <button
+                      onClick={() => accion('/api/admin/caja', { accion: 'abrir', fondo })}
+                      disabled={ocupado || !fondo}
+                      className="bg-amber-700 text-white text-sm font-semibold px-4 rounded-xl active:scale-95 disabled:opacity-50 shrink-0"
+                    >
+                      Corregir
+                    </button>
+                  </div>
+                  <button
+                    onClick={() =>
+                      accion('/api/admin/caja', {
+                        accion: 'abrir',
+                        fondo: String(caja.fondoApertura ?? 0),
+                      })
+                    }
+                    disabled={ocupado}
+                    className="text-xs font-semibold text-amber-900 underline active:scale-95 disabled:opacity-50"
+                  >
+                    Está bien así, déjalo en {money(caja.fondoApertura ?? 0)}
+                  </button>
+                </div>
+              )}
               <dl className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <dt className="text-neutral-700">Fondo de apertura</dt>
@@ -289,6 +339,18 @@ export default function DineroPage() {
               {!caja.cerrada ? (
                 <div className="border-t border-neutral-100 pt-3 space-y-3">
                   <h3 className="font-bold text-neutral-900">2. Hacer el corte</h3>
+                  {/*
+                    Cerró sola a la hora de cierre, pero el corte sigue
+                    disponible: la hora automática termina el día, no cuenta
+                    el dinero. Poner ahí lo esperado haría que todos los días
+                    cuadraran perfecto y el corte dejaría de servir.
+                  */}
+                  {caja.cerroSola && (
+                    <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                      🔒 La caja se cerró sola a las {caja.horaCorte} y se mandó el corte del día,
+                      pero nadie contó el efectivo. Si todavía puedes contarlo, anótalo aquí.
+                    </p>
+                  )}
                   <label className="block text-sm font-semibold text-neutral-700">
                     ¿Cuánto efectivo hay en el cajón ahora?
                   </label>

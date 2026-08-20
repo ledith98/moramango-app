@@ -24,6 +24,7 @@ import { parsearFechaHora } from '@/lib/pedidoFecha';
 import { baseUrlDesdeRequest, crearPreferencia, mpConfigurado } from '@/lib/mercadoPago';
 import { METODO_PAGO_EN_LINEA } from '@/lib/negocio';
 import { enviarTelegram } from '@/lib/telegram';
+import { abrirCajaSiHaceFalta } from '@/lib/caja';
 import { moverStockDePedido } from '@/lib/stock';
 import { leerAjustes } from '@/lib/ajustes';
 import { estadoTienda } from '@/lib/horario';
@@ -231,6 +232,10 @@ export async function POST(req: NextRequest) {
   // 3.5 Apartar el stock ya: si se esperara a "Listo para recoger", dos
   // clientes podrían pagar la última pieza con minutos de diferencia.
   await moverStockDePedido(idPedido, 'apartar');
+
+  // Un pedido de la app también inaugura el día: si el primero llega por
+  // ahí, la caja igual tiene que quedar abierta para poder cortarla.
+  await abrirCajaSiHaceFalta();
 
   // 4. Aviso a Telegram (si está configurado). Se hace await para que el
   // envío alcance a completarse antes de que termine la función en Vercel,

@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
   const quien = (session.user as { name?: string }).name || '';
-  const { accion, tipo, monto, motivo, fechaISO, fila, cuenta } = await req.json();
+  const { accion, tipo, monto, motivo, fechaISO, fila, cuenta, idInsumo } = await req.json();
 
   // El saldo real, copiado de la app del banco. Se guarda con la fecha en
   // que se tomo: sin ella, un saldo de hace tres semanas se ve igual de
@@ -107,7 +107,9 @@ export async function POST(req: NextRequest) {
     texto || 'Rendimiento de la cuenta',
     quien,
     fecha,
-    bolsa
+    bolsa,
+    // Si el dinero se fue en un insumo, el movimiento queda ligado a él
+    (idInsumo || '').toString().trim()
   );
   await anotar(
     quien,

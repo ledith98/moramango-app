@@ -30,6 +30,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 
 export const CAMBIOS: Cambio[] = [
   {
+    fecha: '2026-08-20',
+    tipo: 'mejora',
+    titulo: 'Caja y Cuenta ahora son una sola sección: 💰 Dinero',
+    detalle:
+      'Eran dos apartados que se parecían demasiado, y había que decidir en cuál entrar antes de saber a cuál pertenecía lo que ibas a anotar. Ahora es uno solo con dos pestañas — el cajón (que se abre y se corta cada día) y la cuenta (que es un saldo que corre) — y abajo, una sola vez, el formulario para anotar entradas y salidas: eliges si el dinero salió del cajón o de la cuenta y ya. La lista de movimientos los muestra juntos, marcados con 💵 o 🏦.',
+    donde: 'Dinero',
+  },
+  {
     fecha: '2026-08-19',
     tipo: 'nuevo',
     titulo: 'La avena ya es un extra, y descuenta del inventario cuando la piden',

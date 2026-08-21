@@ -124,17 +124,44 @@ function FotoProducto({
   alt,
   className,
   respaldo,
+  conFondo = false,
 }: {
   src: string;
   alt: string;
   className: string;
   respaldo: React.ReactNode;
+  /** Rellena la caja con una copia borrosa de la misma foto */
+  conFondo?: boolean;
 }) {
   const [fallo, setFallo] = useState(false);
   if (!src || fallo) return <>{respaldo}</>;
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={src} alt={alt} className={className} onError={() => setFallo(true)} />
+    <>
+      {/*
+        La foto se muestra completa (nunca recortada): varias son carteles
+        con texto y letras, y recortarlas se comería el precio o el nombre
+        del combo. Pero mostrarla completa deja franjas grises a los lados
+        cuando la foto es más alta que la caja. Esta copia borrosa las
+        rellena con los colores de la misma foto, así la caja se ve llena
+        sin cortarle nada a la original.
+      */}
+      {conFondo && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt=""
+          aria-hidden
+          className="absolute inset-0 w-full h-full object-cover scale-125 blur-2xl opacity-60"
+        />
+      )}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        className={className}
+        onError={() => setFallo(true)}
+      />
+    </>
   );
 }
 
@@ -2235,7 +2262,9 @@ export default function Home() {
               {/* Botón cerrar */}
               <button
                 onClick={() => setProductoDetalle(null)}
-                className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center bg-neutral-100 rounded-full text-neutral-700 active:scale-90 z-10"
+                // Ahora queda encima de la foto: fondo sólido y sombra para
+                // que se distinga sea cual sea la imagen de atrás
+                className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center bg-white shadow-md rounded-full text-neutral-900 font-bold active:scale-90 z-20"
                 aria-label="Cerrar"
               >
                 ✕
@@ -2243,13 +2272,23 @@ export default function Home() {
 
               {/* Contenido scrollable */}
               <div className="flex-1 overflow-y-auto px-6 pb-4">
-                {/* Imagen grande */}
-                <div className="w-full h-40 bg-neutral-100 rounded-2xl overflow-hidden flex items-center justify-center mb-4 mt-2">
+                {/*
+                  La foto, de lado a lado y alta.
+                  
+                  Antes vivía en una caja de 160 px con aire a los lados: una
+                  foto vertical se encogía hasta caber en esos 160 px y
+                  acababa ocupando como un tercio del espacio. La foto es lo
+                  que vende el producto, así que se le da el ancho completo
+                  de la hoja (el -mx-6 se sale del margen del texto) y casi
+                  el doble de alto.
+                */}
+                <div className="relative -mx-6 h-64 sm:h-72 bg-neutral-100 overflow-hidden flex items-center justify-center mb-4 mt-2">
                   <FotoProducto
                     key={productoDetalle.imagen}
                     src={productoDetalle.imagen}
                     alt={productoDetalle.nombre}
-                    className="w-full h-full object-contain p-4"
+                    conFondo
+                    className="relative w-full h-full object-contain"
                     respaldo={
                       <span
                         className={productoDetalle.emoji ? 'text-7xl' : 'text-7xl opacity-20'}

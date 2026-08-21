@@ -32,6 +32,14 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-20',
     tipo: 'mejora',
+    titulo: 'La foto del producto ahora se ve casi 4 veces más grande',
+    detalle:
+      'Al abrir un producto en la tienda, la foto vivía en un recuadro bajito con aire gris a los lados: una foto vertical se encogía hasta caber ahí y acababa ocupando como un tercio del espacio. Ahora va de lado a lado y mide casi el doble de alto — en promedio la foto se ve 3.7 veces más grande, y en varios productos 4 veces. Ninguna foto se recorta, porque varias son carteles con texto y les cortaría el precio; en su lugar, el espacio que sobra se rellena con una copia borrosa de la misma foto, así se ve llena y no vacía.',
+    donde: 'Tienda',
+  },
+  {
+    fecha: '2026-08-20',
+    tipo: 'mejora',
     titulo: 'Las fotos ya se pueden subir desde el celular sin batallar',
     detalle:
       'Antes, una foto tomada con el teléfono pesaba más de lo que la app aceptaba y te la rechazaba pidiéndote que la “recortaras”, sin decirte cómo. Ahora la app la achica sola antes de subirla: una foto de 1.7 MB queda en 172 KB y se sigue viendo nítida. Te dice cuánto bajó. Esto también hace que la tienda cargue mucho más rápido para el cliente que la abre con datos, porque antes se le mandaba la foto entera. Y si una foto deja de cargar por lo que sea, en la tienda vuelve a salir el emoji del producto en vez del cuadrito roto.',

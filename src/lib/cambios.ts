@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-20',
+    tipo: 'arreglo',
+    titulo: 'La comparativa de proveedores estaba dejando fuera casi todo',
+    detalle:
+      'Comparar precios solo miraba las compras registradas, así que los precios que ibas anotando por proveedor —68 de ellos— nunca llegaban a la comparación. Te mostraba UN insumo comparable cuando había OCHO: plátano, naranja, jalapeño, fresa, papaya, aguacate, tomate y piña. Y es justo al revés de como se usa: vas, preguntas en dos lados y quieres ver cuál conviene antes de comprar. Ya cuentan los dos, y cada renglón dice de dónde salió el precio — “3 compras” o “precio que anotaste, sin comprarle todavía”. Si de un proveedor tienes las dos cosas, gana la más reciente.',
+    donde: 'Proveedores',
+  },
+  {
+    fecha: '2026-08-20',
     tipo: 'nuevo',
     titulo: 'Historial de precios: cómo se ha movido y borrar los mal anotados',
     detalle:

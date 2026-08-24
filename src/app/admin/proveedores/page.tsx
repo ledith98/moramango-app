@@ -28,6 +28,8 @@ interface OpcionPrecio {
   promedio: number;
   compras: number;
   ultimaFecha: string;
+  /** true = lo anotaste sin haberle comprado todavia */
+  soloAnotado: boolean;
   esElMasBarato: boolean;
 }
 
@@ -565,15 +567,17 @@ export default function ProveedoresPage() {
       {pestana === 'comparar' && (
         <>
           <p className="text-sm text-neutral-700">
-            Insumos que le compras a más de un proveedor, ordenados por lo que te puedes ahorrar.
+            Insumos que hay en más de un proveedor, ordenados por lo que te puedes ahorrar.
+            Cuentan tanto los que ya compraste como los precios que solo anotaste.
             El precio es <b>por pieza</b> (o por gramo, o por ml), que es lo único comparable: un
             paquete de 40 tenedores a $12 sale más barato que uno de 25 a $8.
           </p>
 
           {comparables.length === 0 ? (
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-800">
-              Todavía no hay nada que comparar: para eso hace falta haberle comprado el mismo
-              insumo a dos proveedores distintos, con su precio anotado.
+              Todavía no hay nada que comparar: hace falta que dos proveedores tengan el mismo
+              insumo con su precio. No necesitas haberles comprado — basta con anotar en cada uno
+              a cómo lo tienen, con “+ Insumo” en el directorio.
             </div>
           ) : (
             <div className="space-y-3">
@@ -611,7 +615,9 @@ export default function ProveedoresPage() {
                             {o.contenido > 1
                               ? `${money(o.precioPaquete)} el paquete de ${o.contenido} · `
                               : ''}
-                            {o.compras} compra{o.compras === 1 ? '' : 's'}
+                            {o.compras > 0
+                              ? `${o.compras} compra${o.compras === 1 ? '' : 's'}`
+                              : 'precio que anotaste, sin comprarle todavía'}
                           </span>
                           {/*
                             Aquí importa más que en ningún lado: el "más

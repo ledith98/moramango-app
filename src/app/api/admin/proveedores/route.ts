@@ -44,7 +44,24 @@ export async function GET() {
   const unidadInsumo = new Map(
     biblioteca.map((b) => [b.ID_Biblioteca, (b.Unidad_Receta || '').trim()])
   );
-  const porInsumo = preciosPorInsumo(compras, nombrePorId);
+  /**
+   * Los precios que anotaste sin comprar cuentan para comparar.
+   *
+   * Es justo para eso que se anotan: vas, preguntas en dos lados y quieres
+   * ver cuál conviene ANTES de comprar. Dejarlos fuera hacía que la
+   * comparativa mostrara un solo insumo cuando había ocho.
+   */
+  const anotados = presentaciones
+    .filter((x) => x.activa && x.idProveedor && x.porUnidad > 0)
+    .map((x) => ({
+      idBiblioteca: x.idBiblioteca,
+      idProveedor: x.idProveedor,
+      porUnidad: x.porUnidad,
+      precioPaquete: x.ultimoPrecio,
+      contenido: x.contenido,
+      fecha: x.fechaPrecio,
+    }));
+  const porInsumo = preciosPorInsumo(compras, nombrePorId, anotados);
 
   /**
    * A cada proveedor, qué se le compra. Sale del historial y no de una
@@ -109,7 +126,7 @@ export async function GET() {
         unidadCompra: suPres?.unidadCompra ?? '',
         activa: suPres?.activa ?? true,
         /** true = todavía no se le ha comprado; el precio es el declarado */
-        soloDeclarado: !mio,
+        soloDeclarado: mio ? mio.soloAnotado : true,
         esElMasBarato: mio?.esElMasBarato ?? false,
         /** Cuántos proveedores distintos venden esto: sin al menos dos, no hay comparación */
         cuantosLoVenden: opciones.length,

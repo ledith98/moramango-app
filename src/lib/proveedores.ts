@@ -20,6 +20,7 @@
 import { anotar } from './bitacora';
 import { appendRow, ensureColumn, ensureSheet, getSheetData, updateCells } from './googleSheets';
 import { siguienteId } from './ids';
+import { fechaDeCelda } from './pedidoFecha';
 
 export const HOJA_PROVEEDORES = 'Proveedores';
 const COLS = [
@@ -74,9 +75,28 @@ export interface PrecioProveedor {
   /** Promedio por unidad de receta de todo lo que se le ha comprado */
   promedio: number;
   compras: number;
+  /** Cuándo es ese precio (YYYY-MM-DD) */
   ultimaFecha: string;
+  /**
+   * true = precio que anotaste sin haberle comprado todavía.
+   *
+   * Se distingue porque no valen lo mismo: uno salió de un ticket y el
+   * otro de preguntar en el mostrador. Los dos sirven para decidir a
+   * dónde ir, pero conviene saber cuál es cuál.
+   */
+  soloAnotado: boolean;
   /** Lo más barato encontrado para ese insumo lleva esta marca */
   esElMasBarato: boolean;
+}
+
+/** Un precio anotado a un proveedor, sin compra de por medio. */
+export interface PrecioAnotado {
+  idBiblioteca: string;
+  idProveedor: string;
+  porUnidad: number;
+  precioPaquete: number;
+  contenido: number;
+  fecha: string;
 }
 
 export const normalizar = (t: string | undefined) =>
@@ -169,12 +189,24 @@ export async function guardarProveedor(
  * traía SU paquete, así que la cuenta sale aunque las presentaciones
  * cambien entre lugares.
  *
+ * Cuenta dos cosas, y las dos hacen falta: lo que YA COMPRASTE (sale de
+ * Compras_Insumos) y lo que solo ANOTASTE (el precio que le pusiste a una
+ * presentación de ese proveedor, sin comprarle todavía). Con solo las
+ * compras, un precio que fuiste a preguntar expresamente para comparar no
+ * aparecía en la comparación — que es exactamente para lo que se anotó.
+ *
+ * Cuando hay de las dos para el mismo proveedor, gana la más reciente: si
+ * la última vez que preguntaste fue después de la última vez que
+ * compraste, ese es el precio que vale hoy.
+ *
  * @param compras filas de Compras_Insumos
  * @param nombreProveedor  id → nombre, para las compras que ya traen ID
+ * @param anotados precios declarados en las presentaciones
  */
 export function preciosPorInsumo(
   compras: Record<string, string>[],
-  nombreProveedor: Map<string, string>
+  nombreProveedor: Map<string, string>,
+  anotados: PrecioAnotado[] = []
 ): Map<string, PrecioProveedor[]> {
   const porInsumo = new Map<string, Map<string, PrecioProveedor & { suma: number }>>();
 
@@ -210,6 +242,7 @@ export function preciosPorInsumo(
       promedio: 0,
       compras: 0,
       ultimaFecha: '',
+      soloAnotado: false,
       esElMasBarato: false,
       suma: 0,
     };
@@ -219,9 +252,50 @@ export function preciosPorInsumo(
     actual.porUnidad = porUnidad;
     actual.precioPaquete = precioPaquete;
     actual.contenido = equivalencia;
-    actual.ultimaFecha = (c.Fecha || '').toString();
+    actual.ultimaFecha = fechaDeCelda(c.Fecha);
     void cantidad;
     grupo.set(clave, actual);
+  }
+
+  /**
+   * Los precios anotados, encima de las compras.
+   *
+   * Si de ese proveedor no había nada, entra como opción nueva. Si ya
+   * había una compra, solo pisa el precio cuando la anotación es más
+   * reciente — una compra de la semana pasada vale más que un precio que
+   * apuntaste hace tres meses.
+   */
+  for (const a of anotados) {
+    if (!a.idBiblioteca || !a.idProveedor || !(a.porUnidad > 0)) continue;
+    const nombre = nombreProveedor.get(a.idProveedor);
+    if (!nombre) continue;
+
+    if (!porInsumo.has(a.idBiblioteca)) porInsumo.set(a.idBiblioteca, new Map());
+    const grupo = porInsumo.get(a.idBiblioteca)!;
+    const previo = grupo.get(a.idProveedor);
+
+    if (!previo) {
+      grupo.set(a.idProveedor, {
+        idProveedor: a.idProveedor,
+        proveedor: nombre,
+        porUnidad: a.porUnidad,
+        precioPaquete: a.precioPaquete,
+        contenido: a.contenido,
+        promedio: a.porUnidad,
+        compras: 0,
+        ultimaFecha: a.fecha,
+        soloAnotado: true,
+        esElMasBarato: false,
+        suma: a.porUnidad,
+      });
+      continue;
+    }
+    if (a.fecha && a.fecha > previo.ultimaFecha) {
+      previo.porUnidad = a.porUnidad;
+      previo.precioPaquete = a.precioPaquete;
+      previo.contenido = a.contenido;
+      previo.ultimaFecha = a.fecha;
+    }
   }
 
   const salida = new Map<string, PrecioProveedor[]>();
@@ -235,6 +309,7 @@ export function preciosPorInsumo(
       promedio: Math.round((v.suma / v.compras) * 10000) / 10000,
       compras: v.compras,
       ultimaFecha: v.ultimaFecha,
+      soloAnotado: v.soloAnotado,
       esElMasBarato: false,
     }));
     // Marcar el más barato solo tiene sentido si hay con quién comparar

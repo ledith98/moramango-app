@@ -32,6 +32,22 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-20',
     tipo: 'nuevo',
+    titulo: 'Historial de precios: cómo se ha movido y borrar los mal anotados',
+    detalle:
+      'En Proveedores, toca el precio de cualquier insumo y se abre su historial completo: cada precio con su fecha, si lo compraste, lo anotaste o solo confirmaste que seguía igual, quién lo capturó, y cuánto subió o bajó respecto al anterior. Antes solo se guardaba el último precio — al anotar uno nuevo, el anterior se perdía — así que no había forma de saber si algo subió ni de deshacer una captura mala. Los que tú anotaste se pueden borrar con “Lo anoté mal, bórralo”, y al borrarlos el precio que vale pasa a ser el anterior de la lista automáticamente. Los que vienen de una compra no se borran ahí: esos también movieron el stock y lo gastado, así que se corrigen en Insumos → Lo que he comprado, y la pantalla te lo dice.',
+    donde: 'Proveedores',
+  },
+  {
+    fecha: '2026-08-20',
+    tipo: 'mejora',
+    titulo: 'En Proveedores, primero lo que vas a pagar',
+    detalle:
+      'En el directorio, cada insumo muestra arriba y en grande lo que cuesta el paquete completo —lo que de verdad sacas de la cartera si vas con ese proveedor— y abajo, en chiquito, a cómo sale la pieza. Antes era al revés. En la pestaña Comparar se queda como estaba, con el precio por pieza mandando: ahí la pregunta es cuál conviene, y para eso lo único comparable es el precio por pieza (un paquete de 40 tenedores a $12 sale más barato que uno de 25 a $8).',
+    donde: 'Proveedores',
+  },
+  {
+    fecha: '2026-08-20',
+    tipo: 'nuevo',
     titulo: 'Cada precio dice de cuándo es, y se confirma de un toque',
     detalle:
       'En Proveedores, junto a cada insumo ahora sale de cuándo es el precio: “precio de hace 5 días” en verde, “hace 3 meses” en ámbar, “hace 6 meses” en rojo. Sirve sobre todo en Comparar: puede pasar que el marcado como más barato lo esté según un precio de hace medio año, mientras el otro es de esta semana — eso no es una comparación, y ahora se ve. En los que ya tienen tiempo aparece un botón “sigue igual”: si fuiste, preguntaste y cuesta lo mismo, lo picas y la fecha se pone al día sin cambiar el precio. Sin eso, un precio estable se vería cada vez más viejo aunque lo confirmes cada semana. Y al anotar un insumo se pregunta cuándo viste ese precio, por si lo viste el sábado y lo capturas el lunes.',

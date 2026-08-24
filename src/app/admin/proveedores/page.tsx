@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { COLOR_FRESCURA, frescuraDePrecio } from '@/lib/frescuraPrecio';
+import type { RegistroPrecio } from '@/lib/precios';
 import { enlaceMapa, etiquetaMapa } from '@/lib/mapas';
 import { fechaHoyMTY } from '@/lib/pedidoFecha';
 
@@ -151,6 +152,31 @@ export default function ProveedoresPage() {
    * `res.json()` lanza — eso dejaba el botón en "Guardando…" para siempre
    * sin decir qué pasó. Aquí cualquier tropiezo termina en un mensaje.
    */
+  /** El historial de precios que se está viendo */
+  const [historialDe, setHistorialDe] = useState<InsumoDeProveedor | null>(null);
+  const [historial, setHistorial] = useState<RegistroPrecio[]>([]);
+  const [cargandoHist, setCargandoHist] = useState(false);
+
+  async function abrirHistorial(i: InsumoDeProveedor) {
+    if (!i.idPresentacion) return;
+    setHistorialDe(i);
+    setHistorial([]);
+    setError('');
+    setCargandoHist(true);
+    try {
+      const res = await fetch(
+        `/api/admin/precios?presentacion=${encodeURIComponent(i.idPresentacion)}`
+      );
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'No se pudo cargar el historial');
+      setHistorial(d.registros ?? []);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setCargandoHist(false);
+    }
+  }
+
   /**
    * "Fui, pregunté, y sigue costando lo mismo."
    *
@@ -159,6 +185,39 @@ export default function ProveedoresPage() {
    * semana — y acaba marcado como dudoso justo el que más confianza
    * merece. De un toque, sin abrir nada.
    */
+  /**
+   * Borra un precio capturado mal.
+   *
+   * Se recarga el historial y el directorio porque el precio vigente pudo
+   * cambiar: si se borro el mas reciente, ahora vale el anterior.
+   */
+  async function borrarPrecio(r: RegistroPrecio) {
+    if (!historialDe?.idPresentacion || !r.id) return;
+    const aviso =
+      `¿Borrar el precio de ${r.fecha}?\n\n` +
+      'Si era el más reciente, va a valer el anterior de la lista.';
+    if (!confirm(aviso)) return;
+    setOcupado(true);
+    setError('');
+    try {
+      const res = await fetch(
+        `/api/admin/precios?id=${encodeURIComponent(r.id)}&presentacion=${encodeURIComponent(historialDe.idPresentacion)}`,
+        { method: 'DELETE' }
+      );
+      const d = await res.json().catch(() => ({}) as { error?: string });
+      if (!res.ok) {
+        setError(d.error || `No se pudo borrar (error ${res.status})`);
+        return;
+      }
+      await cargar();
+      await abrirHistorial(historialDe);
+    } catch {
+      setError('No se pudo conectar. Revisa tu internet y vuelve a intentarlo.');
+    } finally {
+      setOcupado(false);
+    }
+  }
+
   async function revisarPrecio(i: InsumoDeProveedor) {
     await pedir('/api/admin/presentaciones', 'PATCH', {
       id: i.idPresentacion,
@@ -426,12 +485,26 @@ export default function ProveedoresPage() {
                               )}
                             </button>
                             <span className="shrink-0 tabular-nums text-right">
-                              <span className="font-semibold text-neutral-900">
-                                {porPieza(i.porUnidad)}
-                              </span>
-                              {i.contenido > 1 && (
+                              {/*
+                                Arriba lo que vas a pagar, abajo a cómo sale
+                                la pieza. Es lo contrario de la pestaña
+                                Comparar, y a propósito: aquí la pregunta es
+                                "¿cuánto saco de la cartera si voy con
+                                este?", y allá es cuál conviene — para eso
+                                lo único comparable es el precio por pieza.
+                              */}
+                              <button
+                                onClick={() => abrirHistorial(i)}
+                                disabled={!i.idPresentacion}
+                                className={`font-bold text-neutral-900 ${
+                                  i.idPresentacion ? 'underline decoration-neutral-300' : ''
+                                }`}
+                              >
+                                {i.precioPaquete > 0 ? money(i.precioPaquete) : porPieza(i.porUnidad)}
+                              </button>
+                              {i.contenido > 1 && i.precioPaquete > 0 && (
                                 <span className="block text-[10px] text-neutral-600">
-                                  {money(i.precioPaquete)} el paquete de {i.contenido}
+                                  {porPieza(i.porUnidad)} · paquete de {i.contenido}
                                 </span>
                               )}
                               {/*
@@ -580,6 +653,146 @@ export default function ProveedoresPage() {
       {/* Anotar que un proveedor vende un insumo, aunque todavía no se le
           haya comprado. Es una presentación con su proveedor: lo mismo que
           se captura al comprar, solo que por adelantado. */}
+      {/* --------- HISTORIAL DE PRECIOS --------- */}
+      {historialDe && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[90%] overflow-y-auto p-5 space-y-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h3 className="text-lg font-bold text-neutral-900 truncate">
+                  {historialDe.nombre}
+                </h3>
+                <p className="text-xs text-neutral-700">
+                  Cómo se ha movido el precio
+                  {historialDe.marca && historialDe.marca !== 'No aplica'
+                    ? ` · ${historialDe.marca}`
+                    : ''}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setHistorialDe(null);
+                  setError('');
+                }}
+                className="text-neutral-600 text-xl leading-none px-2 shrink-0"
+              >
+                ✕
+              </button>
+            </div>
+
+            {cargandoHist ? (
+              <p className="text-sm text-neutral-700 py-6 text-center">Cargando…</p>
+            ) : historial.length === 0 ? (
+              <p className="text-sm text-neutral-700 bg-neutral-50 border border-neutral-200 rounded-xl p-4">
+                Todavía no hay precios anotados de esta presentación.
+              </p>
+            ) : (
+              <>
+                {/*
+                  Cada precio contra el anterior. Es la pregunta que trae a
+                  alguien a esta pantalla --"¿esto subió o siempre costó
+                  así?"-- y contestarla de un vistazo es el punto.
+                */}
+                <ul className="space-y-2">
+                  {historial.map((r, idx) => {
+                    const previo = historial[idx + 1];
+                    const cambio = previo ? r.precio - previo.precio : 0;
+                    return (
+                      <li
+                        key={r.id || `compra-${r.filaCompra}-${idx}`}
+                        className={`rounded-xl p-3 ${
+                          idx === 0 ? 'bg-green-50 border border-green-200' : 'bg-neutral-50'
+                        }`}
+                      >
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="font-bold text-neutral-900 tabular-nums">
+                            {money(r.precio)}
+                            {r.contenido > 1 && (
+                              <span className="ml-1 text-[11px] font-normal text-neutral-700">
+                                el paquete de {r.contenido}
+                              </span>
+                            )}
+                          </span>
+                          <span className="text-xs text-neutral-700 shrink-0">{r.fecha}</span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                          <span className="text-[11px] text-neutral-700">
+                            {porPieza(r.porUnidad)} por unidad
+                          </span>
+                          <span
+                            className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                              r.origen === 'compra'
+                                ? 'bg-blue-100 text-blue-800'
+                                : r.origen === 'revisado'
+                                  ? 'bg-neutral-200 text-neutral-800'
+                                  : 'bg-amber-100 text-amber-900'
+                            }`}
+                          >
+                            {r.origen === 'compra'
+                              ? 'lo compraste'
+                              : r.origen === 'revisado'
+                                ? 'seguía igual'
+                                : 'lo anotaste'}
+                          </span>
+                          {idx === 0 && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-green-100 text-green-800">
+                              el que vale hoy
+                            </span>
+                          )}
+                          {cambio !== 0 && (
+                            <span
+                              className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                cambio > 0
+                                  ? 'bg-red-100 text-red-800'
+                                  : 'bg-green-100 text-green-800'
+                              }`}
+                            >
+                              {cambio > 0 ? '▲ subió' : '▼ bajó'} {money(Math.abs(cambio))}
+                            </span>
+                          )}
+                          {r.quien && (
+                            <span className="text-[10px] text-neutral-600">· {r.quien}</span>
+                          )}
+                        </div>
+
+                        {/*
+                          Solo se borran las anotaciones. Una compra mal
+                          capturada tambien movio el stock y lo gastado, asi
+                          que se corrige donde se capturo.
+                        */}
+                        {r.id ? (
+                          <button
+                            onClick={() => borrarPrecio(r)}
+                            disabled={ocupado}
+                            className="mt-2 text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200 px-2 py-1 rounded-lg active:scale-95 disabled:opacity-50"
+                          >
+                            🗑️ Lo anoté mal, bórralo
+                          </button>
+                        ) : (
+                          <p className="mt-1 text-[10px] text-neutral-600">
+                            Viene de una compra. Para corregirla, ve a Insumos → Lo que he
+                            comprado.
+                          </p>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+                <p className="text-xs text-neutral-700">
+                  Al borrar un precio, el que vale pasa a ser el anterior de la lista.
+                </p>
+              </>
+            )}
+
+            {error && (
+              <p className="text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-xl p-3">
+                {error}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {agregarA && (() => {
         const ins = insNuevo.activo
           ? { id: '', nombre: insNuevo.nombre, unidadReceta: insNuevo.unidadReceta || 'pieza', unidadCompra: '', equivalencia: 0 }

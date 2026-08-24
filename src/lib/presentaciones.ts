@@ -179,13 +179,27 @@ export async function guardarPresentacion(
   if (datos.marca !== undefined) cambios[COL_PRES.marca] = datos.marca.trim();
   if (datos.unidadCompra !== undefined) cambios[COL_PRES.unidadCompra] = datos.unidadCompra.trim();
   if (datos.contenido !== undefined) cambios[COL_PRES.contenido] = comoNumero(datos.contenido);
-  if (datos.ultimoPrecio !== undefined) cambios[COL_PRES.ultimoPrecio] = comoNumero(datos.ultimoPrecio);
+  /**
+   * Cero se guarda como vacío, no como cero.
+   *
+   * Se llega aquí al borrar el último precio del historial: no es que el
+   * insumo cueste $0, es que ya no se sabe cuánto cuesta. Guardarlo como
+   * cero lo haría aparecer como el más barato de todos los proveedores.
+   */
+  if (datos.ultimoPrecio !== undefined) {
+    const n = comoNumero(datos.ultimoPrecio);
+    cambios[COL_PRES.ultimoPrecio] = n === '' || n <= 0 ? '' : n;
+  }
   if (datos.idProveedor !== undefined) cambios[COL_PRES.idProveedor] = datos.idProveedor.trim();
   if (datos.activa !== undefined) cambios[COL_PRES.activa] = datos.activa ? 'si' : 'no';
   // La fecha viaja pegada al precio: cambiar uno sin el otro dejaría un
   // precio nuevo con fecha vieja, que es peor que no tener fecha.
-  if (datos.ultimoPrecio !== undefined && comoNumero(datos.ultimoPrecio) !== '') {
-    cambios[COL_PRES.fechaPrecio] = datos.fechaPrecio ?? fechaHoyMTY();
+  if (datos.ultimoPrecio !== undefined) {
+    const n = comoNumero(datos.ultimoPrecio);
+    // Sin precio no hay nada que fechar: dejar la fecha vieja haría creer
+    // que ese hueco es un dato reciente
+    cambios[COL_PRES.fechaPrecio] =
+      n === '' || n <= 0 ? '' : (datos.fechaPrecio ?? fechaHoyMTY());
   }
   if (Object.keys(cambios).length > 0) {
     await updateCells(HOJA_PRESENTACIONES, i + 2, cambios);

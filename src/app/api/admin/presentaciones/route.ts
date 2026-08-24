@@ -22,6 +22,7 @@ import {
   guardarPresentacion,
   leerPresentaciones,
 } from '@/lib/presentaciones';
+import { anotarEnHistorial } from '@/lib/historialPrecios';
 import { idDeProveedor } from '@/lib/proveedores';
 import { getAdminSession } from '@/lib/roles';
 
@@ -143,6 +144,18 @@ export async function POST(req: NextRequest) {
     fechaPrecio: (fechaPrecio ?? '').toString().trim() || undefined,
   });
 
+  // Deja constancia del precio: sin esto, el próximo lo pisaría y no
+  // habría cómo saber si subió ni cómo deshacer una captura mala
+  await anotarEnHistorial({
+    idPresentacion: id,
+    idBiblioteca: idInsumo,
+    precio: !isNaN(precio) ? precio : 0,
+    contenido: r.valor,
+    origen: 'anotado',
+    quien: quienDe(sesion),
+    fecha: (fechaPrecio ?? '').toString().trim() || undefined,
+  });
+
   await anotar(
     quienDe(sesion),
     'Insumos',
@@ -185,6 +198,15 @@ export async function PATCH(req: NextRequest) {
     await guardarPresentacion(id, {
       ultimoPrecio: actual.ultimoPrecio,
       fechaPrecio: (fechaPrecio ?? '').toString().trim() || undefined,
+    });
+    await anotarEnHistorial({
+      idPresentacion: id,
+      idBiblioteca: actual.idBiblioteca,
+      precio: actual.ultimoPrecio,
+      contenido: actual.contenido,
+      origen: 'revisado',
+      quien: quienDe(sesion),
+      fecha: (fechaPrecio ?? '').toString().trim() || undefined,
     });
     await anotar(
       quienDe(sesion),
@@ -229,6 +251,18 @@ export async function PATCH(req: NextRequest) {
       { error: 'No se pudo guardar. Vuelve a intentarlo en un momento.' },
       { status: 500 }
     );
+  }
+  // Solo si el precio cambió: reeditar la marca no es una observación
+  if (datos.ultimoPrecio !== undefined && datos.ultimoPrecio !== actual.ultimoPrecio) {
+    await anotarEnHistorial({
+      idPresentacion: id,
+      idBiblioteca: actual.idBiblioteca,
+      precio: datos.ultimoPrecio,
+      contenido: datos.contenido ?? actual.contenido,
+      origen: 'anotado',
+      quien: quienDe(sesion),
+      fecha: (fechaPrecio ?? '').toString().trim() || undefined,
+    });
   }
   await anotar(quienDe(sesion), 'Insumos', `Editó una presentación (${id})`);
   return NextResponse.json({ success: true });

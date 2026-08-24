@@ -1554,27 +1554,27 @@ export default function Home() {
 
             {/* Panel compacto: cada renglón que crece aquí le come espacio
                 a la lista de productos, que es lo que el cliente revisa */}
-            <div className="bg-white px-5 pt-4 pb-5 rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.05)] border-t border-neutral-100 shrink-0">
+            <div className="bg-white px-5 pt-3 pb-4 rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.05)] border-t border-neutral-100 shrink-0">
+              {/* En un renglon: dos filas completas para el desglose le comian
+                  espacio a lo unico que se decide aqui, que es como pagar */}
               {beneficioAplicado && descuentoAplicado > 0 && (
-                <div className="mb-3 space-y-1">
-                  <div className="flex justify-between items-center text-sm text-neutral-700">
-                    <span>Subtotal</span>
-                    <span>${totalBruto.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm text-green-600 font-medium">
-                    <span>Descuento 15%</span>
-                    <span>-${descuentoAplicado.toFixed(2)}</span>
-                  </div>
+                <div className="flex justify-between items-center text-xs mb-1">
+                  <span className="text-neutral-700">
+                    Subtotal ${totalBruto.toFixed(2)}
+                  </span>
+                  <span className="font-semibold text-green-700">
+                    Descuento 15% −${descuentoAplicado.toFixed(2)}
+                  </span>
                 </div>
               )}
 
-              <div className="flex justify-between items-center mb-2.5">
-                <span className="text-neutral-700 font-medium">Total a pagar</span>
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-neutral-700 font-medium text-sm">Total a pagar</span>
                 <span className="text-2xl font-bold text-black">${totalPagar.toFixed(2)}</span>
               </div>
 
               {session && (
-                <div className="mb-3">
+                <div className="mb-2.5">
                   <p className="text-xs font-semibold text-neutral-700 mb-1.5">¿Cómo quieres pagar?</p>
                   {/* En fila: apiladas ocupaban tres renglones completos */}
                   <div className="grid grid-cols-3 gap-2">
@@ -1584,8 +1584,7 @@ export default function Home() {
                         formaPago === 'recoger' ? 'bg-marron text-white' : 'bg-neutral-100 text-neutral-600'
                       }`}
                     >
-                      <span className="block text-base">🏪</span>
-                      Al recoger
+                      🏪 Al recoger
                     </button>
                     {TRANSFERENCIA_HABILITADA && (
                       <button
@@ -1594,8 +1593,7 @@ export default function Home() {
                           formaPago === 'transferencia' ? 'bg-marron text-white' : 'bg-neutral-100 text-neutral-600'
                         }`}
                       >
-                        <span className="block text-base">📲</span>
-                        Transferencia
+                        📲 Transferencia
                       </button>
                     )}
                     <button
@@ -1604,16 +1602,21 @@ export default function Home() {
                         formaPago === 'linea' ? 'bg-marron text-white' : 'bg-neutral-100 text-neutral-600'
                       }`}
                     >
-                      <span className="block text-base">💳</span>
-                      Tarjeta
+                      💳 Tarjeta
                     </button>
                   </div>
 
-                  {formaPago === 'recoger' && (
-                    <div className="mt-3">
-                      <BloqueDireccion titulo="Nos encuentras aquí" />
-                    </div>
-                  )}
+                  {/*
+                    La direccion NO va aqui.
+
+                    Ocupaba 250 px de los 400 del panel, empujando fuera de
+                    pantalla lo unico que se hace en esta pantalla: elegir
+                    como pagar y confirmar. Y no hace falta todavia: nadie
+                    va camino al local mientras arma su pedido. Se muestra
+                    completa, con el boton de Como llegar, en cuanto se
+                    confirma la orden ("Aqui lo recoges"), que es cuando de
+                    verdad se necesita, y tambien al final del menu.
+                  */}
 
                   {formaPago === 'linea' && (
                     <p className="text-xs text-neutral-700 mt-2">
@@ -1621,53 +1624,28 @@ export default function Home() {
                     </p>
                   )}
 
+                  {/*
+                    La CLABE tampoco va aqui.
+
+                    Ocupaba 315 px y empujaba el panel al 61% de la
+                    pantalla. Ademas, la version de despues de confirmar es
+                    mejor: trae la CLABE con boton de copiar, el numero de
+                    pedido para el concepto --que aqui no existe todavia,
+                    porque el pedido aun no se ha creado-- y el boton de
+                    mandar el comprobante por WhatsApp. Nadie transfiere
+                    antes de confirmar; el orden natural es al reves.
+                  */}
                   {formaPago === 'transferencia' && (
-                    <div className="mt-3 bg-neutral-50 border border-neutral-200 rounded-2xl p-4">
-                      <p className="text-xs text-neutral-600 mb-3">
-                        Transfiere <span className="font-bold text-black">${totalPagar.toFixed(2)}</span> a
-                        esta cuenta (SPEI, desde cualquier banco):
-                      </p>
-                      <div className="bg-white rounded-xl border border-neutral-200 p-3 space-y-2">
-                        <div>
-                          <p className="text-[10px] uppercase tracking-wide text-neutral-600 font-semibold">CLABE</p>
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-mono font-bold text-black text-base tracking-wide break-all">
-                              {TRANSFERENCIA.clabe}
-                            </span>
-                            <button
-                              onClick={copiarClabe}
-                              className={`shrink-0 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${
-                                clabeCopiada ? 'bg-green-600 text-white' : 'bg-marron text-white'
-                              }`}
-                            >
-                              {clabeCopiada ? '✓ Copiada' : 'Copiar'}
-                            </button>
-                          </div>
-                        </div>
-                        {TRANSFERENCIA.titular && (
-                          <div>
-                            <p className="text-[10px] uppercase tracking-wide text-neutral-600 font-semibold">Titular</p>
-                            <p className="text-sm text-neutral-800">{TRANSFERENCIA.titular}</p>
-                          </div>
-                        )}
-                        {TRANSFERENCIA.banco && (
-                          <div>
-                            <p className="text-[10px] uppercase tracking-wide text-neutral-600 font-semibold">Banco</p>
-                            <p className="text-sm text-neutral-800">{TRANSFERENCIA.banco}</p>
-                          </div>
-                        )}
-                      </div>
-                      <p className="text-xs text-neutral-700 mt-3 leading-relaxed">
-                        Al confirmar registramos tu pedido. Haz la transferencia y muestra tu comprobante
-                        al recoger (o envíalo por WhatsApp).
-                      </p>
-                    </div>
+                    <p className="text-xs text-neutral-700 mt-2 leading-relaxed">
+                      Al confirmar te damos la CLABE y tu número de pedido para el concepto.
+                      Transfieres después y mandas tu comprobante.
+                    </p>
                   )}
                 </div>
               )}
 
               {!session && (
-                <div className="mb-4 bg-neutral-50 p-3.5 rounded-xl border border-neutral-200 flex gap-3 items-start">
+                <div className="mb-3 bg-neutral-50 p-3 rounded-xl border border-neutral-200 flex gap-2.5 items-start">
                   <span className="text-base leading-none mt-0.5">🔑</span>
                   <p className="text-xs text-neutral-600 leading-relaxed">
                     Para confirmar tu pedido necesitas iniciar sesión con Google. Tu carrito se conserva.
@@ -1676,7 +1654,7 @@ export default function Home() {
               )}
 
               {!tienda.abierta && (
-                <div className="mb-4 bg-amber-50 p-3.5 rounded-xl border border-amber-300 flex gap-3 items-start">
+                <div className="mb-3 bg-amber-50 p-3 rounded-xl border border-amber-300 flex gap-2.5 items-start">
                   <span className="text-base leading-none mt-0.5">🕐</span>
                   <p className="text-xs text-amber-900 font-semibold leading-relaxed">
                     Ahorita estamos cerrados. {tienda.mensaje} Tu carrito se guarda para cuando
@@ -1688,7 +1666,7 @@ export default function Home() {
               <button
                 onClick={confirmarOrden}
                 disabled={enviando || !tienda.abierta}
-                className="w-full bg-marron text-white font-bold text-lg py-4 rounded-2xl active:scale-95 transition-transform shadow-md flex items-center justify-center gap-2 disabled:opacity-60 disabled:scale-100"
+                className="w-full bg-marron text-white font-bold text-base py-3.5 rounded-2xl active:scale-95 transition-transform shadow-md flex items-center justify-center gap-2 disabled:opacity-60 disabled:scale-100"
               >
                 {!tienda.abierta
                   ? 'Cerrado por ahora'

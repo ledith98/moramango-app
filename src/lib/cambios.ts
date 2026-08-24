@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-20',
+    tipo: 'mejora',
+    titulo: 'La pantalla de pagar ya no se come media pantalla',
+    detalle:
+      'El panel de abajo en "Tu Pedido" ocupaba casi la mitad del celular, y con Transferencia seleccionada el 61% — el cliente tenía que hacer malabares para ver su propio pedido. Ahora ocupa entre 23% y 28%. Se quitaron de ahí dos cosas que no hacían falta todavía: la dirección del local y el bloque de la CLABE. Las dos ya salen después de confirmar, y ahí salen mejor: la dirección con su botón de Cómo llegar, y la CLABE junto con el número de pedido para el concepto (que en la pantalla de pagar ni existe, porque el pedido todavía no se ha creado) y el botón de mandar el comprobante por WhatsApp. Nadie transfiere ni va camino al local antes de confirmar.',
+    donde: 'Tienda',
+  },
+  {
+    fecha: '2026-08-20',
     tipo: 'arreglo',
     titulo: 'La comparativa de proveedores estaba dejando fuera casi todo',
     detalle:

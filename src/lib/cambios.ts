@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-20',
+    tipo: 'nuevo',
+    titulo: 'Cada precio dice de cuándo es, y se confirma de un toque',
+    detalle:
+      'En Proveedores, junto a cada insumo ahora sale de cuándo es el precio: “precio de hace 5 días” en verde, “hace 3 meses” en ámbar, “hace 6 meses” en rojo. Sirve sobre todo en Comparar: puede pasar que el marcado como más barato lo esté según un precio de hace medio año, mientras el otro es de esta semana — eso no es una comparación, y ahora se ve. En los que ya tienen tiempo aparece un botón “sigue igual”: si fuiste, preguntaste y cuesta lo mismo, lo picas y la fecha se pone al día sin cambiar el precio. Sin eso, un precio estable se vería cada vez más viejo aunque lo confirmes cada semana. Y al anotar un insumo se pregunta cuándo viste ese precio, por si lo viste el sábado y lo capturas el lunes.',
+    donde: 'Proveedores',
+  },
+  {
+    fecha: '2026-08-20',
     tipo: 'mejora',
     titulo: 'La foto del producto ahora se ve casi 4 veces más grande',
     detalle:

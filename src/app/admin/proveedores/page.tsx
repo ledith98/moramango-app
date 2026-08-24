@@ -13,7 +13,9 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { COLOR_FRESCURA, frescuraDePrecio } from '@/lib/frescuraPrecio';
 import { enlaceMapa, etiquetaMapa } from '@/lib/mapas';
+import { fechaHoyMTY } from '@/lib/pedidoFecha';
 
 interface OpcionPrecio {
   idProveedor: string;
@@ -35,6 +37,8 @@ interface InsumoDeProveedor {
   precioPaquete: number;
   contenido: number;
   marca: string;
+  /** Cuándo se anotó ese precio (YYYY-MM-DD); vacío si nunca */
+  fechaPrecio: string;
   /** La presentacion de este proveedor, para editarla o borrarla */
   idPresentacion: string;
   unidadCompra: string;
@@ -98,7 +102,15 @@ export default function ProveedoresPage() {
   const [catalogo, setCatalogo] = useState<InsumoCatalogo[]>([]);
   /** Alta de "aqui venden esto": proveedor al que se le agrega */
   const [agregarA, setAgregarA] = useState<Proveedor | null>(null);
-  const [insForm, setInsForm] = useState({ id: '', marca: '', unidadCompra: '', contenido: '', ultimoPrecio: '' });
+  const [insForm, setInsForm] = useState({
+    id: '',
+    marca: '',
+    unidadCompra: '',
+    contenido: '',
+    ultimoPrecio: '',
+    /** Cuándo se vio ese precio; hoy casi siempre, pero no forzosamente */
+    fechaPrecio: '',
+  });
   /** Insumo que todavia no existe en el catalogo, se crea al guardar */
   const [insNuevo, setInsNuevo] = useState({ activo: false, nombre: '', unidadReceta: '', categoria: '' });
   /** Presentacion que se esta corrigiendo; null = alta */
@@ -139,6 +151,22 @@ export default function ProveedoresPage() {
    * `res.json()` lanza — eso dejaba el botón en "Guardando…" para siempre
    * sin decir qué pasó. Aquí cualquier tropiezo termina en un mensaje.
    */
+  /**
+   * "Fui, pregunté, y sigue costando lo mismo."
+   *
+   * Sin este atajo la fecha solo se refresca al CAMBIAR el precio, así que
+   * un precio estable se ve cada vez más viejo aunque se confirme cada
+   * semana — y acaba marcado como dudoso justo el que más confianza
+   * merece. De un toque, sin abrir nada.
+   */
+  async function revisarPrecio(i: InsumoDeProveedor) {
+    await pedir('/api/admin/presentaciones', 'PATCH', {
+      id: i.idPresentacion,
+      revisado: true,
+      fechaPrecio: fechaHoyMTY(),
+    });
+  }
+
   async function pedir(
     url: string,
     metodo: 'POST' | 'PATCH' | 'DELETE',
@@ -310,7 +338,7 @@ export default function ProveedoresPage() {
                         onClick={() => {
                           setAgregarA(p);
                           setInsEditando(null);
-                          setInsForm({ id: '', marca: '', unidadCompra: '', contenido: '', ultimoPrecio: '' });
+                          setInsForm({ id: '', marca: '', unidadCompra: '', contenido: '', ultimoPrecio: '', fechaPrecio: '' });
                           setInsNuevo({ activo: false, nombre: '', unidadReceta: '', categoria: '' });
                           setError('');
                         }}
@@ -378,6 +406,7 @@ export default function ProveedoresPage() {
                                   unidadCompra: i.unidadCompra,
                                   contenido: i.contenido ? String(i.contenido) : '',
                                   ultimoPrecio: i.precioPaquete ? String(i.precioPaquete) : '',
+                                  fechaPrecio: i.fechaPrecio || fechaHoyMTY(),
                                 });
                                 setError('');
                               }}
@@ -405,6 +434,36 @@ export default function ProveedoresPage() {
                                   {money(i.precioPaquete)} el paquete de {i.contenido}
                                 </span>
                               )}
+                              {/*
+                                De cuándo es el precio. Sin la fecha no se
+                                puede leer: comparar proveedores contra uno
+                                de hace meses lleva a ir al lugar
+                                equivocado creyendo que se ahorra.
+                              */}
+                              {i.porUnidad > 0 &&
+                                (() => {
+                                  const f = frescuraDePrecio(i.fechaPrecio);
+                                  return (
+                                    <span className="flex items-center justify-end gap-1 mt-0.5">
+                                      <span
+                                        className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${COLOR_FRESCURA[f.estado]}`}
+                                      >
+                                        {f.estado === 'sin-fecha'
+                                          ? 'sin fecha'
+                                          : `precio de ${f.texto}`}
+                                      </span>
+                                      {i.idPresentacion && f.conviene && (
+                                        <button
+                                          onClick={() => revisarPrecio(i)}
+                                          disabled={ocupado}
+                                          className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-neutral-900 text-white active:scale-95 disabled:opacity-50"
+                                        >
+                                          sigue igual
+                                        </button>
+                                      )}
+                                    </span>
+                                  );
+                                })()}
                               {i.cuantosLoVenden > 1 && (
                                 <span
                                   className={`ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded ${
@@ -481,6 +540,22 @@ export default function ProveedoresPage() {
                               : ''}
                             {o.compras} compra{o.compras === 1 ? '' : 's'}
                           </span>
+                          {/*
+                            Aquí importa más que en ningún lado: el "más
+                            barato" solo vale si los dos precios son de
+                            fechas parecidas. Uno de hace medio año contra
+                            uno de ayer no es una comparación.
+                          */}
+                          {(() => {
+                            const f = frescuraDePrecio(o.ultimaFecha);
+                            return (
+                              <span
+                                className={`inline-block mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded ${COLOR_FRESCURA[f.estado]}`}
+                              >
+                                {f.estado === 'sin-fecha' ? 'sin fecha' : `precio de ${f.texto}`}
+                              </span>
+                            );
+                          })()}
                         </span>
                         <span
                           className={`font-bold tabular-nums shrink-0 text-right ${
@@ -653,6 +728,27 @@ export default function ProveedoresPage() {
                 className={inputCls}
               />
 
+              {/*
+                La fecha en que VISTE el precio, no la de captura. Es lo que
+                permite saber después si el precio todavía sirve: uno de
+                hace cuatro meses es una suposición, y compararlo contra
+                otro proveedor lleva a ir al lugar equivocado.
+              */}
+              <label className="block text-sm font-semibold text-neutral-800">
+                ¿Cuándo viste ese precio?
+              </label>
+              <input
+                type="date"
+                value={insForm.fechaPrecio || fechaHoyMTY()}
+                max={fechaHoyMTY()}
+                onChange={(e) => setInsForm({ ...insForm, fechaPrecio: e.target.value })}
+                className={inputCls}
+              />
+              <p className="text-xs text-neutral-700 -mt-1">
+                Déjalo en hoy si acabas de preguntar. Si el precio lo viste el sábado y lo estás
+                anotando ahora, pon el sábado.
+              </p>
+
               {porUnidad > 0 && ins && (
                 <p className="text-sm font-semibold text-green-800 bg-green-50 border border-green-200 rounded-xl p-3">
                   Sale a {porPieza(porUnidad)} por {ins.unidadReceta} — con eso lo comparas contra
@@ -669,6 +765,7 @@ export default function ProveedoresPage() {
                     unidadCompra: insForm.unidadCompra,
                     contenido: insForm.contenido,
                     ultimoPrecio: insForm.ultimoPrecio,
+                    fechaPrecio: insForm.fechaPrecio || fechaHoyMTY(),
                     proveedor: agregarA.nombre,
                     ...(insNuevo.activo
                       ? {

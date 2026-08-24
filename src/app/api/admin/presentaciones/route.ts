@@ -53,6 +53,9 @@ export async function POST(req: NextRequest) {
     nombreNuevo,
     unidadReceta,
     categoria,
+    // Cuándo se VIO ese precio: si el sábado preguntaste y lo anotas el
+    // lunes, el precio es del sábado, no de hoy
+    fechaPrecio,
   } = await req.json();
 
   const biblioteca = await getSheetData(HOJA_BIBLIOTECA, { crudo: true });
@@ -137,6 +140,7 @@ export async function POST(req: NextRequest) {
     contenido: r.valor,
     ultimoPrecio: !isNaN(precio) && precio > 0 ? precio : undefined,
     idProveedor,
+    fechaPrecio: (fechaPrecio ?? '').toString().trim() || undefined,
   });
 
   await anotar(
@@ -154,12 +158,42 @@ export async function PATCH(req: NextRequest) {
   if (!sesion) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
-  const { id, marca, unidadCompra, contenido, proveedor, ultimoPrecio, activa } = await req.json();
+  const { id, marca, unidadCompra, contenido, proveedor, ultimoPrecio, activa, revisado, fechaPrecio } =
+    await req.json();
   if (!id) return NextResponse.json({ error: 'Falta la presentación' }, { status: 400 });
 
   const todas = await leerPresentaciones();
   const actual = todas.find((p) => p.id === id);
   if (!actual) return NextResponse.json({ error: 'Presentación no encontrada' }, { status: 404 });
+
+  /**
+   * "Fui, pregunté, y sigue costando lo mismo."
+   *
+   * Sin esto la fecha solo se refresca al CAMBIAR el precio, así que un
+   * precio estable se ve cada vez más viejo aunque se confirme cada
+   * semana — y termina marcado como dudoso justo el que más confianza
+   * merece. Se reescribe el mismo precio para que la fecha viaje pegada
+   * a él, como en cualquier otra actualización.
+   */
+  if (revisado) {
+    if (!(actual.ultimoPrecio > 0)) {
+      return NextResponse.json(
+        { error: 'Esta presentación todavía no tiene precio anotado' },
+        { status: 400 }
+      );
+    }
+    await guardarPresentacion(id, {
+      ultimoPrecio: actual.ultimoPrecio,
+      fechaPrecio: (fechaPrecio ?? '').toString().trim() || undefined,
+    });
+    await anotar(
+      quienDe(sesion),
+      'Insumos',
+      `Revisó el precio de una presentación (${id})`,
+      'sigue igual'
+    );
+    return NextResponse.json({ success: true });
+  }
 
   const datos: Parameters<typeof guardarPresentacion>[1] = {};
   if (marca !== undefined) datos.marca = (marca ?? '').toString();
@@ -172,6 +206,11 @@ export async function PATCH(req: NextRequest) {
   if (ultimoPrecio !== undefined) {
     const n = parseFloat((ultimoPrecio ?? '').toString().replace(',', '.'));
     if (!isNaN(n) && n >= 0) datos.ultimoPrecio = n;
+  }
+  // La fecha en que se VIO el precio, que puede no ser la de captura: si
+  // el sábado viste un precio y lo anotas el lunes, el precio es del sábado
+  if ((fechaPrecio ?? '').toString().trim()) {
+    datos.fechaPrecio = fechaPrecio.toString().trim();
   }
   if (proveedor !== undefined) {
     datos.idProveedor = (proveedor ?? '').toString().trim()

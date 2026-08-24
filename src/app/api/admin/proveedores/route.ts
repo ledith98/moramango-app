@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { anotar } from '@/lib/bitacora';
 import { getSheetData } from '@/lib/googleSheets';
 import { HOJA_BIBLIOTECA, HOJA_COMPRAS } from '@/lib/inventario';
-import { parsearFechaHora } from '@/lib/pedidoFecha';
+import { fechaDeCelda, parsearFechaHora } from '@/lib/pedidoFecha';
 import { leerPresentaciones } from '@/lib/presentaciones';
 import {
   guardarProveedor,
@@ -94,6 +94,16 @@ export async function GET() {
         precioPaquete: mio?.precioPaquete ?? suPres?.ultimoPrecio ?? 0,
         contenido: mio?.contenido ?? suPres?.contenido ?? 0,
         marca: suPres?.marca ?? '',
+        /**
+         * Cuándo se anotó ese precio. Sin esto no se puede saber si el
+         * precio sirve: uno de hace cuatro meses es una suposición, y
+         * comparar contra él lleva a ir al lugar equivocado.
+         *
+         * Vale más la fecha de la presentación que la de la última compra:
+         * la presentación se actualiza también cuando solo se fue a
+         * preguntar el precio, sin comprar.
+         */
+        fechaPrecio: suPres?.fechaPrecio || fechaDeCelda(mio?.ultimaFecha ?? ''),
         /** La presentación de este proveedor, para poder editarla o borrarla */
         idPresentacion: suPres?.id ?? '',
         unidadCompra: suPres?.unidadCompra ?? '',
@@ -122,7 +132,13 @@ export async function GET() {
       id: idBib,
       nombre: nombreInsumo.get(idBib) ?? idBib,
       unidad: unidadInsumo.get(idBib) ?? '',
-      opciones: lista,
+      /**
+       * La fecha se normaliza aquí: en la hoja puede venir como texto o
+       * como número de serie de Google, y la pantalla necesita YYYY-MM-DD
+       * para poder decir de cuándo es cada precio. Comparar dos precios
+       * sin saber sus fechas es justo lo que manda al lugar equivocado.
+       */
+      opciones: lista.map((o) => ({ ...o, ultimaFecha: fechaDeCelda(o.ultimaFecha) })),
       /** Cuánto te ahorras yendo con el más barato, POR UNIDAD DE RECETA */
       ahorro:
         Math.round(

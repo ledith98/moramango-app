@@ -19,6 +19,7 @@
 
 import { ensureColumn, findRow, updateCell, updateCells } from './googleSheets';
 import { esBeneficioReactivacion, montoReactivacion } from './beneficioCliente';
+import { actualizarTarjeta } from './googleWallet';
 import { fechaHoyMTY } from './pedidoFecha';
 
 export { esBeneficioReactivacion, crearBeneficioReactivacion, montoReactivacion } from './beneficioCliente';
@@ -159,6 +160,14 @@ export async function revertirLealtad(idUsuario: string, beneficioCanjeado?: str
       [colHistorico]: historicoFinal,
       [colBeneficio]: beneficioNuevo,
     });
+
+    // Si se cancela un pedido, la tarjeta tampoco puede quedarse arriba
+    await actualizarTarjeta({
+      id: idUsuario,
+      nombre: (usuarioRow.data.Nombre || '').toString().trim(),
+      pedidos: cicloFinal,
+      beneficio: beneficioNuevo,
+    });
   } catch (error) {
     console.error('Error revirtiendo lealtad:', error);
   }
@@ -185,6 +194,21 @@ export async function actualizarLealtad(idUsuario: string, beneficioCanjeado?: s
     await updateCell('USUARIOS', usuarioRow.rowIndex, colCiclo, cicloFinal);
     await updateCell('USUARIOS', usuarioRow.rowIndex, colHistorico, historicoFinal);
     await updateCell('USUARIOS', usuarioRow.rowIndex, colBeneficio, beneficioNuevo);
+
+    /**
+     * La tarjeta del telefono, al dia.
+     *
+     * Es lo que hace que la tarjeta valga la pena: el cliente ve su avance
+     * cambiar sin abrir nada. Va despues de guardar en la hoja y nunca
+     * lanza, porque la hoja es la verdad y una venta no se puede perder
+     * porque Google no conteste.
+     */
+    await actualizarTarjeta({
+      id: idUsuario,
+      nombre: (usuarioRow.data.Nombre || '').toString().trim(),
+      pedidos: cicloFinal,
+      beneficio: beneficioNuevo,
+    });
   } catch (error) {
     console.error('Error actualizando lealtad:', error);
   }

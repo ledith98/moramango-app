@@ -218,6 +218,8 @@ export default function Home() {
   const [lealtad, setLealtad] = useState<DatosLealtad | null>(null);
   const [cargandoLealtad, setCargandoLealtad] = useState(false);
   const [beneficioAplicado, setBeneficioAplicado] = useState(false);
+  /** Enlace para guardar la tarjeta en Google Wallet; '' = no disponible */
+  const [enlaceWallet, setEnlaceWallet] = useState('');
   const [productoDetalle, setProductoDetalle] = useState<any | null>(null);
   /** Tamaño elegido en la ficha del producto (vacío = no tiene tamaños) */
   const [tamanoElegido, setTamanoElegido] = useState('');
@@ -312,6 +314,24 @@ export default function Home() {
         .finally(() => setCargandoLealtad(false));
     }
   }, [session, verCarrito, verPerfil, lealtad]);
+
+  /**
+   * El enlace para guardar la tarjeta, solo al abrir el perfil.
+   *
+   * Se pide aparte y no junto con la lealtad porque implica firmar un
+   * enlace con Google: cargarlo en cada visita a la tienda sería trabajo
+   * para algo que casi nadie abre. Si el programa no está conectado,
+   * contesta que no y el botón simplemente no aparece.
+   */
+  useEffect(() => {
+    if (!session || !verPerfil || enlaceWallet) return;
+    fetch('/api/wallet')
+      .then((res) => res.json())
+      .then((d) => {
+        if (d.listo && d.enlace) setEnlaceWallet(d.enlace);
+      })
+      .catch(() => {});
+  }, [session, verPerfil, enlaceWallet]);
 
   // Precargar nombre/teléfono desde el sheet cuando abre Mis Datos
   // (solo si los campos locales están vacíos, para no sobreescribir cambios sin guardar)
@@ -2137,8 +2157,30 @@ export default function Home() {
                     </div>
                   )}
 
+                  {/*
+                    Guardar la tarjeta en el telefono.
+
+                    Solo sale si el programa ya esta conectado con Google; si
+                    no, no se le ofrece algo que va a fallar. Una vez
+                    guardada, el avance se le actualiza solo, sin abrir la
+                    app.
+                  */}
+                  {enlaceWallet && (
+                    <a
+                      href={enlaceWallet}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-4 w-full flex items-center justify-center gap-2 bg-white text-neutral-900 text-sm font-bold py-3 rounded-xl active:scale-95 transition-transform"
+                    >
+                      💳 Guardar en Google Wallet
+                    </a>
+                  )}
+
                   <p className="text-[11px] text-white/50 mt-4 leading-relaxed">
                     Muestra este código al comprar en el local para que tus pedidos también sumen.
+                    {enlaceWallet
+                      ? ' Si guardas tu tarjeta, tus sellos se actualizan solos en tu teléfono.'
+                      : ''}
                   </p>
                 </div>
               )}

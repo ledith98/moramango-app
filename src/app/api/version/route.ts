@@ -25,6 +25,8 @@ export async function GET() {
     rama: process.env.VERCEL_GIT_COMMIT_REF || '',
     /** true = el almacén de fotos está conectado a ESTE despliegue */
     fotos: !!process.env.BLOB_READ_WRITE_TOKEN,
+    /** true = la tarjeta de lealtad de Google Wallet está conectada */
+    tarjeta: !!process.env.GOOGLE_WALLET_ISSUER_ID,
     /** Las otras piezas, por si algún día pasa lo mismo con ellas */
     hoja: !!process.env.GOOGLE_SHEETS_ID,
     avisos: !!process.env.TELEGRAM_BOT_TOKEN,

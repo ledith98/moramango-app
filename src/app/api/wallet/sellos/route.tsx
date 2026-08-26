@@ -31,19 +31,22 @@ import { META_ARTICULO, META_DESCUENTO } from '@/lib/lealtad';
 const ANCHO = 1032;
 const ALTO = 336;
 
-const CREMA = '#f7f1e8';
 
 /**
- * Las tres versiones del logo.
+ * Las versiones del logo, una por estado del sello.
  *
- * El café y el dorado son dibujos aparte, no el de color teñido: en esas
- * versiones la mora va en blanco con el contorno marcado, y eso no sale
- * de recolorear píxeles. Si todavía no están en /public, se usa el de
- * color apagado — así la tarjeta nunca se rompe por un archivo que falta.
+ * El verde y el dorado son dibujos aparte, no el de color teñido: en esas
+ * versiones la mora va hueca con el contorno marcado, y eso no sale de
+ * recolorear píxeles. Si alguno falta en /public, se usa el de color
+ * apagado — así la tarjeta nunca se rompe por un archivo que no está.
+ *
+ * El café existe pero ya no se usa para los pendientes: la tarjeta de
+ * Google es café oscuro y, sobre ese fondo, un sello café es invisible.
+ * El verde es lo que se ve.
  */
 const ARCHIVOS = {
   color: '/icon-512x512.png',
-  cafe: '/logo-cafe.png',
+  verde: '/logo-verde.png',
   dorado: '/logo-dorado.png',
 };
 
@@ -70,8 +73,8 @@ export async function GET(req: Request) {
    * petición, así que funciona igual en local y en producción.
    */
   const dir = (archivo: string) => `${url.origin}${archivo}`;
-  const [hayCafe, hayDorado] = await Promise.all([
-    existe(dir(ARCHIVOS.cafe)),
+  const [hayVerde, hayDorado] = await Promise.all([
+    existe(dir(ARCHIVOS.verde)),
     existe(dir(ARCHIVOS.dorado)),
   ]);
 
@@ -87,12 +90,12 @@ export async function GET(req: Request) {
     const lleno = i <= n;
     const esPremio = i === META_DESCUENTO || i === META_ARTICULO;
 
-    // Ganado: el logo a color. Por ganar: café, o dorado si ahí hay premio.
+    // Ganado: el logo a color. Por ganar: verde, o dorado si ahí hay premio.
     let archivo = ARCHIVOS.color;
     let opacidad = 1;
     if (!lleno) {
       if (esPremio && hayDorado) archivo = ARCHIVOS.dorado;
-      else if (!esPremio && hayCafe) archivo = ARCHIVOS.cafe;
+      else if (!esPremio && hayVerde) archivo = ARCHIVOS.verde;
       // Sin los archivos nuevos, el de color apagado hace el mismo papel
       else opacidad = 0.16;
     }
@@ -145,11 +148,11 @@ export async function GET(req: Request) {
           justifyContent: 'center',
           gap: 2,
           /**
-           * El fondo se queda crema y no transparente. La tarjeta de
-           * Google es café oscuro: sobre ese fondo, los sellos café serían
-           * invisibles. La crema es lo que los deja verse.
+           * Fondo transparente: los sellos se ven directo sobre el café de
+           * la tarjeta, sin una tira clara que los encajone. Se puede
+           * porque los pendientes son verdes — en café no se verían.
            */
-          background: CREMA,
+          background: 'transparent',
           padding: 6,
         }}
       >

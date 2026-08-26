@@ -55,6 +55,20 @@ const issuerId = () => (process.env.GOOGLE_WALLET_ISSUER_ID || '').trim();
 const cuenta = () => (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '').trim();
 const llave = () => (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
 
+/**
+ * Versión del dibujo de los sellos. SUBIRLA al cambiar el diseño.
+ *
+ * Google guarda las imágenes en caché por dirección, y la de los sellos
+ * se sirve con caché de un año. Sin este número, cambiar el dibujo no
+ * llegaría nunca a quien ya tiene la tarjeta: Google seguiría mostrando
+ * el que bajó la primera vez.
+ *
+ *   1 · círculos con números
+ *   2 · logo a color y logo apagado
+ *   3 · sellos verdes y dorados, sin letreros, fondo transparente
+ */
+const VERSION_SELLOS = 3;
+
 /** Un solo programa para todos: la plantilla de la tarjeta. */
 export const idClase = () => `${issuerId()}.moramango-lealtad`;
 
@@ -106,6 +120,19 @@ function plantilla() {
       sourceUri: { uri: `${SITIO}/icon-512x512.png` },
       contentDescription: {
         defaultValue: { language: 'es-MX', value: 'Logo de Moramango' },
+      },
+    },
+    /**
+     * El nombre escrito, arriba del todo.
+     *
+     * Google lo usa en vez del logo redondo más el texto del emisor, así
+     * que el encabezado queda con la tipografía de la marca en lugar de
+     * la suya.
+     */
+    wideProgramLogo: {
+      sourceUri: { uri: `${SITIO}/logo-nombre-moramango.png` },
+      contentDescription: {
+        defaultValue: { language: 'es-MX', value: 'Moramango' },
       },
     },
     textModulesData: [
@@ -183,7 +210,9 @@ function tarjeta(c: DatosCliente, sitio = SITIO) {
      * semana pasada aunque el conteo ya hubiera cambiado.
      */
     heroImage: {
-      sourceUri: { uri: `${sitio}/api/wallet/sellos?n=${Math.min(c.pedidos, 10)}` },
+      sourceUri: {
+        uri: `${sitio}/api/wallet/sellos?n=${Math.min(c.pedidos, 10)}&v=${VERSION_SELLOS}`,
+      },
       contentDescription: {
         defaultValue: {
           language: 'es-MX',

@@ -32,7 +32,6 @@ const ANCHO = 1032;
 const ALTO = 336;
 
 const CREMA = '#f7f1e8';
-const AMBAR = '#e0a106';
 
 /**
  * Las tres versiones del logo.
@@ -105,11 +104,19 @@ export async function GET(req: Request) {
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          width: 118,
+          width: 200,
         }}
       >
         {/*
-          Sin círculo detrás: el logo va directo sobre el fondo.
+          Sin círculo detrás y sin letrero: el logo va directo sobre el
+          fondo y se lleva todo el alto disponible. En la pantalla de un
+          teléfono la tira se ve chiquita, así que cada píxel que se le
+          quite al sello se nota.
+
+          Los letreros de "15% OFF" y "GRATIS" se quitaron para ganar ese
+          espacio. Lo que distingue a esos dos sigue siendo el color
+          dorado, y el texto de la tarjeta —debajo de esta imagen— ya dice
+          cuántos pedidos faltan y para qué premio.
 
           El de color se dibuja más grande que los de contorno porque su
           archivo trae más margen interno: al mismo tamaño de caja, el
@@ -118,22 +125,10 @@ export async function GET(req: Request) {
         */}
         <img
           src={dir(archivo)}
-          width={archivo === ARCHIVOS.color && lleno ? 106 : 92}
-          height={archivo === ARCHIVOS.color && lleno ? 106 : 92}
+          width={archivo === ARCHIVOS.color && lleno ? 158 : 140}
+          height={archivo === ARCHIVOS.color && lleno ? 158 : 140}
           style={{ opacity: opacidad }}
         />
-        <div
-          style={{
-            display: 'flex',
-            marginTop: 4,
-            height: 24,
-            fontSize: 19,
-            fontWeight: 700,
-            color: esPremio ? AMBAR : 'transparent',
-          }}
-        >
-          {i === META_DESCUENTO ? '15% OFF' : i === META_ARTICULO ? 'GRATIS' : '·'}
-        </div>
       </div>
     );
   };
@@ -148,14 +143,14 @@ export async function GET(req: Request) {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 6,
+          gap: 2,
           /**
            * El fondo se queda crema y no transparente. La tarjeta de
            * Google es café oscuro: sobre ese fondo, los sellos café serían
            * invisibles. La crema es lo que los deja verse.
            */
           background: CREMA,
-          padding: 16,
+          padding: 6,
         }}
       >
         <div style={{ display: 'flex' }}>{[1, 2, 3, 4, 5].map(sello)}</div>

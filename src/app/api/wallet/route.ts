@@ -10,14 +10,14 @@
  * podría guardarse la tarjeta de otro con los pedidos de otro.
  */
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/authOptions';
 import { findRow } from '@/lib/googleSheets';
 import { enlaceGuardar, walletListo } from '@/lib/googleWallet';
 import { beneficioVigente } from '@/lib/lealtad';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   const correo = session?.user?.email;
   if (!correo) {
@@ -36,12 +36,17 @@ export async function GET() {
   }
 
   try {
-    const enlace = await enlaceGuardar({
-      id: fila.data.ID_Usuario,
-      nombre: (fila.data.Nombre || session.user?.name || '').toString().trim(),
-      pedidos: parseInt(fila.data.Ciclo_Actual) || 0,
-      beneficio: beneficioVigente(fila.data),
-    });
+    // El origen de la peticion es la direccion mas confiable: no depende
+    // de como haya quedado escrita una variable de configuracion
+    const enlace = await enlaceGuardar(
+      {
+        id: fila.data.ID_Usuario,
+        nombre: (fila.data.Nombre || session.user?.name || '').toString().trim(),
+        pedidos: parseInt(fila.data.Ciclo_Actual) || 0,
+        beneficio: beneficioVigente(fila.data),
+      },
+      new URL(req.url).origin
+    );
     return NextResponse.json({ listo: true, enlace });
   } catch (error) {
     console.error('No se pudo armar la tarjeta de Google Wallet:', error);

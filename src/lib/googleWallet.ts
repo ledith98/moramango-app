@@ -31,8 +31,22 @@ import { resumenTarjeta } from './tarjetaLealtad';
 const BASE = 'https://walletobjects.googleapis.com/walletobjects/v1';
 const SCOPE = 'https://www.googleapis.com/auth/wallet_object.issuer';
 
-/** El sitio, para el logo y para autorizar el enlace de guardado. */
-const SITIO = process.env.NEXTAUTH_URL?.replace(/\/$/, '') || 'https://moramango.app';
+/**
+ * El sitio, para el logo, los sellos y autorizar el enlace de guardado.
+ *
+ * NEXTAUTH_URL se ha guardado alguna vez sin el "https://" —el login lo
+ * tolera, esto no—: una direccion sin protocolo dentro del pase no la
+ * puede bajar Google, y la imagen simplemente no aparece, sin aviso. Por
+ * eso se normaliza, y quien llama puede pasar el origen real de la
+ * peticion, que es el dato mas confiable que hay.
+ */
+function normalizarSitio(valor?: string): string {
+  const limpio = (valor || '').trim().replace(/\/$/, '');
+  if (!limpio) return 'https://moramango.app';
+  return /^https?:\/\//.test(limpio) ? limpio : `https://${limpio}`;
+}
+
+const SITIO = normalizarSitio(process.env.NEXTAUTH_URL);
 
 export const walletListo = (): boolean =>
   !!process.env.GOOGLE_WALLET_ISSUER_ID && !!process.env.GOOGLE_PRIVATE_KEY;
@@ -135,7 +149,7 @@ export interface DatosCliente {
 }
 
 /** La tarjeta de un cliente, con lo mismo que ve en la app. */
-function tarjeta(c: DatosCliente) {
+function tarjeta(c: DatosCliente, sitio = SITIO) {
   const r = resumenTarjeta(c.pedidos, c.beneficio);
   return {
     id: idObjeto(c.id),
@@ -169,7 +183,7 @@ function tarjeta(c: DatosCliente) {
      * semana pasada aunque el conteo ya hubiera cambiado.
      */
     heroImage: {
-      sourceUri: { uri: `${SITIO}/api/wallet/sellos?n=${Math.min(c.pedidos, 10)}` },
+      sourceUri: { uri: `${sitio}/api/wallet/sellos?n=${Math.min(c.pedidos, 10)}` },
       contentDescription: {
         defaultValue: {
           language: 'es-MX',
@@ -187,8 +201,20 @@ function tarjeta(c: DatosCliente) {
  * `origins` limita desde qué sitio vale, para que el enlace no sirva
  * pegado en otro lado.
  */
-export async function enlaceGuardar(c: DatosCliente): Promise<string> {
+export async function enlaceGuardar(c: DatosCliente, origen?: string): Promise<string> {
   await asegurarClase();
+  const sitio = origen ? normalizarSitio(origen) : SITIO;
+
+  /**
+   * Antes de armar el enlace, refrescar la tarjeta que ya exista.
+   *
+   * Google NO pisa un pase que ya creo: si el cliente vuelve a guardar,
+   * le devuelve el mismo de antes. Sin esto, cualquier cambio de diseno
+   * —los sellos, por ejemplo— jamas llegaria a quien ya la tenia, y
+   * borrarla del telefono tampoco ayuda porque el objeto sigue vivo del
+   * lado de Google. Un 404 aqui solo dice que todavia no la ha guardado.
+   */
+  await actualizarTarjeta(c, sitio);
 
   const ahora = Math.floor(Date.now() / 1000);
   const payload = {
@@ -196,8 +222,8 @@ export async function enlaceGuardar(c: DatosCliente): Promise<string> {
     aud: 'google',
     typ: 'savetowallet',
     iat: ahora,
-    origins: [SITIO],
-    payload: { loyaltyObjects: [tarjeta(c)] },
+    origins: [sitio],
+    payload: { loyaltyObjects: [tarjeta(c, sitio)] },
   };
 
   const b64 = (o: unknown) =>
@@ -215,10 +241,10 @@ export async function enlaceGuardar(c: DatosCliente): Promise<string> {
  * que actualizar. Nunca lanza — esto corre pegado al registro de una
  * venta, y una venta no se puede perder porque Google no conteste.
  */
-export async function actualizarTarjeta(c: DatosCliente): Promise<boolean> {
+export async function actualizarTarjeta(c: DatosCliente, sitio = SITIO): Promise<boolean> {
   if (!walletListo() || !c.id) return false;
   try {
-    const r = await pedir('PATCH', `/loyaltyObject/${idObjeto(c.id)}`, tarjeta(c));
+    const r = await pedir('PATCH', `/loyaltyObject/${idObjeto(c.id)}`, tarjeta(c, sitio));
     if (r.status === 404) return false;
     if (!r.ok) {
       console.error('Google Wallet no aceptó la actualización:', r.status, r.datos);

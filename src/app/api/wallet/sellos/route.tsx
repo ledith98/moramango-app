@@ -8,7 +8,7 @@
  * imagen de portada, así que los diez sellos se DIBUJAN aquí y se le pasan
  * a Google como una imagen.
  *
- * ?n=3 → los tres primeros sellos llenos, los otros siete vacíos.
+ * ?n=3 → los tres primeros sellos con el logo a color, el resto apagados.
  *
  * El número va en la dirección a propósito: Google guarda las imágenes en
  * su caché por dirección, así que si fuera siempre la misma, el cliente
@@ -20,8 +20,8 @@
  * dato de nadie.
  *
  * Ojo con los caracteres: se dibuja con la tipografía que trae Next, que
- * NO incluye símbolos como ✓ ni emojis — salen como cuadritos. Por eso
- * cada sello lleva su número, que sí existe en cualquier tipografía.
+ * NO incluye símbolos como ✓ ni emojis — salen como cuadritos. Solo se
+ * usan letras y números, que existen en cualquier tipografía.
  */
 
 import { ImageResponse } from 'next/og';
@@ -31,16 +31,24 @@ import { META_ARTICULO, META_DESCUENTO } from '@/lib/lealtad';
 const ANCHO = 1032;
 const ALTO = 336;
 
-const CAFE = '#5c3a21';
 const CREMA = '#f7f1e8';
 const AMBAR = '#e0a106';
-const APAGADO = '#c9b8a3';
+const APAGADO = '#d6c6b1';
 
 export async function GET(req: Request) {
+  const url = new URL(req.url);
   const n = Math.max(
     0,
-    Math.min(META_ARTICULO, parseInt(new URL(req.url).searchParams.get('n') || '0', 10) || 0)
+    Math.min(META_ARTICULO, parseInt(url.searchParams.get('n') || '0', 10) || 0)
   );
+
+  /**
+   * El logo se pide por dirección absoluta y no se lee del disco: en
+   * Vercel la carpeta public la sirve la red de entrega, y el código de
+   * servidor no siempre la tiene como archivo. El origen sale de la
+   * petición, así que funciona igual en local y en producción.
+   */
+  const logo = `${url.origin}/icon-512x512.png`;
 
   /**
    * Diez sellos en dos filas de cinco.
@@ -54,7 +62,6 @@ export async function GET(req: Request) {
   const sello = (i: number) => {
     const lleno = i <= n;
     const esPremio = i === META_DESCUENTO || i === META_ARTICULO;
-    const color = esPremio ? AMBAR : CAFE;
     return (
       <div
         key={i}
@@ -70,17 +77,27 @@ export async function GET(req: Request) {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            width: 86,
-            height: 86,
-            borderRadius: 43,
-            background: lleno ? color : 'transparent',
-            border: lleno ? 'none' : `5px dashed ${esPremio ? AMBAR : APAGADO}`,
-            color: lleno ? '#ffffff' : APAGADO,
-            fontSize: 38,
-            fontWeight: 700,
+            width: 92,
+            height: 92,
+            borderRadius: 46,
+            background: lleno ? '#ffffff' : 'transparent',
+            border: lleno
+              ? `4px solid ${esPremio ? AMBAR : '#e6d9c6'}`
+              : `4px dashed ${esPremio ? AMBAR : APAGADO}`,
           }}
         >
-          {i}
+          {/*
+            El mismo logo en los dos estados, apagado cuando el sello
+            todavía no se gana. Un logo desvanecido se lee como "aquí va a
+            ir uno" mejor que un hueco vacío, y de paso la marca aparece
+            diez veces en la tarjeta.
+          */}
+          <img
+            src={logo}
+            width={lleno ? 70 : 56}
+            height={lleno ? 70 : 56}
+            style={{ opacity: lleno ? 1 : 0.15 }}
+          />
         </div>
         <div
           style={{

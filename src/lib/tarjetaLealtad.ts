@@ -73,7 +73,14 @@ export function resumenTarjeta(pedidos: number, beneficio: string): ResumenTarje
   }
 
   return {
-    avance: `${Math.min(enCiclo, meta)} de ${meta}`,
+    /**
+     * Siempre sobre 10, igual que los sellos dibujados.
+     *
+     * El ciclo completo es de diez: a los cinco hay premio pero no se
+     * reinicia. Si el texto dijera "3 de 5" junto a una imagen de diez
+     * sellos, las dos cosas se contradirían en la misma tarjeta.
+     */
+    avance: `${Math.min(enCiclo, META_ARTICULO)} de ${META_ARTICULO}`,
     pedidos: enCiclo,
     meta,
     faltan,

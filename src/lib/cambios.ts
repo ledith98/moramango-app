@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-20',
+    tipo: 'nuevo',
+    titulo: 'Tarjeta de lealtad en Google Wallet, con sellos que se van llenando',
+    detalle:
+      'Tus clientes con Android ya pueden guardar su tarjeta de lealtad en Google Wallet, desde su perfil en la tienda. Se ven los 10 sellos: los que ya juntó en café, el 5 y el 10 en dorado porque ahí están los premios (15% y artículo gratis). Trae su QR para que en el mostrador lo escanees en vez de buscarlo por nombre. Lo mejor: cuando registras su venta, los sellos se llenan solos en su teléfono sin que abra nada, y Google le puede avisar en la pantalla de bloqueo cuando junta su premio. Si cancelas un pedido, también baja. Por ahora funciona con las cuentas que registres como prueba; para todos los clientes falta que Google apruebe el Perfil de Negocio.',
+    donde: 'Tienda',
+  },
+  {
+    fecha: '2026-08-20',
     tipo: 'mejora',
     titulo: 'La pantalla de pagar ya no se come media pantalla',
     detalle:

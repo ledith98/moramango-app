@@ -144,7 +144,7 @@ function tarjeta(c: DatosCliente) {
     accountId: c.id,
     accountName: c.nombre || 'Cliente Moramango',
     loyaltyPoints: {
-      label: 'Pedidos',
+      label: 'Sellos',
       balance: { string: r.avance },
     },
     secondaryLoyaltyPoints: {
@@ -160,6 +160,22 @@ function tarjeta(c: DatosCliente) {
       type: 'QR_CODE',
       value: c.id,
       alternateText: c.id,
+    },
+    /**
+     * Los diez sellos, dibujados por la app.
+     *
+     * El número va en la dirección porque Google guarda las imágenes en
+     * caché: si fuera siempre la misma, el cliente vería los sellos de la
+     * semana pasada aunque el conteo ya hubiera cambiado.
+     */
+    heroImage: {
+      sourceUri: { uri: `${SITIO}/api/wallet/sellos?n=${Math.min(c.pedidos, 10)}` },
+      contentDescription: {
+        defaultValue: {
+          language: 'es-MX',
+          value: `${Math.min(c.pedidos, 10)} de 10 sellos`,
+        },
+      },
     },
   };
 }

@@ -108,8 +108,20 @@ export async function GET(req: Request) {
           width: 118,
         }}
       >
-        {/* Sin círculo detrás: el logo va directo sobre el fondo */}
-        <img src={dir(archivo)} width={92} height={92} style={{ opacity: opacidad }} />
+        {/*
+          Sin círculo detrás: el logo va directo sobre el fondo.
+
+          El de color se dibuja más grande que los de contorno porque su
+          archivo trae más margen interno: al mismo tamaño de caja, el
+          dibujo sale más chico y el sello ganado se veía encogido junto a
+          los que faltan.
+        */}
+        <img
+          src={dir(archivo)}
+          width={archivo === ARCHIVOS.color && lleno ? 106 : 92}
+          height={archivo === ARCHIVOS.color && lleno ? 106 : 92}
+          style={{ opacity: opacidad }}
+        />
         <div
           style={{
             display: 'flex',

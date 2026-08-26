@@ -33,7 +33,29 @@ const ALTO = 336;
 
 const CREMA = '#f7f1e8';
 const AMBAR = '#e0a106';
-const APAGADO = '#d6c6b1';
+
+/**
+ * Las tres versiones del logo.
+ *
+ * El café y el dorado son dibujos aparte, no el de color teñido: en esas
+ * versiones la mora va en blanco con el contorno marcado, y eso no sale
+ * de recolorear píxeles. Si todavía no están en /public, se usa el de
+ * color apagado — así la tarjeta nunca se rompe por un archivo que falta.
+ */
+const ARCHIVOS = {
+  color: '/icon-512x512.png',
+  cafe: '/logo-cafe.png',
+  dorado: '/logo-dorado.png',
+};
+
+async function existe(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(url, { method: 'HEAD' });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -43,12 +65,16 @@ export async function GET(req: Request) {
   );
 
   /**
-   * El logo se pide por dirección absoluta y no se lee del disco: en
+   * Los logos se piden por dirección absoluta y no se leen del disco: en
    * Vercel la carpeta public la sirve la red de entrega, y el código de
    * servidor no siempre la tiene como archivo. El origen sale de la
    * petición, así que funciona igual en local y en producción.
    */
-  const logo = `${url.origin}/icon-512x512.png`;
+  const dir = (archivo: string) => `${url.origin}${archivo}`;
+  const [hayCafe, hayDorado] = await Promise.all([
+    existe(dir(ARCHIVOS.cafe)),
+    existe(dir(ARCHIVOS.dorado)),
+  ]);
 
   /**
    * Diez sellos en dos filas de cinco.
@@ -56,12 +82,22 @@ export async function GET(req: Request) {
    * Son diez y no cinco porque el ciclo completo es de diez: a los cinco
    * hay premio pero no se reinicia. Mostrar solo cinco escondería la mitad
    * del camino, y mostrar diez sin señalar el quinto escondería que ya hay
-   * algo a la mitad. Por eso los dos premios llevan letrero abajo, fuera
-   * del círculo: dentro no cabe "GRATIS" sin encimarse.
+   * algo a la mitad. Por eso los dos premios llevan letrero abajo.
    */
   const sello = (i: number) => {
     const lleno = i <= n;
     const esPremio = i === META_DESCUENTO || i === META_ARTICULO;
+
+    // Ganado: el logo a color. Por ganar: café, o dorado si ahí hay premio.
+    let archivo = ARCHIVOS.color;
+    let opacidad = 1;
+    if (!lleno) {
+      if (esPremio && hayDorado) archivo = ARCHIVOS.dorado;
+      else if (!esPremio && hayCafe) archivo = ARCHIVOS.cafe;
+      // Sin los archivos nuevos, el de color apagado hace el mismo papel
+      else opacidad = 0.16;
+    }
+
     return (
       <div
         key={i}
@@ -72,38 +108,13 @@ export async function GET(req: Request) {
           width: 118,
         }}
       >
+        {/* Sin círculo detrás: el logo va directo sobre el fondo */}
+        <img src={dir(archivo)} width={92} height={92} style={{ opacity: opacidad }} />
         <div
           style={{
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 92,
-            height: 92,
-            borderRadius: 46,
-            background: lleno ? '#ffffff' : 'transparent',
-            border: lleno
-              ? `4px solid ${esPremio ? AMBAR : '#e6d9c6'}`
-              : `4px dashed ${esPremio ? AMBAR : APAGADO}`,
-          }}
-        >
-          {/*
-            El mismo logo en los dos estados, apagado cuando el sello
-            todavía no se gana. Un logo desvanecido se lee como "aquí va a
-            ir uno" mejor que un hueco vacío, y de paso la marca aparece
-            diez veces en la tarjeta.
-          */}
-          <img
-            src={logo}
-            width={lleno ? 70 : 56}
-            height={lleno ? 70 : 56}
-            style={{ opacity: lleno ? 1 : 0.15 }}
-          />
-        </div>
-        <div
-          style={{
-            display: 'flex',
-            marginTop: 8,
-            height: 22,
+            marginTop: 4,
+            height: 24,
             fontSize: 19,
             fontWeight: 700,
             color: esPremio ? AMBAR : 'transparent',
@@ -125,9 +136,14 @@ export async function GET(req: Request) {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 10,
+          gap: 6,
+          /**
+           * El fondo se queda crema y no transparente. La tarjeta de
+           * Google es café oscuro: sobre ese fondo, los sellos café serían
+           * invisibles. La crema es lo que los deja verse.
+           */
           background: CREMA,
-          padding: 20,
+          padding: 16,
         }}
       >
         <div style={{ display: 'flex' }}>{[1, 2, 3, 4, 5].map(sello)}</div>

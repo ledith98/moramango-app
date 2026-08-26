@@ -128,9 +128,15 @@ function plantilla() {
      * Google lo usa en vez del logo redondo más el texto del emisor, así
      * que el encabezado queda con la tipografía de la marca en lugar de
      * la suya.
+     *
+     * Se usa la versión RECORTADA, no el archivo original. Aquel viene
+     * cuadrado con la palabra en una franja al centro: Google ajusta la
+     * imagen completa al encabezado, así que ese espacio transparente se
+     * llevaba el tamaño y el nombre salía diminuto. Recortada a 4.7:1, la
+     * palabra ocupa todo el ancho.
      */
     wideProgramLogo: {
-      sourceUri: { uri: `${SITIO}/logo-nombre-moramango.png` },
+      sourceUri: { uri: `${SITIO}/logo-nombre-ancho.png` },
       contentDescription: {
         defaultValue: { language: 'es-MX', value: 'Moramango' },
       },

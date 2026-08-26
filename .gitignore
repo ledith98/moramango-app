@@ -49,3 +49,6 @@ service-account.json
 MoramangoLimpio/
 **/node_modules/
 ProyectoMoramango/
+# Imágenes de prueba de los sellos
+sellos-*.png
+prueba-*.png

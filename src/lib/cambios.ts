@@ -32,9 +32,9 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-27',
     tipo: 'nuevo',
-    titulo: 'El historial de cuánto has tenido en la cuenta',
+    titulo: 'Movimientos en Mercado Pago: todo lo que entra y sale, en un solo lugar',
     detalle:
-      'Antes, cada vez que anotabas el saldo de Mercado Pago se borraba el anterior: quedaba la foto del día y nada más. Ahora se guardan todos, en Dinero → La cuenta → Lo que rinde tu dinero. Ves cada fecha, cuánto había y cuánto cambió respecto a la vez anterior, y abajo el total de cuánto creció la cuenta en todo el periodo. Ya lo cargué con tus 28 saldos reales del estado de cuenta, del 26 de julio al 27 de agosto: la cuenta creció $8,535.92. De paso arreglé que la fecha del saldo se veía como “46260” en vez de la fecha — Google la convertía en número al guardarla.',
+      'En Dinero → La cuenta ahora está el estado de cuenta completo, desde tu primera venta: lo que entró por ventas ya sin comisión, más el rendimiento, MENOS todo lo que sacaste, y cuánto debe haber hoy — comparado contra lo que dice Mercado Pago. Abajo van los gastos uno por uno, con su fecha y en qué fue, para cuando el total no cuadra con lo que recuerdas haber gastado. Y plegados al final, todos los saldos que has anotado, con cuánto cambió cada vez. Antes cada captura de saldo borraba la anterior y los gastos no se veían por ningún lado, aunque sí se estuvieran restando. De paso se arregló que la fecha del saldo se veía como “46260”: Google la convertía en número al guardarla.',
     donde: 'Dinero',
   },
   {

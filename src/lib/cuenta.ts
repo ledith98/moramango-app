@@ -69,6 +69,22 @@ export interface EstadoCuenta {
   /** Todas las veces que se ha anotado el saldo, de la más nueva atrás */
   historialSaldos: SaldoAnotado[];
   /**
+   * Todo lo que ha pasado en la cuenta desde la primera venta, sin filtro
+   * de fechas. Es el desglose de `totalHistorico`: los mismos números que
+   * se comparan contra el saldo del banco, pero uno por uno.
+   */
+  desdeSiempre: {
+    /** Día de la primera venta que cayó en la cuenta */
+    desde: string;
+    ventas: number;
+    rendimiento: number;
+    entradas: number;
+    salidas: number;
+    cuantasSalidas: number;
+  };
+  /** Rendimientos, entradas y salidas de la cuenta, de lo más nuevo atrás */
+  movimientosCuenta: MovimientoCaja[];
+  /**
    * Todo lo que ha entrado a la cuenta desde la primera venta, sin filtro
    * de fechas.
    *
@@ -160,12 +176,20 @@ export async function leerCuenta(desde: string, hasta: string): Promise<EstadoCu
   const netoDe = (tipo: string, lista: MovimientoCaja[]) =>
     lista.filter((m) => m.tipo === tipo).reduce((s, m) => s + m.monto, 0);
 
+  const rendHistorico = netoDe('Rendimiento', todosLosMovimientos);
+  const entrHistorico = netoDe('Entrada', todosLosMovimientos);
+  const salHistorico = netoDe('Salida', todosLosMovimientos);
+
   const totalHistorico = redondear(
-    disponibleHistorico +
-      netoDe('Rendimiento', todosLosMovimientos) +
-      netoDe('Entrada', todosLosMovimientos) -
-      netoDe('Salida', todosLosMovimientos)
+    disponibleHistorico + rendHistorico + entrHistorico - salHistorico
   );
+
+  /** El primer día que entró dinero a la cuenta, para poder decir «desde». */
+  const primeraVenta = vivos
+    .filter((p) => METODOS_EN_CUENTA.includes(normalizarMetodoPago(p.Metodo_Pago)))
+    .map((p) => parsearFechaHora(p.Fecha_Hora)?.fechaISO ?? '')
+    .filter(Boolean)
+    .sort()[0] ?? '';
 
   const porMetodo: EntradaPorMetodo[] = [];
   for (const metodo of METODOS_EN_CUENTA) {
@@ -216,5 +240,17 @@ export async function leerCuenta(desde: string, hasta: string): Promise<EstadoCu
     saldoFecha: fechaDeCelda(filaSaldo?.Nota),
     historialSaldos,
     totalHistorico,
+    desdeSiempre: {
+      desde: primeraVenta,
+      ventas: redondear(disponibleHistorico),
+      rendimiento: redondear(rendHistorico),
+      entradas: redondear(entrHistorico),
+      salidas: redondear(salHistorico),
+      cuantasSalidas: todosLosMovimientos.filter((m) => m.tipo === 'Salida').length,
+    },
+    // Del más nuevo al más viejo: lo último que pasó es lo que se busca
+    movimientosCuenta: [...todosLosMovimientos].sort((a, b) =>
+      a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0
+    ),
   };
 }

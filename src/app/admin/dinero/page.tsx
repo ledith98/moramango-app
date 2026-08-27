@@ -66,6 +66,15 @@ interface EstadoCuenta {
   totalHistorico: number;
   /** Cada vez que se anotó cuánto había, de lo más nuevo hacia atrás */
   historialSaldos: { fecha: string; saldo: number; quien: string; cambio: number | null }[];
+  desdeSiempre: {
+    desde: string;
+    ventas: number;
+    rendimiento: number;
+    entradas: number;
+    salidas: number;
+    cuantasSalidas: number;
+  };
+  movimientosCuenta: Movimiento[];
   otrasEntradas: number;
   salidas: number;
   movimientoNeto: number;
@@ -122,6 +131,8 @@ export default function DineroPage() {
   const [saldoTocado, setSaldoTocado] = useState(false);
   /** Cuántas capturas de saldo se muestran */
   const [verSaldos, setVerSaldos] = useState<'pocos' | 'todos'>('pocos');
+  /** Cuántos movimientos de la cuenta se muestran */
+  const [verMovsCuenta, setVerMovsCuenta] = useState<'pocos' | 'todos'>('pocos');
 
   // Movimiento (compartido)
   const [bolsa, setBolsa] = useState<'Efectivo' | 'Digital'>('Efectivo');
@@ -613,152 +624,225 @@ export default function DineroPage() {
             )}
 
             {/*
-              El cuadre contra Mercado Pago.
+              El estado de cuenta completo, desde la primera venta.
 
-              Se compara contra el ACUMULADO de siempre y no contra el
-              movimiento del periodo: el saldo del banco viene desde el día
-              uno, así que enfrentarlo contra un mes daría una diferencia
-              falsa cada vez.
-
-              Casi siempre lo que falta es el rendimiento del día, que la
-              app no puede saber sola —lo paga el banco de madrugada— y por
-              eso está el botón para anotarlo de un toque.
+              Va contra el ACUMULADO de siempre y no contra el periodo
+              elegido arriba: el saldo del banco viene desde el día uno,
+              así que enfrentarlo contra un mes daría una diferencia falsa
+              cada vez. Y se desglosa en vez de mostrar solo el total,
+              porque cuando no cuadra lo que se necesita saber es en qué
+              renglón está la diferencia.
             */}
-            {cuenta.saldo !== null && !saldoTocado && (() => {
-              const diferencia = Math.round((cuenta.saldo - cuenta.totalHistorico) * 100) / 100;
-              const cuadra = Math.abs(diferencia) < 0.05;
-              return (
-                <div className="mt-3 border-t border-neutral-100 pt-3">
-                  <p className="text-[11px] text-neutral-600 uppercase tracking-wide mb-1.5">
-                    ¿Empata con Mercado Pago?
+            <div className="mt-3 border-t border-neutral-100 pt-3">
+              <div className="flex items-baseline justify-between gap-2 flex-wrap mb-2">
+                <p className="text-[11px] text-neutral-600 uppercase tracking-wide">
+                  Movimientos en Mercado Pago
+                </p>
+                {cuenta.desdeSiempre.desde && (
+                  <p className="text-[11px] text-neutral-600">
+                    desde tu primera venta, el {cuenta.desdeSiempre.desde}
                   </p>
-                  <dl className="space-y-1 text-sm">
-                    <div className="flex justify-between">
-                      <dt className="text-neutral-700">La app dice que debe haber</dt>
-                      <dd className="font-semibold text-neutral-900 tabular-nums">
-                        {money(cuenta.totalHistorico)}
-                      </dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-neutral-700">Mercado Pago dice</dt>
-                      <dd className="font-semibold text-neutral-900 tabular-nums">
-                        {money(cuenta.saldo)}
-                      </dd>
-                    </div>
-                  </dl>
+                )}
+              </div>
 
-                  {cuadra ? (
+              <dl className="space-y-1 text-sm">
+                <div className="flex justify-between gap-2">
+                  <dt className="text-neutral-700">Ventas ya sin comisión</dt>
+                  <dd className="font-semibold text-neutral-900 tabular-nums">
+                    {money(cuenta.desdeSiempre.ventas)}
+                  </dd>
+                </div>
+                {cuenta.desdeSiempre.rendimiento > 0 && (
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-neutral-700">+ Rendimiento</dt>
+                    <dd className="font-semibold text-green-700 tabular-nums">
+                      {money(cuenta.desdeSiempre.rendimiento)}
+                    </dd>
+                  </div>
+                )}
+                {cuenta.desdeSiempre.entradas > 0 && (
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-neutral-700">+ Otras entradas</dt>
+                    <dd className="font-semibold text-green-700 tabular-nums">
+                      {money(cuenta.desdeSiempre.entradas)}
+                    </dd>
+                  </div>
+                )}
+                {cuenta.desdeSiempre.salidas > 0 && (
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-neutral-700">
+                      − Dinero que sacaste
+                      <span className="text-neutral-600">
+                        {' '}
+                        ({cuenta.desdeSiempre.cuantasSalidas}{' '}
+                        {cuenta.desdeSiempre.cuantasSalidas === 1 ? 'gasto' : 'gastos'})
+                      </span>
+                    </dt>
+                    <dd className="font-semibold text-red-700 tabular-nums">
+                      −{money(cuenta.desdeSiempre.salidas)}
+                    </dd>
+                  </div>
+                )}
+                <div className="flex justify-between gap-2 border-t border-neutral-200 pt-1.5">
+                  <dt className="font-bold text-neutral-900">Debe haber hoy</dt>
+                  <dd className="font-bold text-neutral-900 tabular-nums">
+                    {money(cuenta.totalHistorico)}
+                  </dd>
+                </div>
+                {cuenta.saldo !== null && !saldoTocado && (
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-neutral-700">Mercado Pago dice</dt>
+                    <dd className="font-semibold text-neutral-900 tabular-nums">
+                      {money(cuenta.saldo)}
+                    </dd>
+                  </div>
+                )}
+              </dl>
+
+              {cuenta.saldo !== null && !saldoTocado && (() => {
+                const diferencia = Math.round((cuenta.saldo - cuenta.totalHistorico) * 100) / 100;
+                if (Math.abs(diferencia) < 0.05) {
+                  return (
                     <p className="mt-2 text-sm font-semibold text-green-800 bg-green-50 border border-green-200 rounded-xl p-3">
                       ✅ Cuadra. Las dos cuentas dicen lo mismo.
                     </p>
-                  ) : (
-                    <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl p-3">
-                      <p className="text-sm font-semibold text-amber-900">
-                        {diferencia > 0 ? 'Sobran' : 'Faltan'} {money(Math.abs(diferencia))} en
-                        Mercado Pago
-                      </p>
-                      <p className="text-xs text-amber-800 mt-1">
-                        {diferencia > 0
-                          ? 'Casi siempre es el rendimiento que el banco te pagó y todavía no está anotado.'
-                          : 'Puede ser una transferencia que registraste pero que nunca llegó, o una salida sin anotar.'}
-                      </p>
-                      {diferencia > 0 && (
-                        <button
-                          onClick={() =>
-                            accion('/api/admin/cuenta', {
-                              accion: 'movimiento',
-                              tipo: 'Rendimiento',
-                              monto: String(diferencia),
-                              motivo: 'Rendimiento de Mercado Pago',
-                              cuenta: 'Digital',
-                              fechaISO: diaISO(0),
-                            })
-                          }
-                          disabled={ocupado}
-                          className="mt-2 w-full bg-amber-700 text-white text-sm font-semibold py-2.5 rounded-xl active:scale-95 disabled:opacity-50"
-                        >
-                          Anotar {money(diferencia)} como rendimiento
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-
-            {/*
-              Cómo ha ido creciendo la cuenta.
-
-              Antes cada captura pisaba la anterior y solo quedaba la foto
-              del día. Con el historial se ve el ritmo: si esta semana
-              creció la mitad que la pasada, eso se nota aquí y en ningún
-              otro lado.
-            */}
-            {cuenta.historialSaldos.length > 0 && (
-              <div className="mt-3 border-t border-neutral-100 pt-3">
-                <div className="flex items-baseline justify-between gap-2 mb-1.5">
-                  <p className="text-[11px] text-neutral-600 uppercase tracking-wide">
-                    Cómo ha crecido la cuenta
-                  </p>
-                  {cuenta.historialSaldos.length > 6 && (
-                    <button
-                      onClick={() => setVerSaldos(verSaldos === 'todos' ? 'pocos' : 'todos')}
-                      className="text-[11px] font-semibold text-marron underline"
-                    >
-                      {verSaldos === 'todos'
-                        ? 'Ver solo las últimas'
-                        : `Ver las ${cuenta.historialSaldos.length}`}
-                    </button>
-                  )}
-                </div>
-
-                <ul className="divide-y divide-neutral-100 border border-neutral-200 rounded-xl overflow-hidden">
-                  {(verSaldos === 'todos'
-                    ? cuenta.historialSaldos
-                    : cuenta.historialSaldos.slice(0, 6)
-                  ).map((h) => (
-                    <li
-                      key={h.fecha}
-                      className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
-                    >
-                      <span className="text-neutral-700 tabular-nums shrink-0">{h.fecha}</span>
-                      <span className="flex items-baseline gap-2 min-w-0">
-                        {h.cambio !== null && h.cambio !== 0 && (
-                          <span
-                            className={`text-xs font-semibold tabular-nums ${
-                              h.cambio > 0 ? 'text-green-700' : 'text-red-700'
-                            }`}
-                          >
-                            {h.cambio > 0 ? '+' : '−'}
-                            {money(Math.abs(h.cambio))}
-                          </span>
-                        )}
-                        <span className="font-semibold text-neutral-900 tabular-nums">
-                          {money(h.saldo)}
-                        </span>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-
-                {(() => {
-                  // Lo que ha entrado entre la primera captura y la última
-                  const h = cuenta.historialSaldos;
-                  if (h.length < 2) return null;
-                  const crecio = Math.round((h[0].saldo - h[h.length - 1].saldo) * 100) / 100;
-                  return (
-                    <p className="text-xs text-neutral-700 mt-2">
-                      Del {h[h.length - 1].fecha} al {h[0].fecha} la cuenta{' '}
-                      {crecio >= 0 ? 'creció' : 'bajó'}{' '}
-                      <b className={crecio >= 0 ? 'text-green-800' : 'text-red-700'}>
-                        {money(Math.abs(crecio))}
-                      </b>
-                      .
-                    </p>
                   );
-                })()}
-              </div>
-            )}
+                }
+                return (
+                  <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                    <p className="text-sm font-semibold text-amber-900">
+                      {diferencia > 0 ? 'Sobran' : 'Faltan'} {money(Math.abs(diferencia))} en
+                      Mercado Pago
+                    </p>
+                    <p className="text-xs text-amber-800 mt-1">
+                      {diferencia > 0
+                        ? 'Casi siempre es el rendimiento que el banco te pagó y todavía no está anotado.'
+                        : 'Puede ser un gasto que saliste de la cuenta y no has anotado, o una transferencia que registraste y nunca llegó.'}
+                    </p>
+                    {diferencia > 0 && (
+                      <button
+                        onClick={() =>
+                          accion('/api/admin/cuenta', {
+                            accion: 'movimiento',
+                            tipo: 'Rendimiento',
+                            monto: String(diferencia),
+                            motivo: 'Rendimiento de Mercado Pago',
+                            cuenta: 'Digital',
+                            fechaISO: diaISO(0),
+                          })
+                        }
+                        disabled={ocupado}
+                        className="mt-2 w-full bg-amber-700 text-white text-sm font-semibold py-2.5 rounded-xl active:scale-95 disabled:opacity-50"
+                      >
+                        Anotar {money(diferencia)} como rendimiento
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/*
+                Uno por uno. El resumen de arriba dice cuánto salió; esto
+                dice en qué, que es lo que se busca cuando el total no
+                cuadra con lo que uno recuerda haber gastado.
+              */}
+              {cuenta.movimientosCuenta.length > 0 && (
+                <div className="mt-3">
+                  <div className="flex items-baseline justify-between gap-2 mb-1.5">
+                    <p className="text-[11px] text-neutral-600 uppercase tracking-wide">
+                      Uno por uno
+                    </p>
+                    {cuenta.movimientosCuenta.length > 6 && (
+                      <button
+                        onClick={() => setVerMovsCuenta(verMovsCuenta === 'todos' ? 'pocos' : 'todos')}
+                        className="text-[11px] font-semibold text-marron underline"
+                      >
+                        {verMovsCuenta === 'todos'
+                          ? 'Ver solo los últimos'
+                          : `Ver los ${cuenta.movimientosCuenta.length}`}
+                      </button>
+                    )}
+                  </div>
+                  <ul className="divide-y divide-neutral-100 border border-neutral-200 rounded-xl overflow-hidden">
+                    {(verMovsCuenta === 'todos'
+                      ? cuenta.movimientosCuenta
+                      : cuenta.movimientosCuenta.slice(0, 6)
+                    ).map((m) => (
+                      <li key={m.fila} className="flex items-center justify-between gap-2 px-3 py-2">
+                        <span className="min-w-0">
+                          <span className="block text-sm text-neutral-900 truncate">
+                            {m.motivo || (m.tipo === 'Rendimiento' ? 'Rendimiento' : 'Sin motivo')}
+                          </span>
+                          <span className="block text-[11px] text-neutral-600 tabular-nums">
+                            {m.fecha}
+                          </span>
+                        </span>
+                        <span
+                          className={`font-semibold tabular-nums shrink-0 ${
+                            m.tipo === 'Salida' ? 'text-red-700' : 'text-green-700'
+                          }`}
+                        >
+                          {m.tipo === 'Salida' ? '−' : '+'}
+                          {money(m.monto)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/*
+                Los saldos que ella ha copiado del banco. Van al final y
+                plegados: sirven para ver el ritmo, no para cuadrar.
+              */}
+              {cuenta.historialSaldos.length > 1 && (
+                <div className="mt-3">
+                  <button
+                    onClick={() => setVerSaldos(verSaldos === 'todos' ? 'pocos' : 'todos')}
+                    className="text-[11px] font-semibold text-marron underline"
+                  >
+                    {verSaldos === 'todos'
+                      ? 'Ocultar los saldos que has anotado'
+                      : `Ver los ${cuenta.historialSaldos.length} saldos que has anotado`}
+                  </button>
+                  {verSaldos === 'todos' && (
+                    <>
+                      <ul className="mt-1.5 divide-y divide-neutral-100 border border-neutral-200 rounded-xl overflow-hidden">
+                        {cuenta.historialSaldos.map((h) => (
+                          <li
+                            key={h.fecha}
+                            className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
+                          >
+                            <span className="text-neutral-700 tabular-nums shrink-0">{h.fecha}</span>
+                            <span className="flex items-baseline gap-2 min-w-0">
+                              {h.cambio !== null && h.cambio !== 0 && (
+                                <span
+                                  className={`text-xs font-semibold tabular-nums ${
+                                    h.cambio > 0 ? 'text-green-700' : 'text-red-700'
+                                  }`}
+                                >
+                                  {h.cambio > 0 ? '+' : '−'}
+                                  {money(Math.abs(h.cambio))}
+                                </span>
+                              )}
+                              <span className="font-semibold text-neutral-900 tabular-nums">
+                                {money(h.saldo)}
+                              </span>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="text-xs text-neutral-700 mt-2">
+                        Del {cuenta.historialSaldos[cuenta.historialSaldos.length - 1].fecha} al{' '}
+                        {cuenta.historialSaldos[0].fecha}, el saldo pasó de{' '}
+                        {money(cuenta.historialSaldos[cuenta.historialSaldos.length - 1].saldo)} a{' '}
+                        {money(cuenta.historialSaldos[0].saldo)}.
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </>
       )}

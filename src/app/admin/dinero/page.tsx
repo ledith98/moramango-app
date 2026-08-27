@@ -62,6 +62,8 @@ interface EstadoCuenta {
   porMetodo: PorMetodo[];
   disponibleTotal: number;
   rendimiento: number;
+  /** Todo lo que ha entrado a la cuenta desde la primera venta */
+  totalHistorico: number;
   otrasEntradas: number;
   salidas: number;
   movimientoNeto: number;
@@ -605,6 +607,80 @@ export default function DineroPage() {
                 es lo mismo sobre $600 que sobre $6,000.
               </p>
             )}
+
+            {/*
+              El cuadre contra Mercado Pago.
+
+              Se compara contra el ACUMULADO de siempre y no contra el
+              movimiento del periodo: el saldo del banco viene desde el día
+              uno, así que enfrentarlo contra un mes daría una diferencia
+              falsa cada vez.
+
+              Casi siempre lo que falta es el rendimiento del día, que la
+              app no puede saber sola —lo paga el banco de madrugada— y por
+              eso está el botón para anotarlo de un toque.
+            */}
+            {cuenta.saldo !== null && !saldoTocado && (() => {
+              const diferencia = Math.round((cuenta.saldo - cuenta.totalHistorico) * 100) / 100;
+              const cuadra = Math.abs(diferencia) < 0.05;
+              return (
+                <div className="mt-3 border-t border-neutral-100 pt-3">
+                  <p className="text-[11px] text-neutral-600 uppercase tracking-wide mb-1.5">
+                    ¿Empata con Mercado Pago?
+                  </p>
+                  <dl className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <dt className="text-neutral-700">La app dice que debe haber</dt>
+                      <dd className="font-semibold text-neutral-900 tabular-nums">
+                        {money(cuenta.totalHistorico)}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="text-neutral-700">Mercado Pago dice</dt>
+                      <dd className="font-semibold text-neutral-900 tabular-nums">
+                        {money(cuenta.saldo)}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  {cuadra ? (
+                    <p className="mt-2 text-sm font-semibold text-green-800 bg-green-50 border border-green-200 rounded-xl p-3">
+                      ✅ Cuadra. Las dos cuentas dicen lo mismo.
+                    </p>
+                  ) : (
+                    <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                      <p className="text-sm font-semibold text-amber-900">
+                        {diferencia > 0 ? 'Sobran' : 'Faltan'} {money(Math.abs(diferencia))} en
+                        Mercado Pago
+                      </p>
+                      <p className="text-xs text-amber-800 mt-1">
+                        {diferencia > 0
+                          ? 'Casi siempre es el rendimiento que el banco te pagó y todavía no está anotado.'
+                          : 'Puede ser una transferencia que registraste pero que nunca llegó, o una salida sin anotar.'}
+                      </p>
+                      {diferencia > 0 && (
+                        <button
+                          onClick={() =>
+                            accion('/api/admin/cuenta', {
+                              accion: 'movimiento',
+                              tipo: 'Rendimiento',
+                              monto: String(diferencia),
+                              motivo: 'Rendimiento de Mercado Pago',
+                              cuenta: 'Digital',
+                              fechaISO: diaISO(0),
+                            })
+                          }
+                          disabled={ocupado}
+                          className="mt-2 w-full bg-amber-700 text-white text-sm font-semibold py-2.5 rounded-xl active:scale-95 disabled:opacity-50"
+                        >
+                          Anotar {money(diferencia)} como rendimiento
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </>
       )}

@@ -30,6 +30,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 
 export const CAMBIOS: Cambio[] = [
   {
+    fecha: '2026-08-27',
+    tipo: 'nuevo',
+    titulo: 'La cuenta te dice si empata con Mercado Pago, y cierra la diferencia sola',
+    detalle:
+      'En Dinero → La cuenta, debajo de “Lo que rinde tu dinero”, anotas el saldo que ves en Mercado Pago y la app te dice al momento si cuadra. Si sobra dinero en Mercado Pago casi siempre es el rendimiento que el banco te pagó de madrugada y que la app no tiene forma de adivinar, así que sale un botón para anotarlo de un toque y quedan iguales. Si falta, te avisa que puede ser una transferencia que registraste y nunca llegó, o una salida sin anotar. La comparación se hace contra TODO lo acumulado desde tu primera venta, no contra el periodo que tengas elegido — el saldo del banco viene desde el día uno, y compararlo contra un mes daría una diferencia falsa cada vez.',
+    donde: 'Dinero',
+  },
+  {
     fecha: '2026-08-20',
     tipo: 'nuevo',
     titulo: 'Tarjeta de lealtad en Google Wallet, con sellos que se van llenando',

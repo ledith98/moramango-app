@@ -65,6 +65,15 @@ export interface EstadoCuenta {
   /** Lo último que se capturó como saldo real, y de cuándo es */
   saldo: number | null;
   saldoFecha: string;
+  /**
+   * Todo lo que ha entrado a la cuenta desde la primera venta, sin filtro
+   * de fechas.
+   *
+   * Es lo único que se puede comparar contra el saldo de Mercado Pago:
+   * ese saldo es acumulado desde el día uno, así que enfrentarlo contra el
+   * movimiento de un periodo daría siempre una diferencia falsa.
+   */
+  totalHistorico: number;
 }
 
 /** Dónde se guarda el saldo que ella copia de la app del banco. */
@@ -90,9 +99,14 @@ function diasEntre(desde: string, hasta: string): number {
 
 /** Todo lo que le pasó a la cuenta en un rango de fechas. */
 export async function leerCuenta(desde: string, hasta: string): Promise<EstadoCuenta> {
-  const [pedidos, movimientos, ajustes] = await Promise.all([
+  const [pedidos, movimientos, todosLosMovimientos, ajustes] = await Promise.all([
     getSheetData('PEDIDOS'),
     leerMovimientosRango(desde, hasta).catch(() => [] as MovimientoCaja[]),
+    // Desde antes de que existiera el negocio hasta bien entrado el futuro:
+    // el acumulado no lleva filtro, y así se lee la hoja una sola vez.
+    leerMovimientosRango('2000-01-01', '2999-12-31', CUENTA_DIGITAL).catch(
+      () => [] as MovimientoCaja[]
+    ),
     getSheetData('Ajustes_Tienda', { crudo: true }).catch(() => [] as Record<string, string>[]),
   ]);
   // Solo lo de la cuenta cuenta para la matemática de la cuenta; los del
@@ -102,13 +116,41 @@ export async function leerCuenta(desde: string, hasta: string): Promise<EstadoCu
   const filaSaldo = ajustes.find((a) => a.Clave === CLAVE_SALDO);
   const saldoGuardado = parseFloat((filaSaldo?.Valor ?? '').toString());
 
-  const enRango = pedidos
+  const vivos = pedidos
     .filter((p) => p.ID_Pedido)
-    .filter((p) => p.Estado !== 'Cancelado' && p.Estado_Pago !== 'Reembolsado')
-    .filter((p) => {
-      const f = parsearFechaHora(p.Fecha_Hora)?.fechaISO;
-      return !!f && f >= desde && f <= hasta;
-    });
+    .filter((p) => p.Estado !== 'Cancelado' && p.Estado_Pago !== 'Reembolsado');
+
+  const enRango = vivos.filter((p) => {
+    const f = parsearFechaHora(p.Fecha_Hora)?.fechaISO;
+    return !!f && f >= desde && f <= hasta;
+  });
+
+  /**
+   * El acumulado de siempre, para poder enfrentarlo contra el saldo de
+   * Mercado Pago. Se calcula con las mismas reglas que el periodo — mismas
+   * formas de cobro, misma comisión — para que la comparación signifique
+   * algo.
+   */
+  const disponibleHistorico = vivos
+    .filter((p) => METODOS_EN_CUENTA.includes(normalizarMetodoPago(p.Metodo_Pago)))
+    .reduce((suma, p) => {
+      const metodo = normalizarMetodoPago(p.Metodo_Pago);
+      const total = parseFloat(p.Total_Final) || 0;
+      const comision = METODOS_CON_COMISION.includes(metodo)
+        ? comisionDeVenta(total, metodo)
+        : 0;
+      return suma + total - comision;
+    }, 0);
+
+  const netoDe = (tipo: string, lista: MovimientoCaja[]) =>
+    lista.filter((m) => m.tipo === tipo).reduce((s, m) => s + m.monto, 0);
+
+  const totalHistorico = redondear(
+    disponibleHistorico +
+      netoDe('Rendimiento', todosLosMovimientos) +
+      netoDe('Entrada', todosLosMovimientos) -
+      netoDe('Salida', todosLosMovimientos)
+  );
 
   const porMetodo: EntradaPorMetodo[] = [];
   for (const metodo of METODOS_EN_CUENTA) {
@@ -155,5 +197,6 @@ export async function leerCuenta(desde: string, hasta: string): Promise<EstadoCu
     movimientos,
     saldo: isFinite(saldoGuardado) ? saldoGuardado : null,
     saldoFecha: (filaSaldo?.Nota ?? '').toString().trim(),
+    totalHistorico,
   };
 }

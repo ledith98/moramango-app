@@ -136,6 +136,31 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 });
   }
 
+  /**
+   * No se entrega nada sin saber cómo se pagó.
+   *
+   * Los pedidos de la app que eligen pagar al recoger nacen sin método:
+   * el cliente todavía no ha pagado nada. Si nadie lo anota al entregar,
+   * ahí se queda vacío para siempre — y la app lo cuenta como efectivo
+   * por defecto, así que un cobro por terminal acaba sumando al cajón y
+   * el corte del día no cuadra. Ya pasó con cuatro pedidos.
+   *
+   * Marcar Entregado es justo el momento en que se sabe la respuesta,
+   * porque es cuando se cobra. Se puede mandar el método en la misma
+   * llamada; si no viene y el pedido no lo tiene, no se entrega.
+   */
+  const metodoActual = (pedidoRow.data.Metodo_Pago || '').toString().trim();
+  if (nuevoEstado === 'Entregado' && !metodoActual && !metodoPago) {
+    return NextResponse.json(
+      {
+        error: 'Falta decir cómo se pagó este pedido.',
+        codigo: 'FALTA_METODO_PAGO',
+        metodos: METODOS_PAGO,
+      },
+      { status: 400 }
+    );
+  }
+
   if (nuevoEstado) {
     // Columna 5 = Estado en tu hoja PEDIDOS
     await updateCell('PEDIDOS', pedidoRow.rowIndex, 5, nuevoEstado);

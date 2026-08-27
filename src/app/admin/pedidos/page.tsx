@@ -233,14 +233,41 @@ export default function PedidosPage() {
       .finally(() => setCargandoDetalle(false));
   };
 
-  const cambiarEstado = async (idPedido: string, nuevoEstado: string) => {
+  /**
+   * El pedido al que le falta decir cómo se pagó, esperando respuesta.
+   *
+   * Los pedidos de la app que pagan al recoger nacen sin método. Si se
+   * entregan sin anotarlo, la app los cuenta como efectivo y un cobro por
+   * terminal acaba sumando al cajón: el corte del día deja de cuadrar sin
+   * que nadie se entere. Por eso, al entregar, se pregunta.
+   */
+  const [faltaMetodo, setFaltaMetodo] = useState<{
+    idPedido: string;
+    nuevoEstado: string;
+    metodos: string[];
+  } | null>(null);
+
+  const cambiarEstado = async (idPedido: string, nuevoEstado: string, metodoPago?: string) => {
     setActualizando(true);
     try {
-      await fetch('/api/admin/pedidos', {
+      const res = await fetch('/api/admin/pedidos', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idPedido, nuevoEstado }),
+        body: JSON.stringify({ idPedido, nuevoEstado, ...(metodoPago ? { metodoPago } : {}) }),
       });
+      const data = await res.json().catch(() => ({}) as { codigo?: string; metodos?: string[] });
+
+      // El servidor no deja entregar sin saber cómo se pagó: se pregunta
+      // y se reintenta con la respuesta, sin perder el clic.
+      if (!res.ok && data.codigo === 'FALTA_METODO_PAGO') {
+        setFaltaMetodo({
+          idPedido,
+          nuevoEstado,
+          metodos: data.metodos ?? ['Efectivo', 'Terminal', 'Transferencia'],
+        });
+        return;
+      }
+      setFaltaMetodo(null);
       cargarPedidos();
       if (detalle) abrirDetalle(idPedido);
     } finally {
@@ -399,6 +426,47 @@ export default function PedidosPage() {
 
   return (
     <div className="space-y-6">
+      {/*
+        Preguntar cómo se pagó, justo antes de entregar.
+
+        Aparece solo cuando el pedido no trae método —los de la app que
+        pagan al recoger— y no se puede saltar: sin respuesta, el pedido
+        no pasa a Entregado. Es el momento correcto para preguntarlo,
+        porque es cuando se está cobrando.
+      */}
+      {faltaMetodo && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-sm p-5 space-y-3">
+            <h3 className="text-lg font-bold text-neutral-900">¿Cómo te pagó?</h3>
+            <p className="text-sm text-neutral-700">
+              Este pedido se hizo por la app para pagar al recoger, así que todavía no dice
+              cómo se cobró. Sin eso, el corte del día no cuadra.
+            </p>
+            <div className="grid grid-cols-1 gap-2 pt-1">
+              {faltaMetodo.metodos.map((m) => (
+                <button
+                  key={m}
+                  onClick={() =>
+                    cambiarEstado(faltaMetodo.idPedido, faltaMetodo.nuevoEstado, m)
+                  }
+                  disabled={actualizando}
+                  className="w-full bg-marron text-white font-semibold py-3 rounded-xl active:scale-95 disabled:opacity-50"
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setFaltaMetodo(null)}
+              disabled={actualizando}
+              className="w-full text-sm font-semibold text-neutral-700 py-2"
+            >
+              Ahorita no lo entrego
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           {ATAJOS_FECHA.map((a) => {

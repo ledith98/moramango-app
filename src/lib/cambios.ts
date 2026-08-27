@@ -32,6 +32,22 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-27',
     tipo: 'nuevo',
+    titulo: 'Tu información se respalda sola cada madrugada',
+    detalle:
+      'Todo tu negocio —pedidos, clientes, inventario, recetas, dinero— vivía en una sola hoja de cálculo, sin ninguna copia. Un borrado por error o perder la cuenta y no había de dónde recuperarlo. Ahora cada madrugada se guarda una copia completa de las 19 pestañas y se conservan los últimos 30 días. La ves en Ajustes, hasta abajo, y desde ahí puedes descargar cualquier día o hacer una copia al momento. Se guarda fuera de Google a propósito: si el problema fuera Google, un respaldo dentro de Google no serviría de nada.',
+    donde: 'Ajustes',
+  },
+  {
+    fecha: '2026-08-27',
+    tipo: 'arreglo',
+    titulo: 'Ya no se puede entregar un pedido sin decir cómo se pagó',
+    detalle:
+      'Los pedidos que se hacen por la app para pagar al recoger nacen sin método de pago, porque el cliente todavía no ha pagado. Si nadie lo anotaba al entregar, ahí se quedaba vacío — y la app lo contaba como efectivo, así que un cobro por terminal terminaba sumando al cajón y el corte del día dejaba de cuadrar sin que nadie se enterara. Ya pasó con cuatro pedidos. Ahora, al marcar Entregado un pedido sin método, la app pregunta cómo te pagaron y no deja seguir hasta que se responda. Es el momento correcto para preguntarlo: es cuando estás cobrando.',
+    donde: 'Pedidos',
+  },
+  {
+    fecha: '2026-08-27',
+    tipo: 'nuevo',
     titulo: 'La cuenta te dice si empata con Mercado Pago, y cierra la diferencia sola',
     detalle:
       'En Dinero → La cuenta, debajo de “Lo que rinde tu dinero”, anotas el saldo que ves en Mercado Pago y la app te dice al momento si cuadra. Si sobra dinero en Mercado Pago casi siempre es el rendimiento que el banco te pagó de madrugada y que la app no tiene forma de adivinar, así que sale un botón para anotarlo de un toque y quedan iguales. Si falta, te avisa que puede ser una transferencia que registraste y nunca llegó, o una salida sin anotar. La comparación se hace contra TODO lo acumulado desde tu primera venta, no contra el periodo que tengas elegido — el saldo del banco viene desde el día uno, y compararlo contra un mes daría una diferencia falsa cada vez.',

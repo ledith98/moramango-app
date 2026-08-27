@@ -58,6 +58,55 @@ export default function AjustesPage() {
   const [localGuardado, setLocalGuardado] = useState({ direccion: '', mapa: '' });
   const [guardandoLocal, setGuardandoLocal] = useState(false);
   const [okLocal, setOkLocal] = useState(false);
+  /** Los respaldos guardados de la información del negocio */
+  const [respaldos, setRespaldos] = useState<
+    { nombre: string; fecha: string; url: string; bytes: number }[]
+  >([]);
+  const [respaldoListo, setRespaldoListo] = useState(true);
+  const [haciendoRespaldo, setHaciendoRespaldo] = useState(false);
+  const [avisoRespaldo, setAvisoRespaldo] = useState('');
+
+  const cargarRespaldos = useCallback(() => {
+    fetch('/api/admin/respaldo')
+      .then((r) => r.json())
+      .then((d) => {
+        setRespaldoListo(d.listo !== false);
+        setRespaldos(d.respaldos ?? []);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    cargarRespaldos();
+  }, [cargarRespaldos]);
+
+  /**
+   * Hacer una copia ahora mismo.
+   *
+   * Tarda unos segundos porque lee las 19 pestañas una por una, así que el
+   * botón dice lo que está pasando en vez de quedarse mudo.
+   */
+  const respaldarAhora = async () => {
+    setHaciendoRespaldo(true);
+    setAvisoRespaldo('');
+    try {
+      const res = await fetch('/api/admin/respaldo', { method: 'POST' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setAvisoRespaldo(d.error || 'No se pudo hacer el respaldo.');
+        return;
+      }
+      setAvisoRespaldo(
+        `Guardado: ${d.pestanas} pestañas y ${d.filas} renglones${d.fallaron?.length ? ` · no se pudo con ${d.fallaron.join(', ')}` : ''}`
+      );
+      cargarRespaldos();
+    } catch {
+      setAvisoRespaldo('No se pudo conectar. Revisa tu internet.');
+    } finally {
+      setHaciendoRespaldo(false);
+    }
+  };
+
   const [errorLocal, setErrorLocal] = useState('');
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
@@ -630,6 +679,84 @@ export default function AjustesPage() {
             </button>
           )}
         </div>
-      </div>    </div>
+      </div>
+
+      {/*
+        El respaldo va al final: no es algo que se toque a diario, pero es
+        lo único de esta pantalla cuyo olvido no se puede deshacer.
+      */}
+      <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5 space-y-4">
+        <div>
+          <h2 className="font-bold text-neutral-900">🛟 Respaldo de tu información</h2>
+          <p className="text-sm text-neutral-700 mt-1">
+            Todo tu negocio —pedidos, clientes, inventario, recetas, dinero— vive en una
+            sola hoja de cálculo. Cada madrugada se guarda una copia completa, y se
+            conservan los últimos 30 días. Si algo se borra por error, de aquí se recupera.
+          </p>
+        </div>
+
+        {!respaldoListo ? (
+          <p className="text-sm font-semibold text-amber-900 bg-amber-50 border border-amber-200 rounded-xl p-3">
+            El respaldo automático todavía no está activo. Avísame para revisarlo.
+          </p>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={respaldarAhora}
+                disabled={haciendoRespaldo}
+                className="bg-marron text-white font-semibold px-5 py-3 rounded-xl active:scale-95 disabled:opacity-50"
+              >
+                {haciendoRespaldo ? 'Guardando copia…' : 'Hacer una copia ahora'}
+              </button>
+              <span className="text-xs text-neutral-700">
+                {respaldos.length > 0
+                  ? `${respaldos.length} ${respaldos.length === 1 ? 'copia guardada' : 'copias guardadas'} · la más reciente del ${respaldos[0].fecha}`
+                  : 'Todavía no hay ninguna copia'}
+              </span>
+            </div>
+
+            {avisoRespaldo && (
+              <p className="text-sm font-semibold text-green-800 bg-green-50 border border-green-200 rounded-xl p-3">
+                {avisoRespaldo}
+              </p>
+            )}
+
+            {respaldos.length === 0 ? (
+              <p className="text-xs text-neutral-700">
+                La primera copia se guarda esta madrugada, o puedes hacer una ahora con el
+                botón de arriba.
+              </p>
+            ) : (
+              <ul className="divide-y divide-neutral-100 border border-neutral-200 rounded-xl overflow-hidden">
+                {respaldos.slice(0, 8).map((r) => (
+                  <li key={r.nombre} className="flex items-center justify-between gap-3 px-3 py-2">
+                    <span className="text-sm text-neutral-900 tabular-nums">{r.fecha}</span>
+                    <span className="flex items-center gap-3 shrink-0">
+                      <span className="text-xs text-neutral-600 tabular-nums">
+                        {Math.round(r.bytes / 1024)} KB
+                      </span>
+                      <a
+                        href={r.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-bold text-marron underline"
+                      >
+                        Descargar
+                      </a>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <p className="text-xs text-neutral-600">
+              La copia se guarda fuera de Google, a propósito: si el problema fuera Google,
+              un respaldo dentro de Google no serviría de nada.
+            </p>
+          </>
+        )}
+      </div>
+    </div>
   );
 }

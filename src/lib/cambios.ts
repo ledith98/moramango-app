@@ -32,6 +32,14 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-27',
     tipo: 'nuevo',
+    titulo: 'El historial de cuánto has tenido en la cuenta',
+    detalle:
+      'Antes, cada vez que anotabas el saldo de Mercado Pago se borraba el anterior: quedaba la foto del día y nada más. Ahora se guardan todos, en Dinero → La cuenta → Lo que rinde tu dinero. Ves cada fecha, cuánto había y cuánto cambió respecto a la vez anterior, y abajo el total de cuánto creció la cuenta en todo el periodo. Ya lo cargué con tus 28 saldos reales del estado de cuenta, del 26 de julio al 27 de agosto: la cuenta creció $8,535.92. De paso arreglé que la fecha del saldo se veía como “46260” en vez de la fecha — Google la convertía en número al guardarla.',
+    donde: 'Dinero',
+  },
+  {
+    fecha: '2026-08-27',
+    tipo: 'nuevo',
     titulo: 'Tu información se respalda sola cada madrugada',
     detalle:
       'Todo tu negocio —pedidos, clientes, inventario, recetas, dinero— vivía en una sola hoja de cálculo, sin ninguna copia. Un borrado por error o perder la cuenta y no había de dónde recuperarlo. Ahora cada madrugada se guarda una copia completa de las 19 pestañas y se conservan los últimos 30 días. La ves en Ajustes, hasta abajo, y desde ahí puedes descargar cualquier día o hacer una copia al momento. Se guarda fuera de Google a propósito: si el problema fuera Google, un respaldo dentro de Google no serviría de nada.',

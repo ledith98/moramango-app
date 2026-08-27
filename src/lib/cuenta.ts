@@ -24,7 +24,8 @@ import { CUENTA_DIGITAL, leerMovimientosRango, type MovimientoCaja } from './caj
 import { comisionDeVenta, METODOS_CON_COMISION } from './comision';
 import { getSheetData } from './googleSheets';
 import { normalizarMetodoPago } from './negocio';
-import { parsearFechaHora } from './pedidoFecha';
+import { fechaDeCelda, parsearFechaHora } from './pedidoFecha';
+import { anotarSaldo, leerSaldos, type SaldoAnotado } from './saldos';
 
 export { rendimientoAnual } from './rendimiento';
 
@@ -65,6 +66,8 @@ export interface EstadoCuenta {
   /** Lo último que se capturó como saldo real, y de cuándo es */
   saldo: number | null;
   saldoFecha: string;
+  /** Todas las veces que se ha anotado el saldo, de la más nueva atrás */
+  historialSaldos: SaldoAnotado[];
   /**
    * Todo lo que ha entrado a la cuenta desde la primera venta, sin filtro
    * de fechas.
@@ -84,9 +87,20 @@ export const CLAVE_SALDO = 'SaldoCuenta';
  *
  * Sin la fecha el número envejece sin avisar: un saldo de hace tres
  * semanas se ve igual de confiable que el de hoy, y no lo es.
+ *
+ * Va a dos lugares: el ajuste guarda EL ÚLTIMO —que es lo que compara la
+ * pantalla contra Mercado Pago— y la hoja de saldos guarda TODOS, para
+ * poder ver cómo ha ido creciendo la cuenta. Antes solo existía el
+ * primero, así que cada captura borraba la anterior.
  */
-export async function guardarSaldo(monto: number, fechaISO: string): Promise<void> {
-  await guardarAjuste(CLAVE_SALDO, Math.round(monto * 100) / 100, fechaISO);
+export async function guardarSaldo(
+  monto: number,
+  fechaISO: string,
+  quien = ''
+): Promise<void> {
+  const valor = Math.round(monto * 100) / 100;
+  await guardarAjuste(CLAVE_SALDO, valor, fechaISO);
+  await anotarSaldo(valor, fechaISO, quien);
 }
 
 /** Días que abarca un rango, contando ambos extremos. */
@@ -99,7 +113,7 @@ function diasEntre(desde: string, hasta: string): number {
 
 /** Todo lo que le pasó a la cuenta en un rango de fechas. */
 export async function leerCuenta(desde: string, hasta: string): Promise<EstadoCuenta> {
-  const [pedidos, movimientos, todosLosMovimientos, ajustes] = await Promise.all([
+  const [pedidos, movimientos, todosLosMovimientos, ajustes, historialSaldos] = await Promise.all([
     getSheetData('PEDIDOS'),
     leerMovimientosRango(desde, hasta).catch(() => [] as MovimientoCaja[]),
     // Desde antes de que existiera el negocio hasta bien entrado el futuro:
@@ -108,6 +122,7 @@ export async function leerCuenta(desde: string, hasta: string): Promise<EstadoCu
       () => [] as MovimientoCaja[]
     ),
     getSheetData('Ajustes_Tienda', { crudo: true }).catch(() => [] as Record<string, string>[]),
+    leerSaldos().catch(() => [] as SaldoAnotado[]),
   ]);
   // Solo lo de la cuenta cuenta para la matemática de la cuenta; los del
   // cajón se muestran, pero suman en el corte de caja, no aquí.
@@ -196,7 +211,10 @@ export async function leerCuenta(desde: string, hasta: string): Promise<EstadoCu
     movimientoNeto: redondear(disponibleTotal + rendimiento + otrasEntradas - salidas),
     movimientos,
     saldo: isFinite(saldoGuardado) ? saldoGuardado : null,
-    saldoFecha: (filaSaldo?.Nota ?? '').toString().trim(),
+    // La fecha pasa por fechaDeCelda porque Google convierte "2026-08-26"
+    // en el número 46260 al guardarlo, y en pantalla se leía así de feo.
+    saldoFecha: fechaDeCelda(filaSaldo?.Nota),
+    historialSaldos,
     totalHistorico,
   };
 }

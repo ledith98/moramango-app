@@ -64,6 +64,8 @@ interface EstadoCuenta {
   rendimiento: number;
   /** Todo lo que ha entrado a la cuenta desde la primera venta */
   totalHistorico: number;
+  /** Cada vez que se anotó cuánto había, de lo más nuevo hacia atrás */
+  historialSaldos: { fecha: string; saldo: number; quien: string; cambio: number | null }[];
   otrasEntradas: number;
   salidas: number;
   movimientoNeto: number;
@@ -118,6 +120,8 @@ export default function DineroPage() {
   const [hasta, setHasta] = useState(diaISO(0));
   const [saldo, setSaldo] = useState('');
   const [saldoTocado, setSaldoTocado] = useState(false);
+  /** Cuántas capturas de saldo se muestran */
+  const [verSaldos, setVerSaldos] = useState<'pocos' | 'todos'>('pocos');
 
   // Movimiento (compartido)
   const [bolsa, setBolsa] = useState<'Efectivo' | 'Digital'>('Efectivo');
@@ -681,6 +685,80 @@ export default function DineroPage() {
                 </div>
               );
             })()}
+
+            {/*
+              Cómo ha ido creciendo la cuenta.
+
+              Antes cada captura pisaba la anterior y solo quedaba la foto
+              del día. Con el historial se ve el ritmo: si esta semana
+              creció la mitad que la pasada, eso se nota aquí y en ningún
+              otro lado.
+            */}
+            {cuenta.historialSaldos.length > 0 && (
+              <div className="mt-3 border-t border-neutral-100 pt-3">
+                <div className="flex items-baseline justify-between gap-2 mb-1.5">
+                  <p className="text-[11px] text-neutral-600 uppercase tracking-wide">
+                    Cómo ha crecido la cuenta
+                  </p>
+                  {cuenta.historialSaldos.length > 6 && (
+                    <button
+                      onClick={() => setVerSaldos(verSaldos === 'todos' ? 'pocos' : 'todos')}
+                      className="text-[11px] font-semibold text-marron underline"
+                    >
+                      {verSaldos === 'todos'
+                        ? 'Ver solo las últimas'
+                        : `Ver las ${cuenta.historialSaldos.length}`}
+                    </button>
+                  )}
+                </div>
+
+                <ul className="divide-y divide-neutral-100 border border-neutral-200 rounded-xl overflow-hidden">
+                  {(verSaldos === 'todos'
+                    ? cuenta.historialSaldos
+                    : cuenta.historialSaldos.slice(0, 6)
+                  ).map((h) => (
+                    <li
+                      key={h.fecha}
+                      className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
+                    >
+                      <span className="text-neutral-700 tabular-nums shrink-0">{h.fecha}</span>
+                      <span className="flex items-baseline gap-2 min-w-0">
+                        {h.cambio !== null && h.cambio !== 0 && (
+                          <span
+                            className={`text-xs font-semibold tabular-nums ${
+                              h.cambio > 0 ? 'text-green-700' : 'text-red-700'
+                            }`}
+                          >
+                            {h.cambio > 0 ? '+' : '−'}
+                            {money(Math.abs(h.cambio))}
+                          </span>
+                        )}
+                        <span className="font-semibold text-neutral-900 tabular-nums">
+                          {money(h.saldo)}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+
+                {(() => {
+                  // Lo que ha entrado entre la primera captura y la última
+                  const h = cuenta.historialSaldos;
+                  if (h.length < 2) return null;
+                  const crecio = Math.round((h[0].saldo - h[h.length - 1].saldo) * 100) / 100;
+                  return (
+                    <p className="text-xs text-neutral-700 mt-2">
+                      Del {h[h.length - 1].fecha} al {h[0].fecha} la cuenta{' '}
+                      {crecio >= 0 ? 'creció' : 'bajó'}{' '}
+                      <b className={crecio >= 0 ? 'text-green-800' : 'text-red-700'}>
+                        {money(Math.abs(crecio))}
+                      </b>
+                      .
+                    </p>
+                  );
+                })()}
+              </div>
+            )}
           </div>
         </>
       )}

@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Escribe cuánto tienes en la cuenta' }, { status: 400 });
     }
     const cuando = ES_FECHA.test((fechaISO ?? '').toString()) ? fechaISO : fechaHoyMTY();
-    await guardarSaldo(valor, cuando);
+    await guardarSaldo(valor, cuando, quien);
     await anotar(quien, 'Cuenta', `Anotó el saldo de la cuenta: $${valor.toFixed(2)}`, `al ${cuando}`);
     return NextResponse.json({ success: true });
   }

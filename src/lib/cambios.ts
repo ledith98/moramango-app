@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-27',
+    tipo: 'arreglo',
+    titulo: 'Dos insumos compartían clave y el costo se le cargaba al equivocado',
+    detalle:
+      '“Jamón Alpino” y “Agua de garrafón” tenían la misma clave, y “Mango Atulfo Entero” con “Mango entero” otra igual. Cuando dos insumos comparten clave, el programa se queda con uno solo: el stock, el costo y las compras se le cargaban al que no era. Las 4 recetas de jugos que usan agua —Piña, Melón, Mango y Papaya— colgaban de esa clave revuelta. Ya quedaron separadas: los insumos borrados se movieron a una clave propia y los activos conservaron la suya, así que ninguna receta ni compra tuvo que tocarse. El agua de los jugos ya calcula bien: $0.0035 el ml, o sea $0.875 de agua por cada jugo de 250 ml.',
+    donde: 'Insumos',
+  },
+  {
+    fecha: '2026-08-27',
     tipo: 'nuevo',
     titulo: 'Al cerrar el día te avisa si quedaron ventas sin entregar',
     detalle:

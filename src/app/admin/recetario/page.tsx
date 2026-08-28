@@ -20,6 +20,17 @@ interface LineaReceta {
   insumo: string;
   unidad: string;
   cantidad: number;
+  /** De qué precio sale el costo de este renglón */
+  precio?: {
+    origen: 'presentacion' | 'ultimaCompra' | 'ninguno';
+    etiqueta: string;
+    /** true = lo eligió el programa por barato, no la dueña */
+    automatico: boolean;
+    idPresentacion: string;
+    porUnidad: number | null;
+  } | null;
+  /** Las formas de comprar el insumo, para poder cambiar de precio aquí */
+  opcionesPrecio?: { id: string; etiqueta: string; porUnidad: number; activa: boolean }[];
   /** Cuánto queda de 100 al cocinar; '' si el insumo no cambia de peso */
   rendimientoPct?: string;
   /** Lo crudo que hay que ocupar para servir `cantidad`; null si no aplica */
@@ -94,6 +105,45 @@ export default function RecetarioPage() {
     await cargar();
     return true;
   }
+
+  /**
+   * Cambia de qué presentación se costea un insumo.
+   *
+   * Pega al insumo y no a la receta: el precio es del insumo, así que la
+   * elección vale para TODOS los productos que lo lleven. Cambiarla aquí
+   * mueve el costo del sándwich y del combo al mismo tiempo, que es lo
+   * que se quiere — un mismo queso no cuesta dos cosas distintas según en
+   * qué platillo caiga.
+   */
+  async function cambiarPrecioBase(idBiblioteca: string, precioBase: string) {
+    setOcupado(true);
+    setError('');
+    const res = await fetch('/api/admin/biblioteca', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: idBiblioteca, accion: 'precioBase', datos: { precioBase } }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setOcupado(false);
+    if (!res.ok) {
+      setError(data.error || 'No se pudo cambiar el precio');
+      return;
+    }
+    await cargar();
+  }
+
+  /**
+   * Qué presentación tiene marcada el selector.
+   *
+   * Solo cuenta como elegida cuando NO fue automática: si el programa
+   * escogió la más barata, el selector debe seguir en "El más barato"
+   * para que al cambiar los precios siga siguiéndolos, en vez de quedar
+   * clavado en la que resultó barata ese día.
+   */
+  const precioBaseDe = (l: LineaReceta) => {
+    if (!l.precio || l.precio.automatico) return '';
+    return l.precio.origen === 'ultimaCompra' ? 'ULTIMA' : l.precio.idPresentacion;
+  };
 
   async function agregar(idProducto: string) {
     const esProducto = modoAgregar === 'producto';
@@ -277,6 +327,60 @@ export default function RecetarioPage() {
                               {' '}· de cada 100 quedan {l.rendimientoPct}
                             </span>
                           </p>
+                        )}
+                        {/*
+                          De qué precio sale el costo, y cómo cambiarlo.
+
+                          Se enseña siempre —aunque haya una sola forma de
+                          comprarlo— porque el problema que esto resuelve
+                          es invisible: el costo salía de un precio viejo
+                          y nada en pantalla lo decía. Con la etiqueta a la
+                          vista, un número raro se explica solo.
+                        */}
+                        {l.tipo !== 'producto' && l.precio && (
+                          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                            <span className="text-[11px] text-neutral-700">💲</span>
+                            {l.opcionesPrecio && l.opcionesPrecio.length > 0 ? (
+                              <select
+                                value={
+                                  /* El valor guardado, no el resuelto: si está
+                                     en automático debe verse "el más barato"
+                                     aunque hoy resuelva a la Kirkland. */
+                                  precioBaseDe(l) === 'ULTIMA' ||
+                                  l.opcionesPrecio.some((o) => o.id === precioBaseDe(l))
+                                    ? precioBaseDe(l)
+                                    : ''
+                                }
+                                onChange={(e) => cambiarPrecioBase(l.idBiblioteca, e.target.value)}
+                                disabled={ocupado}
+                                className="text-[11px] font-semibold text-neutral-900 bg-neutral-100 border border-neutral-300 rounded-lg px-1.5 py-0.5 max-w-[15rem] disabled:opacity-50"
+                              >
+                                <option value="">
+                                  El más barato
+                                  {l.precio.automatico && l.precio.origen === 'presentacion'
+                                    ? ` (${l.precio.etiqueta})`
+                                    : ''}
+                                </option>
+                                {l.opcionesPrecio.map((o) => (
+                                  <option key={o.id} value={o.id}>
+                                    {o.etiqueta} · ${o.porUnidad} {l.unidad}
+                                    {o.activa ? '' : ' (ya no la compras)'}
+                                  </option>
+                                ))}
+                                {/* Salida de emergencia: cuando una
+                                    presentación está mal capturada, esto
+                                    fija el costo a la última compra
+                                    mientras se corrige. */}
+                                <option value="ULTIMA">La última compra que anotaste</option>
+                              </select>
+                            ) : (
+                              <span className="text-[11px] font-semibold text-amber-800">
+                                {l.precio.origen === 'ultimaCompra'
+                                  ? 'Sale de la última compra — anota cómo lo compras para afinarlo'
+                                  : 'Sin precio: anota una compra o una presentación'}
+                              </span>
+                            )}
+                          </div>
                         )}
                         {l.nota && <p className="text-[11px] text-amber-700">📝 {l.nota}</p>}
                       </div>

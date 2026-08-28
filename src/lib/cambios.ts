@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-27',
+    tipo: 'arreglo',
+    titulo: 'El costo de las recetas ya sale del precio real, y puedes elegir de cuál',
+    detalle:
+      'El costo salía de un número suelto guardado en el insumo, que se quedaba viejo: por eso el queso suizo seguía costeando a $17.10 la rebanada aunque el único precio registrado fuera el Kirkland a $2.21. Ahora sale de las presentaciones —donde de verdad se anota lo que pagaste— y en cada renglón del Recetario aparece un 💲 con el precio que se está usando. Ahí mismo lo cambias: “El más barato” (lo normal, se acomoda solo cuando cambian los precios), una presentación en concreto, o “La última compra que anotaste” si alguna presentación quedó mal capturada. Vale para todos los insumos y, como el precio es del insumo, cambiarlo en una receta lo cambia en todas las que lo lleven.',
+    donde: 'Recetario',
+  },
+  {
+    fecha: '2026-08-27',
     tipo: 'mejora',
     titulo: 'Una presentación anotada por error ya se puede borrar aunque le hayas comprado',
     detalle:

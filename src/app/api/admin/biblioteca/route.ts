@@ -12,6 +12,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { anotar } from '@/lib/bitacora';
 import { appendRow, getSheetData, updateCell, updateCells } from '@/lib/googleSheets';
 import { normalizarNombre } from '@/lib/insumos';
 import {
@@ -19,9 +20,9 @@ import {
   COL_BIB,
   columnaEnUso,
   columnaIngredientes,
-  costoPorUnidadReceta,
-  costoPorUnidadServida,
+  columnaPrecioBase,
   columnaRendimiento,
+  factorCrudo,
   escribirIngredientes,
   estaEnUso,
   HOJA_ACTIVOS,
@@ -29,6 +30,9 @@ import {
   leerIngredientes,
   prepararInventario,
 } from '@/lib/inventario';
+import { elegirPrecio, USAR_ULTIMA_COMPRA, type PresentacionPrecio } from '@/lib/precioInsumo';
+import { leerPresentaciones } from '@/lib/presentaciones';
+import { redondear } from '@/lib/inventario';
 import { siguienteId } from '@/lib/ids';
 import { getAdminSession } from '@/lib/roles';
 
@@ -86,11 +90,18 @@ export async function GET(req: NextRequest) {
   }
   await prepararInventario();
 
-  const [biblioteca, catalogo, activos] = await Promise.all([
+  const [biblioteca, catalogo, activos, presentaciones] = await Promise.all([
     getSheetData(HOJA_BIBLIOTECA, { crudo: true }),
     getSheetData('Catalogo'),
     getSheetData(HOJA_ACTIVOS, { crudo: true }),
+    leerPresentaciones(),
   ]);
+
+  const presPorBib = new Map<string, PresentacionPrecio[]>();
+  for (const p of presentaciones) {
+    if (!presPorBib.has(p.idBiblioteca)) presPorBib.set(p.idBiblioteca, []);
+    presPorBib.get(p.idBiblioteca)!.push(p);
+  }
 
   const porIngrediente = ingredientesDelCatalogo(catalogo);
 
@@ -146,6 +157,20 @@ export async function GET(req: NextRequest) {
       for (const p of porIngrediente.get(clave)?.productos ?? []) recetas.add(p);
     }
 
+    /*
+      El costo sale del mismo lugar que en el recetario: de la
+      presentación elegida, o de la más barata que se compre hoy. Tenerlo
+      calculado en dos partes distintas es garantizar que un día la
+      tarjeta del insumo y la receta digan números diferentes.
+    */
+    const precio = elegirPrecio(
+      (b.Precio_Base ?? '').toString().trim(),
+      presPorBib.get(b.ID_Biblioteca) ?? [],
+      ultimoPrecio,
+      equivalencia
+    );
+    const rendimientoPct = (b.Rendimiento_Pct ?? '').toString().trim();
+
     return {
       id: b.ID_Biblioteca || '',
       nombre: b.Nombre || '',
@@ -154,15 +179,20 @@ export async function GET(req: NextRequest) {
       equivalencia,
       ultimoPrecioCompra: ultimoPrecio,
       // Campos virtuales: no se almacenan, se calculan al leer
-      costoPorUnidadReceta: costoPorUnidadReceta(ultimoPrecio, equivalencia),
+      costoPorUnidadReceta: precio.costoUnidad,
+      /** De qué precio se está costeando, para poder verlo y cambiarlo */
+      precioBase: (b.Precio_Base ?? '').toString().trim(),
+      precioOrigen: precio.origen,
+      precioEtiqueta: precio.etiqueta,
+      precioAutomatico: precio.automatico,
+      precioIdPresentacion: precio.idPresentacion,
       /** Cuánto queda de 100 al cocinar; '' para los que no cambian de peso */
-      rendimientoPct: (b.Rendimiento_Pct ?? '').toString().trim(),
+      rendimientoPct,
       /** Lo que cuesta la unidad que llega al plato, ya con la conversión */
-      costoPorUnidadServida: costoPorUnidadServida(
-        ultimoPrecio,
-        equivalencia,
-        b.Rendimiento_Pct
-      ),
+      costoPorUnidadServida:
+        precio.costoUnidad === null
+          ? null
+          : redondear(precio.costoUnidad * factorCrudo(rendimientoPct), 4),
       categoria: b.Categoria || '',
       proveedor: b.Proveedor || '',
       contacto: b.Contacto_Proveedor || '',
@@ -254,13 +284,14 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  if (!(await getAdminSession())) {
+  const sesion = await getAdminSession();
+  if (!sesion) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
   await prepararInventario();
 
   const { id, accion, datos, ingredientes } = await req.json();
-  if (!id || !['editar', 'eliminar', 'ingredientes'].includes(accion)) {
+  if (!id || !['editar', 'eliminar', 'ingredientes', 'precioBase'].includes(accion)) {
     return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 });
   }
 
@@ -285,6 +316,28 @@ export async function PATCH(req: NextRequest) {
       fila,
       await columnaIngredientes(),
       escribirIngredientes(ingredientes.map(String))
+    );
+    return NextResponse.json({ success: true });
+  }
+
+  /*
+    De qué presentación se costea este insumo. Va aparte de 'editar'
+    porque se cambia desde el recetario, donde no hay formulario del
+    insumo: mandar ahí todos los campos obligaría a la pantalla a conocer
+    datos que no está mostrando, y un campo que llegue vacío borraría el
+    que ya estaba.
+  */
+  if (accion === 'precioBase') {
+    const elegido = (datos?.precioBase ?? '').toString().trim();
+    if (elegido && elegido !== USAR_ULTIMA_COMPRA && !/^PRE-\d+$/.test(elegido)) {
+      return NextResponse.json({ error: 'Presentación inválida' }, { status: 400 });
+    }
+    await updateCell(HOJA_BIBLIOTECA, fila, await columnaPrecioBase(), elegido);
+    await anotar(
+      sesion.user?.name || sesion.user?.email || '',
+      'Insumos',
+      `Cambió de qué precio se costea ${actual.Nombre || id}`,
+      elegido || 'el más barato'
     );
     return NextResponse.json({ success: true });
   }

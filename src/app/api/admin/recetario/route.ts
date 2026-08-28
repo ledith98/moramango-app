@@ -14,12 +14,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { appendRow, getSheetData, updateCells } from '@/lib/googleSheets';
 import { factorMerma } from '@/lib/insumos';
 import {
-  costoPorUnidadServida,
   factorCrudo,
   HOJA_BIBLIOTECA,
   prepararInventario,
   redondear,
 } from '@/lib/inventario';
+import { elegirPrecio, nombrarPresentacion, type PresentacionPrecio } from '@/lib/precioInsumo';
+import { leerPresentaciones } from '@/lib/presentaciones';
 import { COL_REC, HOJA_RECETARIO, prepararRecetario } from '@/lib/recetario';
 import { siguienteId } from '@/lib/ids';
 import { anotar } from '@/lib/bitacora';
@@ -37,13 +38,38 @@ export async function GET() {
   }
   await Promise.all([prepararInventario(), prepararRecetario()]);
 
-  const [recetario, biblioteca, productos] = await Promise.all([
+  const [recetario, biblioteca, productos, presentaciones] = await Promise.all([
     getSheetData(HOJA_RECETARIO, { crudo: true }),
     getSheetData(HOJA_BIBLIOTECA, { crudo: true }),
     getSheetData('Productos', { crudo: true }),
+    leerPresentaciones(),
   ]);
 
   const bibPorId = new Map(vivos(biblioteca).map((b) => [b.ID_Biblioteca, b]));
+
+  const presPorBib = new Map<string, PresentacionPrecio[]>();
+  for (const p of presentaciones) {
+    if (!presPorBib.has(p.idBiblioteca)) presPorBib.set(p.idBiblioteca, []);
+    presPorBib.get(p.idBiblioteca)!.push(p);
+  }
+
+  /**
+   * De qué precio se costea este insumo, y de dónde salió.
+   *
+   * El precio vive en las presentaciones —es donde se anota lo que
+   * realmente se pagó— y no en el número suelto del insumo, que se queda
+   * viejo en cuanto cambia la forma de comprarlo.
+   */
+  function precioDe(idBiblioteca: string) {
+    const bib = bibPorId.get(idBiblioteca);
+    if (!bib) return null;
+    return elegirPrecio(
+      (bib.Precio_Base ?? '').toString().trim(),
+      presPorBib.get(idBiblioteca) ?? [],
+      parseFloat(bib.Ultimo_Precio_Compra ?? '') || 0,
+      parseFloat(bib.Equivalencia ?? '') || 1
+    );
+  }
   const prodPorId = new Map(productos.map((p) => [p.ID_Producto, p]));
 
   const lineasPorProducto = new Map<string, Record<string, string>[]>();
@@ -63,12 +89,9 @@ export async function GET() {
    */
   function costoDeInsumo(idBiblioteca: string): number | null {
     const bib = bibPorId.get(idBiblioteca);
-    if (!bib) return null;
-    return costoPorUnidadServida(
-      parseFloat(bib.Ultimo_Precio_Compra ?? '') || 0,
-      parseFloat(bib.Equivalencia ?? '') || 1,
-      bib.Rendimiento_Pct
-    );
+    const precio = precioDe(idBiblioteca);
+    if (!bib || !precio || precio.costoUnidad === null) return null;
+    return redondear(precio.costoUnidad * factorCrudo(bib.Rendimiento_Pct), 4);
   }
 
   /**
@@ -149,6 +172,22 @@ export async function GET() {
         */
         const rendimiento = (bib?.Rendimiento_Pct ?? '').toString().trim();
         const factor = factorCrudo(rendimiento);
+        const precio = precioDe(r.ID_Biblioteca);
+        /*
+          Las formas de comprar este insumo, para poder elegir con cuál se
+          costea sin salir del recetario. Se mandan aunque haya una sola:
+          ver "de aquí sale el precio" ya vale, y es la única manera de
+          notar que el costo viene de una compra vieja.
+        */
+        const opciones = (presPorBib.get(r.ID_Biblioteca) ?? [])
+          .filter((x) => x.porUnidad > 0)
+          .sort((a, b) => a.porUnidad - b.porUnidad)
+          .map((x) => ({
+            id: x.id,
+            etiqueta: nombrarPresentacion(x),
+            porUnidad: redondear(x.porUnidad, 4),
+            activa: x.activa,
+          }));
         return {
           id: r.ID_Linea,
           tipo: 'insumo' as const,
@@ -159,6 +198,18 @@ export async function GET() {
           insumo: bib?.Nombre ?? '(insumo eliminado)',
           unidad: bib?.Unidad_Receta ?? '',
           cantidad,
+          /** De qué precio sale el costo de este renglón */
+          precio: precio
+            ? {
+                origen: precio.origen,
+                etiqueta: precio.etiqueta,
+                automatico: precio.automatico,
+                idPresentacion: precio.idPresentacion,
+                porUnidad: precio.costoUnidad,
+              }
+            : null,
+          /** Las formas de comprarlo, para poder cambiar de precio aquí */
+          opcionesPrecio: opciones,
           /** Cuánto queda de 100 al cocinar; '' si no cambia de peso */
           rendimientoPct: rendimiento,
           /** Lo crudo que hay que ocupar para servir `cantidad` */

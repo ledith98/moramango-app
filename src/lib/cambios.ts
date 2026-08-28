@@ -30,6 +30,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 
 export const CAMBIOS: Cambio[] = [
   {
+    fecha: '2026-08-28',
+    tipo: 'nuevo',
+    titulo: 'La tarjeta del local, con su línea de crédito y su fecha de pago',
+    detalle:
+      'En Dinero hay una pestaña nueva: 💳 La tarjeta. Es la línea de crédito de uso exclusivo de Moramango —$18,300— para insumos y servicios del local, nada personal. Te dice cuánto te queda disponible, cuánto llevas usado y, lo importante, CUÁNTO TIENES QUE PAGAR Y PARA CUÁNDO: no es el saldo entero, sino lo que debías al último corte menos lo que ya abonaste, porque lo que compraste después del corte se paga hasta el mes que sigue. Cuando falten 5 días o menos el aviso se pone ámbar, y si ya se venció se pone rojo. Anotas ahí mismo cada compra (diciendo si fue de insumos, servicios u otro) y cada abono. Ojo: un cargo NO saca dinero del banco todavía; el dinero sale cuando pagas la tarjeta, así que ese pago también se anota como salida en «La cuenta». Falta que pongas el día que corta y el día que se paga, vienen en tu estado de cuenta.',
+    donde: 'Dinero → La tarjeta',
+  },
+  {
     fecha: '2026-08-27',
     tipo: 'arreglo',
     titulo: 'El costo de las recetas ya sale del precio real, y puedes elegir de cuál',

@@ -84,7 +84,41 @@ interface EstadoCuenta {
   saldoFecha: string;
 }
 
-const money = (n: number) => `$${n.toFixed(2)}`;
+/*
+  Con separador de miles: "$18300.00" hay que contarlo con el dedo para
+  saber si son dieciocho mil o ciento ochenta mil, y esta pantalla es
+  justo donde eso importa.
+*/
+const money = (n: number) =>
+  `$${n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const MESES = [
+  'enero',
+  'febrero',
+  'marzo',
+  'abril',
+  'mayo',
+  'junio',
+  'julio',
+  'agosto',
+  'septiembre',
+  'octubre',
+  'noviembre',
+  'diciembre',
+];
+
+/**
+ * "2026-09-05" → "5 de septiembre".
+ *
+ * Se arma a mano y no con Date(): "2026-09-05" se lee como UTC y en
+ * Monterrey eso es el 4 por la tarde, así que la fecha se recorrería un
+ * día — y aquí un día es la diferencia entre pagar a tiempo y no.
+ */
+const fechaBonita = (iso: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const mes = MESES[+iso.slice(5, 7) - 1] ?? '';
+  return `${+iso.slice(8, 10)} de ${mes}`;
+};
 
 const ICONO_METODO: Record<string, string> = {
   Terminal: '💳',
@@ -109,13 +143,41 @@ const ATAJOS = [
   { etiqueta: 'Últimos 30 días', rango: () => ({ desde: diaISO(29), hasta: diaISO(0) }) },
 ];
 
+/** Cómo va la tarjeta del local. Lo calcula el servidor en credito.ts. */
+interface EstadoCredito {
+  limite: number;
+  usado: number;
+  disponible: number;
+  porcentajeUsado: number;
+  diaCorte: number;
+  diaPago: number;
+  ultimoCorte: string;
+  fechaLimite: string;
+  porPagar: number;
+  diasParaPagar: number | null;
+  delSiguientePeriodo: number;
+  gastadoPorCategoria: { categoria: string; monto: number }[];
+  movimientos: {
+    id: string;
+    fecha: string;
+    tipo: 'Cargo' | 'Pago';
+    concepto: string;
+    monto: number;
+    categoria: string;
+    quien: string;
+    notas: string;
+  }[];
+  categorias: string[];
+}
+
 const inputCls =
   'bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-marron';
 
 export default function DineroPage() {
-  const [pestana, setPestana] = useState<'efectivo' | 'cuenta'>('efectivo');
+  const [pestana, setPestana] = useState<'efectivo' | 'cuenta' | 'tarjeta'>('efectivo');
   const [caja, setCaja] = useState<EstadoCaja | null>(null);
   const [cuenta, setCuenta] = useState<EstadoCuenta | null>(null);
+  const [credito, setCredito] = useState<EstadoCredito | null>(null);
   const [cargando, setCargando] = useState(true);
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState('');
@@ -203,13 +265,100 @@ export default function DineroPage() {
    */
   const [verMovs, setVerMovs] = useState<'periodo' | 'todos'>('periodo');
 
+  // Tarjeta del local
+  const [tipoCred, setTipoCred] = useState<'Cargo' | 'Pago'>('Cargo');
+  const [montoCred, setMontoCred] = useState('');
+  const [conceptoCred, setConceptoCred] = useState('');
+  const [categoriaCred, setCategoriaCred] = useState('Insumos');
+  const [fechaCred, setFechaCred] = useState(diaISO(0));
+  const [verMovsCred, setVerMovsCred] = useState<'pocos' | 'todos'>('pocos');
+  /** Los datos de la tarjeta se editan poco: el formulario va escondido */
+  const [editandoTarjeta, setEditandoTarjeta] = useState(false);
+  const [limiteCred, setLimiteCred] = useState('');
+  const [corteCred, setCorteCred] = useState('');
+  const [pagoCred, setPagoCred] = useState('');
+
+  /** Anota un cargo o un pago de la tarjeta. */
+  const guardarCredito = async () => {
+    const monto = parseFloat(montoCred.replace(',', '.'));
+    if (!(monto > 0)) return setError('Escribe cuánto fue.');
+    if (!conceptoCred.trim()) return setError('Escribe en qué se usó.');
+    setOcupado(true);
+    setError('');
+    const res = await fetch('/api/admin/credito', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fecha: fechaCred,
+        tipo: tipoCred,
+        concepto: conceptoCred.trim(),
+        monto,
+        categoria: tipoCred === 'Cargo' ? categoriaCred : '',
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setOcupado(false);
+    if (!res.ok) return setError(data.error || 'No se pudo guardar');
+    setMontoCred('');
+    setConceptoCred('');
+    await cargar();
+  };
+
+  const borrarCredito = async (id: string, concepto: string) => {
+    if (!confirm(`¿Borrar "${concepto}" de la tarjeta?`)) return;
+    setOcupado(true);
+    setError('');
+    const res = await fetch(`/api/admin/credito?id=${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    const data = await res.json().catch(() => ({}));
+    setOcupado(false);
+    if (!res.ok) return setError(data.error || 'No se pudo borrar');
+    await cargar();
+  };
+
+  const guardarTarjeta = async () => {
+    setOcupado(true);
+    setError('');
+    const res = await fetch('/api/admin/credito', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        accion: 'config',
+        datos: { limite: limiteCred, diaCorte: corteCred, diaPago: pagoCred },
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setOcupado(false);
+    if (!res.ok) return setError(data.error || 'No se pudo guardar');
+    setEditandoTarjeta(false);
+    await cargar();
+  };
+
+  /**
+   * Abre el formulario con lo que hay guardado.
+   *
+   * Los días en 0 se enseñan vacíos y no como "0": cero no es un día del
+   * mes, es "todavía no me lo has dicho".
+   */
+  const abrirEditarTarjeta = () => {
+    if (!credito) return;
+    setLimiteCred(String(credito.limite));
+    setCorteCred(credito.diaCorte ? String(credito.diaCorte) : '');
+    setPagoCred(credito.diaPago ? String(credito.diaPago) : '');
+    setEditandoTarjeta(true);
+    setError('');
+  };
+
   const cargar = useCallback(async () => {
     setCargando(true);
-    const [rc, rq] = await Promise.all([
+    const [rc, rq, rt] = await Promise.all([
       fetch('/api/admin/caja'),
       fetch(`/api/admin/cuenta?${new URLSearchParams({ desde, hasta })}`),
+      fetch('/api/admin/credito'),
     ]);
-    const [dc, dq] = await Promise.all([rc.json(), rq.json()]);
+    const [dc, dq, dt] = await Promise.all([rc.json(), rq.json(), rt.json()]);
+    if (rt.ok) setCredito(dt);
     if (rc.ok) setCaja(dc);
     if (rq.ok) {
       setCuenta(dq);
@@ -266,6 +415,7 @@ export default function DineroPage() {
           [
             ['efectivo', '💵 El cajón (hoy)'],
             ['cuenta', '🏦 La cuenta'],
+            ['tarjeta', '💳 La tarjeta'],
           ] as const
         ).map(([v, etiqueta]) => (
           <button
@@ -992,10 +1142,369 @@ export default function DineroPage() {
         </>
       )}
 
-      {/* ─────────── ANOTAR UN MOVIMIENTO — uno solo para las dos ───────────
+      {/* ───────────────────────── LA TARJETA ─────────────────────────
+          Línea de crédito de uso exclusivo del local. Vive aparte del
+          cajón y de la cuenta porque un cargo NO saca dinero el día que
+          se hace: el dinero sale cuando se paga la tarjeta, y ese pago sí
+          se anota como salida de la cuenta. */}
+      {pestana === 'tarjeta' && credito && (
+        <>
+          <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5 space-y-4">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <h2 className="font-bold text-neutral-900">Línea de crédito del local</h2>
+                <p className="text-xs text-neutral-700 mt-0.5">
+                  Solo para cosas de Moramango: insumos y servicios. Nada personal.
+                </p>
+              </div>
+              <button
+                onClick={abrirEditarTarjeta}
+                className="text-xs font-semibold text-black bg-neutral-200 px-3 py-1.5 rounded-lg active:scale-95"
+              >
+                ✏️ Datos de la tarjeta
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <p className="text-[11px] text-neutral-600 uppercase tracking-wide">Te queda</p>
+                <p className="text-xl font-bold text-neutral-900">{money(credito.disponible)}</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-neutral-600 uppercase tracking-wide">Has usado</p>
+                <p className="text-xl font-bold text-neutral-900">{money(credito.usado)}</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-neutral-600 uppercase tracking-wide">Tu línea</p>
+                <p className="text-xl font-bold text-neutral-900">{money(credito.limite)}</p>
+              </div>
+            </div>
+
+            {/* La barra dice de un vistazo lo que tres números tardan en
+                decir. El color cambia al 75%: no es una alarma, es un
+                aviso de que ya no queda mucho margen. */}
+            <div>
+              <div className="h-3 bg-neutral-200 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    credito.porcentajeUsado >= 90
+                      ? 'bg-red-600'
+                      : credito.porcentajeUsado >= 75
+                        ? 'bg-amber-500'
+                        : 'bg-green-600'
+                  }`}
+                  style={{ width: `${Math.min(100, credito.porcentajeUsado)}%` }}
+                />
+              </div>
+              <p className="text-xs text-neutral-700 mt-1">
+                Llevas usado el {credito.porcentajeUsado}% de la línea.
+              </p>
+            </div>
+          </div>
+
+          {/* Lo que hay que pagar y para cuándo */}
+          <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5 space-y-2">
+            <h2 className="font-bold text-neutral-900">Lo que tienes que pagar</h2>
+            {!credito.fechaLimite ? (
+              /* Sin las fechas de la tarjeta no se puede calcular nada, y
+                 enseñar el saldo total como "lo que debes pagar" sería
+                 mentir: parte de eso se paga hasta el mes que sigue. */
+              <p className="text-sm text-neutral-800">
+                Todavía no sé cuándo corta ni cuándo se paga tu tarjeta. Ponlo en{' '}
+                <button onClick={abrirEditarTarjeta} className="font-bold text-marron underline">
+                  Datos de la tarjeta
+                </button>{' '}
+                y aquí te digo cuánto pagar y para cuándo.
+              </p>
+            ) : credito.porPagar <= 0 ? (
+              <p className="text-sm font-semibold text-green-800">
+                ✅ Nada pendiente. Lo del corte del {fechaBonita(credito.ultimoCorte)} ya está cubierto.
+              </p>
+            ) : (
+              <>
+                <p className="text-3xl font-bold text-neutral-900">{money(credito.porPagar)}</p>
+                <p
+                  className={`text-sm font-semibold ${
+                    (credito.diasParaPagar ?? 0) < 0
+                      ? 'text-red-700'
+                      : (credito.diasParaPagar ?? 99) <= 5
+                        ? 'text-amber-800'
+                        : 'text-neutral-800'
+                  }`}
+                >
+                  {(credito.diasParaPagar ?? 0) < 0
+                    ? `⚠️ Se venció el ${fechaBonita(credito.fechaLimite)}, hace ${Math.abs(credito.diasParaPagar!)} días.`
+                    : credito.diasParaPagar === 0
+                      ? 'Hoy es el último día para pagarlo.'
+                      : `Antes del ${fechaBonita(credito.fechaLimite)} — te quedan ${credito.diasParaPagar} días.`}
+                </p>
+                <p className="text-xs text-neutral-700">
+                  Es lo que debías al corte del {fechaBonita(credito.ultimoCorte)}, menos lo que ya abonaste.
+                </p>
+              </>
+            )}
+            {credito.delSiguientePeriodo > 0 && (
+              <p className="text-xs text-neutral-700 border-t border-neutral-100 pt-2">
+                Aparte llevas <strong>{money(credito.delSiguientePeriodo)}</strong> gastados después
+                del corte. Eso se paga hasta el periodo que sigue.
+              </p>
+            )}
+          </div>
+
+          {/* Anotar */}
+          <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5 space-y-3">
+            <h2 className="font-bold text-neutral-900">Anotar en la tarjeta</h2>
+
+            <div className="flex gap-1 bg-neutral-100 p-1 rounded-xl w-fit">
+              {(
+                [
+                  ['Cargo', '🛒 Compré algo'],
+                  ['Pago', '💸 Le aboné'],
+                ] as const
+              ).map(([v, etiqueta]) => (
+                <button
+                  key={v}
+                  onClick={() => setTipoCred(v)}
+                  className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${
+                    tipoCred === v ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-700'
+                  }`}
+                >
+                  {etiqueta}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <label className="text-xs font-semibold text-neutral-700">
+                ¿Cuánto?
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  value={montoCred}
+                  onChange={(e) => setMontoCred(e.target.value)}
+                  placeholder="0.00"
+                  className={`${inputCls} w-full mt-1`}
+                />
+              </label>
+              <label className="text-xs font-semibold text-neutral-700">
+                ¿Qué día?
+                <input
+                  type="date"
+                  value={fechaCred}
+                  onChange={(e) => setFechaCred(e.target.value)}
+                  className={`${inputCls} w-full mt-1`}
+                />
+              </label>
+            </div>
+
+            <label className="block text-xs font-semibold text-neutral-700">
+              {tipoCred === 'Cargo' ? '¿En qué se usó?' : '¿De dónde salió el abono?'}
+              <input
+                value={conceptoCred}
+                onChange={(e) => setConceptoCred(e.target.value)}
+                placeholder={
+                  tipoCred === 'Cargo' ? 'Ej. Fruta de la semana' : 'Ej. Pago desde Mercado Pago'
+                }
+                className={`${inputCls} w-full mt-1`}
+              />
+            </label>
+
+            {tipoCred === 'Cargo' && (
+              <div>
+                <p className="text-xs font-semibold text-neutral-700 mb-1">¿De qué tipo?</p>
+                <div className="flex flex-wrap gap-1">
+                  {credito.categorias.map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => setCategoriaCred(c)}
+                      className={`px-3 py-2 rounded-lg text-sm font-semibold ${
+                        categoriaCred === c
+                          ? 'bg-marron text-white'
+                          : 'bg-neutral-100 text-neutral-800'
+                      }`}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={guardarCredito}
+              disabled={ocupado}
+              className="w-full bg-marron text-white font-bold py-3 rounded-xl active:scale-95 disabled:opacity-50"
+            >
+              Guardar
+            </button>
+            <p className="text-xs text-neutral-700">
+              Un cargo no saca dinero del banco todavía. Cuando pagues la tarjeta, anota aquí el
+              abono y además la salida en «La cuenta».
+            </p>
+          </div>
+
+          {/* En qué se está yendo */}
+          {credito.gastadoPorCategoria.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5">
+              <h2 className="font-bold text-neutral-900 mb-2">En qué se ha ido</h2>
+              <ul className="space-y-1">
+                {credito.gastadoPorCategoria.map((g) => (
+                  <li key={g.categoria} className="flex justify-between text-sm">
+                    <span className="text-neutral-800">{g.categoria}</span>
+                    <span className="font-semibold text-neutral-900">{money(g.monto)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Los movimientos */}
+          <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5">
+            <h2 className="font-bold text-neutral-900 mb-2">Todo lo de la tarjeta</h2>
+            {credito.movimientos.length === 0 ? (
+              <p className="text-sm text-neutral-700">
+                Todavía nada. Lo que compres con la tarjeta se anota arriba.
+              </p>
+            ) : (
+              <>
+                <ul className="divide-y divide-neutral-100">
+                  {(verMovsCred === 'todos'
+                    ? credito.movimientos
+                    : credito.movimientos.slice(0, 8)
+                  ).map((m) => (
+                    <li key={m.id} className="py-2 flex items-start gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-neutral-900">
+                          {m.tipo === 'Pago' ? '💸 ' : '🛒 '}
+                          {m.concepto}
+                        </p>
+                        <p className="text-[11px] text-neutral-700">
+                          {fechaBonita(m.fecha)}
+                          {m.categoria && ` · ${m.categoria}`}
+                          {m.quien && ` · ${m.quien}`}
+                        </p>
+                      </div>
+                      <span
+                        className={`text-sm font-bold whitespace-nowrap ${
+                          m.tipo === 'Pago' ? 'text-green-800' : 'text-neutral-900'
+                        }`}
+                      >
+                        {m.tipo === 'Pago' ? '−' : '+'}
+                        {money(m.monto)}
+                      </span>
+                      <button
+                        onClick={() => borrarCredito(m.id, m.concepto)}
+                        disabled={ocupado}
+                        className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded-lg active:scale-95 disabled:opacity-50"
+                      >
+                        🗑️
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {credito.movimientos.length > 8 && (
+                  <button
+                    onClick={() => setVerMovsCred(verMovsCred === 'todos' ? 'pocos' : 'todos')}
+                    className="text-xs font-semibold text-marron mt-2"
+                  >
+                    {verMovsCred === 'todos' ? 'Ver menos' : `Ver los ${credito.movimientos.length}`}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Datos de la tarjeta */}
+      {editandoTarjeta && credito && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => setEditandoTarjeta(false)}
+        >
+          <div
+            className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl shadow-2xl p-5 space-y-3 max-h-[92dvh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="font-bold text-neutral-900 text-lg">Datos de la tarjeta</h2>
+
+            <label className="block text-xs font-semibold text-neutral-700">
+              ¿De cuánto es tu línea?
+              <input
+                type="number"
+                inputMode="decimal"
+                value={limiteCred}
+                onChange={(e) => setLimiteCred(e.target.value)}
+                className={`${inputCls} w-full mt-1`}
+              />
+            </label>
+
+            <div className="grid grid-cols-2 gap-2">
+              <label className="text-xs font-semibold text-neutral-700">
+                Día que corta
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={31}
+                  value={corteCred}
+                  onChange={(e) => setCorteCred(e.target.value)}
+                  placeholder="Ej. 15"
+                  className={`${inputCls} w-full mt-1`}
+                />
+              </label>
+              <label className="text-xs font-semibold text-neutral-700">
+                Día que se paga
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={31}
+                  value={pagoCred}
+                  onChange={(e) => setPagoCred(e.target.value)}
+                  placeholder="Ej. 5"
+                  className={`${inputCls} w-full mt-1`}
+                />
+              </label>
+            </div>
+            <p className="text-xs text-neutral-700">
+              Vienen en tu estado de cuenta. Si el día de pago es menor o igual al de corte, se
+              entiende que cae en el mes siguiente — corta el 15, se paga el 5.
+            </p>
+
+            {error && (
+              <p className="text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-xl p-3">
+                {error}
+              </p>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => setEditandoTarjeta(false)}
+                className="flex-1 bg-neutral-100 text-neutral-900 font-bold py-3 rounded-xl active:scale-95"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={guardarTarjeta}
+                disabled={ocupado}
+                className="flex-1 bg-marron text-white font-bold py-3 rounded-xl active:scale-95 disabled:opacity-50"
+              >
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─────────── ANOTAR UN MOVIMIENTO — el cajón y la cuenta ───────────
           Antes estaba duplicado en las dos pantallas, así que había que
           decidir en cuál entrar antes de saber a cuál pertenecía el
-          movimiento. Aquí se elige la bolsa y ya. */}
+          movimiento. Aquí se elige la bolsa y ya.
+
+          La tarjeta queda fuera: un cargo no mueve dinero el día que se
+          hace, así que se anota en su propia pestaña. */}
+      {pestana !== 'tarjeta' && (
       <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5 space-y-3">
         <div>
           <h2 className="font-bold text-neutral-900">Anotar entrada o salida de dinero</h2>
@@ -1255,6 +1764,7 @@ export default function DineroPage() {
           );
         })()}
       </div>
+      )}
     </div>
   );
 }

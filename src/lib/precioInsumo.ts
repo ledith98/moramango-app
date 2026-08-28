@@ -141,3 +141,42 @@ export function elegirPrecio(
   // Respaldo: el insumo todavía no tiene presentaciones que cotizar
   return porUltima(true);
 }
+
+/**
+ * Unidades chicas que se compran de a mil, con el nombre del bulto.
+ *
+ * La receta pide gramos porque es lo que lleva el platillo, pero el
+ * aguacate se compra por kilo y nadie tiene en la cabeza cuánto es
+ * "$0.093 el gramo". Son el mismo precio; uno se puede comparar contra el
+ * letrero de la tienda y el otro no.
+ */
+const DE_A_MIL: { unidades: string[]; bulto: string }[] = [
+  { unidades: ['g', 'gr', 'grs', 'gramo', 'gramos'], bulto: 'kg' },
+  { unidades: ['ml', 'mililitro', 'mililitros'], bulto: 'litro' },
+];
+
+/**
+ * Un precio por unidad de receta, escrito como se compra.
+ *
+ *   0.093  g          → "$93.00 el kg"
+ *   0.0228 ml         → "$22.80 el litro"
+ *   2.2083 Rebanadas  → "$2.21 por rebanada"
+ *
+ * Las unidades que ya se compran así se quedan como están: el pollo por
+ * kilo es "$138.10 por kg" y no hay nada que convertir.
+ */
+export function precioLegible(porUnidad: number, unidadReceta: string): string {
+  const u = (unidadReceta || '').trim();
+  const bulto = DE_A_MIL.find((d) => d.unidades.includes(u.toLowerCase()))?.bulto;
+  if (bulto) return `$${(porUnidad * 1000).toFixed(2)} el ${bulto}`;
+
+  /*
+    Las unidades vienen en plural en la hoja ("Rebanadas", "piezas") y
+    "por Rebanadas" se lee mal. Quitar la -s final acierta en todas las
+    que hay y en las que se puedan agregar en español; el mínimo de 4
+    letras protege a "kg" y a cualquier abreviatura corta.
+  */
+  const singular = u.length > 3 && u.toLowerCase().endsWith('s') ? u.slice(0, -1) : u;
+  const cifra = porUnidad >= 1 ? porUnidad.toFixed(2) : String(Math.round(porUnidad * 10000) / 10000);
+  return `$${cifra} por ${singular.toLowerCase() || 'unidad'}`;
+}

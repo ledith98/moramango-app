@@ -34,7 +34,7 @@ export const CAMBIOS: Cambio[] = [
     tipo: 'arreglo',
     titulo: 'El costo de las recetas ya sale del precio real, y puedes elegir de cuál',
     detalle:
-      'El costo salía de un número suelto guardado en el insumo, que se quedaba viejo: por eso el queso suizo seguía costeando a $17.10 la rebanada aunque el único precio registrado fuera el Kirkland a $2.21. Ahora sale de las presentaciones —donde de verdad se anota lo que pagaste— y en cada renglón del Recetario aparece un 💲 con el precio que se está usando. Ahí mismo lo cambias: “El más barato” (lo normal, se acomoda solo cuando cambian los precios), una presentación en concreto, o “La última compra que anotaste” si alguna presentación quedó mal capturada. Vale para todos los insumos y, como el precio es del insumo, cambiarlo en una receta lo cambia en todas las que lo lleven.',
+      'El costo salía de un número suelto guardado en el insumo, que se quedaba viejo: por eso el queso suizo seguía costeando a $17.10 la rebanada aunque el único precio registrado fuera el Kirkland a $2.21. Ahora sale de las presentaciones —donde de verdad se anota lo que pagaste— y en cada renglón del Recetario aparece un 💲 con el precio que se está usando. Ahí mismo lo cambias: “El más barato” (lo normal, se acomoda solo cuando cambian los precios), una presentación en concreto, o “La última compra que anotaste” si alguna presentación quedó mal capturada. Los precios se enseñan como los compras: “$93.00 el kg” en vez de “$0.093 el gramo”, y “$22.80 el litro” en vez de “$0.0228 el ml”, para poderlos comparar contra el letrero de la tienda. Vale para todos los insumos y, como el precio es del insumo, cambiarlo en una receta lo cambia en todas las que lo lleven.',
     donde: 'Recetario',
   },
   {

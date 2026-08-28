@@ -10,6 +10,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { precioLegible } from '@/lib/precioInsumo';
 
 interface LineaReceta {
   id: string;
@@ -357,13 +358,19 @@ export default function RecetarioPage() {
                               >
                                 <option value="">
                                   El más barato
-                                  {l.precio.automatico && l.precio.origen === 'presentacion'
-                                    ? ` (${l.precio.etiqueta})`
+                                  {l.precio.automatico &&
+                                  l.precio.origen === 'presentacion' &&
+                                  l.precio.porUnidad !== null
+                                    ? ` — ${l.precio.etiqueta}, ${precioLegible(l.precio.porUnidad, l.unidad)}`
                                     : ''}
                                 </option>
                                 {l.opcionesPrecio.map((o) => (
                                   <option key={o.id} value={o.id}>
-                                    {o.etiqueta} · ${o.porUnidad} {l.unidad}
+                                    {/* El precio como se compra, no por
+                                        unidad de receta: "$93.00 el kg" se
+                                        compara contra el letrero de la
+                                        tienda, "$0.093 el gramo" no. */}
+                                    {o.etiqueta} · {precioLegible(o.porUnidad, l.unidad)}
                                     {o.activa ? '' : ' (ya no la compras)'}
                                   </option>
                                 ))}

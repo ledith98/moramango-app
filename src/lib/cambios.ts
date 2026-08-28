@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-28',
+    tipo: 'arreglo',
+    titulo: 'Al abrir un pedido ya se ve lo que pidió, sin que el método de pago lo tape',
+    detalle:
+      'El bloque de método de pago ocupaba el pie completo —rótulo, aviso y cuatro botones— y con «Cambiar estado» abajo dejaba una rendija para lo único que se abre a ver: qué pidió el cliente. Ahora se pliega a un renglón que dice «📲 Transferencia · ✅ Pagado» con un «Cambiar ▾» al lado; al tocarlo aparecen los cuatro métodos y el botón de reembolsar, y con «Ocultar ▴» se cierra. Los productos pasaron de verse en 70 píxeles a 188, casi el triple. Si el pedido NO tiene método registrado se despliega solo, porque ahí sí hay algo que hacer.',
+    donde: 'Pedidos',
+  },
+  {
+    fecha: '2026-08-28',
     tipo: 'nuevo',
     titulo: 'La tarjeta del local, con su línea de crédito y su fecha de pago',
     detalle:

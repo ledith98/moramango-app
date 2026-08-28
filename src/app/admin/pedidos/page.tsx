@@ -184,6 +184,23 @@ export default function PedidosPage() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [cargando, setCargando] = useState(true);
   const [detalle, setDetalle] = useState<Detalle | null>(null);
+  /**
+   * Qué pedido tiene desplegado el bloque del método de pago.
+   *
+   * Se guarda el id y no un true/false para que se cierre solo al pasar a
+   * otro pedido: si quedara abierto, el siguiente que abras vuelve a
+   * taparte lo que pidió, que es justo lo que esto viene a arreglar.
+   */
+  const [verPago, setVerPago] = useState('');
+
+  /*
+    Se calculan aquí y no dentro del JSX porque los usan tres pedazos del
+    pie —el resumen, el desplegable y el botón de reembolso— y repetir la
+    condición en cada uno es garantizar que un día no coincidan.
+  */
+  const metodoDetalle = detalle ? normalizarMetodoPago(detalle.pedido.Metodo_Pago) : '';
+  /** Sin método se abre solo: es el único caso en que hay algo que hacer */
+  const pagoAbierto = !!detalle && (verPago === detalle.pedido.ID_Pedido || !metodoDetalle);
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [actualizando, setActualizando] = useState(false);
   const [telCopiado, setTelCopiado] = useState(false);
@@ -922,12 +939,51 @@ export default function PedidosPage() {
 
                 <div className="p-5 border-t border-neutral-100 shrink-0 space-y-3">
                   <div>
-                    <p className="text-xs font-semibold text-neutral-700">Método de pago</p>
-                    <p className="text-[11px] text-neutral-600 mb-2">
-                      ¿Te equivocaste al registrarlo? Tócale otro y se corrige — no hace falta
-                      cancelar la venta.
-                    </p>
-                    <div className="flex flex-wrap gap-2">
+                    {/*
+                      Plegado a una línea.
+
+                      Antes esto ocupaba el pie entero —rótulo, aviso y
+                      cuatro botones— y con "Cambiar estado" abajo dejaba
+                      una rendija para lo que de verdad se abre a ver: qué
+                      pidió el cliente. Cuando llega un pedido el método ya
+                      viene puesto y no se toca; lo único que hace falta
+                      ver es cuál es, y eso cabe en un renglón.
+
+                      Se despliega solo cuando NO hay método, que es el
+                      único caso en que sí hay algo que hacer aquí.
+                    */}
+                    <button
+                      onClick={() =>
+                        setVerPago(pagoAbierto ? '' : detalle.pedido.ID_Pedido)
+                      }
+                      disabled={!metodoDetalle}
+                      className="w-full flex items-center justify-between gap-2 text-left disabled:opacity-100"
+                    >
+                      <span className="text-sm font-semibold text-neutral-900">
+                        {metodoDetalle
+                          ? `${iconoMetodo(metodoDetalle)} ${metodoDetalle}`
+                          : '⚠️ Falta el método de pago'}
+                        {detalle.pedido.Estado_Pago === 'Pagado' && (
+                          <span className="text-green-700"> · ✅ Pagado</span>
+                        )}
+                        {detalle.pedido.Estado_Pago === 'Reembolsado' && (
+                          <span className="text-red-700"> · 💸 Reembolsado</span>
+                        )}
+                      </span>
+                      {metodoDetalle && (
+                        <span className="text-xs font-semibold text-marron whitespace-nowrap">
+                          {pagoAbierto ? 'Ocultar ▴' : 'Cambiar ▾'}
+                        </span>
+                      )}
+                    </button>
+
+                    {pagoAbierto && (
+                      <>
+                        <p className="text-[11px] text-neutral-600 mb-2 mt-2">
+                          ¿Te equivocaste al registrarlo? Tócale otro y se corrige — no hace falta
+                          cancelar la venta.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
                       {['Efectivo', 'Terminal', 'Transferencia', METODO_PAGO_EN_LINEA].map((m) => {
                         // Los pedidos viejos con 'Mercado Pago' cuentan como 'Pago en línea'
                         const activo = normalizarMetodoPago(detalle.pedido.Metodo_Pago) === m;
@@ -944,9 +1000,22 @@ export default function PedidosPage() {
                           >
                             {iconoMetodo(m)} {m}
                           </button>
-                        );
-                      })}
-                    </div>
+                            );
+                          })}
+                        </div>
+                        {/* Reembolsar casi nunca se usa y se lleva un
+                            renglón entero: va aquí adentro, no suelto. */}
+                        {detalle.pedido.Estado_Pago === 'Pagado' && (
+                          <button
+                            onClick={() => marcarReembolsado(detalle.pedido.ID_Pedido)}
+                            disabled={actualizando}
+                            className="mt-2 w-full border border-red-200 text-red-600 text-sm font-semibold py-2.5 rounded-xl active:scale-95 transition-transform disabled:opacity-50"
+                          >
+                            💸 Marcar como reembolsado
+                          </button>
+                        )}
+                      </>
+                    )}
                     {detalle.pedido.Estado_Pago === 'Pendiente' && (
                       <button
                         onClick={() => confirmarPago(detalle.pedido.ID_Pedido)}
@@ -993,21 +1062,9 @@ export default function PedidosPage() {
                         📲 Avisarle que ya recibimos su pago
                       </a>
                     )}
-                    {detalle.pedido.Estado_Pago === 'Pagado' && (
-                      <>
-                        <p className="mt-2 text-xs font-semibold text-green-700">✅ Pago confirmado</p>
-                        <button
-                          onClick={() => marcarReembolsado(detalle.pedido.ID_Pedido)}
-                          disabled={actualizando}
-                          className="mt-2 w-full border border-red-200 text-red-600 text-sm font-semibold py-2.5 rounded-xl active:scale-95 transition-transform disabled:opacity-50"
-                        >
-                          💸 Marcar como reembolsado
-                        </button>
-                      </>
-                    )}
                     {detalle.pedido.Estado_Pago === 'Reembolsado' && (
                       <p className="mt-2 text-xs font-semibold text-red-700">
-                        💸 Reembolsado — no cuenta en tus ventas
+                        No cuenta en tus ventas
                       </p>
                     )}
                   </div>

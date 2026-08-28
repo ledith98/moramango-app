@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { appendRow, getSheetData, updateCells } from '@/lib/googleSheets';
 import { factorMerma } from '@/lib/insumos';
 import {
-  costoPorUnidadReceta,
+  costoPorUnidadServida,
   HOJA_BIBLIOTECA,
   prepararInventario,
   redondear,
@@ -52,13 +52,21 @@ export async function GET() {
     lineasPorProducto.get(r.ID_Producto)!.push(r);
   }
 
-  /** Lo que cuesta un insumo por unidad de receta, según su última compra. */
+  /**
+   * Lo que cuesta un insumo por unidad SERVIDA, según su última compra.
+   *
+   * Servida y no comprada: el pollo se compra crudo y la receta lo pide
+   * cocido, así que el kilo que llega al plato cuesta más que el que se
+   * pagó. Los insumos que no cambian de peso —casi todos— no declaran
+   * rendimiento y esto devuelve el costo de siempre.
+   */
   function costoDeInsumo(idBiblioteca: string): number | null {
     const bib = bibPorId.get(idBiblioteca);
     if (!bib) return null;
-    return costoPorUnidadReceta(
+    return costoPorUnidadServida(
       parseFloat(bib.Ultimo_Precio_Compra ?? '') || 0,
-      parseFloat(bib.Equivalencia ?? '') || 1
+      parseFloat(bib.Equivalencia ?? '') || 1,
+      bib.Rendimiento_Pct
     );
   }
 

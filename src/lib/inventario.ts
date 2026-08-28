@@ -49,6 +49,10 @@ export const COLS_BIBLIOTECA = [
   // nombres de compra ("Lechuga Italiana EVA"), así que el vínculo se
   // declara a mano. Vacío = se intenta unir por nombre idéntico.
   'Ingredientes',
+  // Cuánto queda de 100 al cocinar: 3 kg de pollo crudo dan 2 kg cocidos
+  // → 66.7. Vacío para casi todo; solo lo llenan los insumos que cambian
+  // de peso entre que se compran y que se sirven.
+  'Rendimiento_Pct',
 ];
 
 export const COLS_ACTIVOS = [
@@ -132,6 +136,9 @@ export async function prepararInventario(): Promise<void> {
     // Varios proveedores por insumo, separados por '|': casi nada se le
     // compra siempre al mismo, y sin esto no se puede comparar.
     ensureColumn(HOJA_BIBLIOTECA, 'Proveedores'),
+    // Cuánto queda de 100 después de cocinar. Solo la usan los insumos que
+    // se compran crudos y se sirven cocidos; vacía = no cambia nada.
+    ensureColumn(HOJA_BIBLIOTECA, 'Rendimiento_Pct'),
     ensureColumn(HOJA_COMPRAS, 'Donde'),
     ensureColumn(HOJA_COMPRAS, 'Quien'),
     ensureColumn(HOJA_COMPRAS, 'ID_Proveedor'),
@@ -188,6 +195,56 @@ export function costoPorUnidadReceta(ultimoPrecio: number, equivalencia: number)
   if (!ultimoPrecio || !equivalencia || equivalencia <= 0) return null;
   return redondear(ultimoPrecio / equivalencia, 4);
 }
+
+/**
+ * Cuánto crudo hay que ocupar para servir una unidad ya cocinada.
+ *
+ * El pollo se compra crudo y se sirve cocido: 3 kg crudos rinden 2 kg
+ * cocidos. Las recetas declaran lo COCIDO, que es lo que de verdad se
+ * pone en el plato y lo único que se puede pesar en la barra, así que
+ * alguien tiene que hacer la conversión — y ese alguien es este factor.
+ *
+ * Antes vivía en cada renglón de receta (Merma_Pct), y eso obligaba a
+ * repetir el mismo número en cada platillo que llevara pollo: bastaba
+ * olvidarlo en uno para que ese producto costeara el pollo a precio de
+ * crudo y saliera más barato de lo que es. Aquí se declara UNA vez, en el
+ * insumo, y todas las recetas que lo usan se enteran solas.
+ *
+ * El porcentaje puede pasar de 100: el arroz y el frijol PESAN MÁS
+ * cocidos porque absorben agua, y ahí el factor baja de 1 en vez de
+ * subir. Vacío = no hay conversión y todo se comporta como siempre.
+ */
+export function factorCrudo(rendimientoPct: string | number | undefined | null): number {
+  const pct = parseFloat(
+    (rendimientoPct ?? '').toString().replace(',', '.').replace('%', '')
+  );
+  if (isNaN(pct) || pct <= 0) return 1;
+  return 100 / pct;
+}
+
+/**
+ * Lo que cuesta una unidad de lo que se SIRVE, no de lo que se compra.
+ *
+ * Pollo a $150 el paquete de 3 kg son $50 el kilo crudo, pero como de
+ * esos 3 kg solo salen 2 cocidos, el kilo que llega al plato cuesta $75.
+ * Costear con los $50 es el error que hace ver los sándwiches de pollo
+ * más rentables de lo que son.
+ *
+ * Sin rendimiento declarado devuelve exactamente lo mismo que
+ * costoPorUnidadReceta.
+ */
+export function costoPorUnidadServida(
+  ultimoPrecio: number,
+  equivalencia: number,
+  rendimientoPct: string | number | undefined | null
+): number | null {
+  const crudo = costoPorUnidadReceta(ultimoPrecio, equivalencia);
+  if (crudo === null) return null;
+  return redondear(crudo * factorCrudo(rendimientoPct), 4);
+}
+
+/** Resuelve la columna por nombre: la hoja pudo crearse antes que ella. */
+export const columnaRendimiento = () => ensureColumn(HOJA_BIBLIOTECA, 'Rendimiento_Pct');
 
 /** Convierte una cantidad comprada a unidades de receta. */
 export function aUnidadesReceta(cantidadCompra: number, equivalencia: number): number {

@@ -20,6 +20,8 @@ import {
   columnaEnUso,
   columnaIngredientes,
   costoPorUnidadReceta,
+  costoPorUnidadServida,
+  columnaRendimiento,
   escribirIngredientes,
   estaEnUso,
   HOJA_ACTIVOS,
@@ -41,6 +43,26 @@ const vivos = (filas: Record<string, string>[]) =>
     (b) =>
       (b.Eliminado || '').toLowerCase() !== 'si' && (b.Nombre || '').toString().trim() !== ''
   );
+
+/**
+ * Lee el rendimiento que viene del formulario.
+ *
+ * Devuelve `null` cuando el campo se dejó vacío —que es lo normal, casi
+ * nada cambia de peso— y un mensaje cuando el número no tiene sentido.
+ *
+ * El tope de 1000 no es capricho: el arroz llega a 250 al cocerse, pero un
+ * dedo de más en el teclado ("6670" por "66.7") multiplicaría el costo del
+ * platillo por 66 y nadie lo notaría hasta ver el margen del mes.
+ */
+function leerRendimiento(valor: unknown): { pct: number | null } | { error: string } {
+  const crudo = (valor ?? '').toString().trim();
+  if (crudo === '') return { pct: null };
+  const pct = parseFloat(crudo.replace(',', '.').replace('%', ''));
+  if (isNaN(pct) || pct <= 0 || pct > 1000) {
+    return { error: 'El rendimiento debe ser un porcentaje entre 1 y 1000, o quedar vacío.' };
+  }
+  return { pct };
+}
 
 /** Ingredientes distintos de Catalogo, con los productos que los usan. */
 function ingredientesDelCatalogo(catalogo: Record<string, string>[]) {
@@ -131,8 +153,16 @@ export async function GET(req: NextRequest) {
       unidadReceta: b.Unidad_Receta || '',
       equivalencia,
       ultimoPrecioCompra: ultimoPrecio,
-      // Campo virtual: no se almacena, se calcula al leer
+      // Campos virtuales: no se almacenan, se calculan al leer
       costoPorUnidadReceta: costoPorUnidadReceta(ultimoPrecio, equivalencia),
+      /** Cuánto queda de 100 al cocinar; '' para los que no cambian de peso */
+      rendimientoPct: (b.Rendimiento_Pct ?? '').toString().trim(),
+      /** Lo que cuesta la unidad que llega al plato, ya con la conversión */
+      costoPorUnidadServida: costoPorUnidadServida(
+        ultimoPrecio,
+        equivalencia,
+        b.Rendimiento_Pct
+      ),
       categoria: b.Categoria || '',
       proveedor: b.Proveedor || '',
       contacto: b.Contacto_Proveedor || '',
@@ -154,8 +184,16 @@ export async function POST(req: NextRequest) {
   }
   await prepararInventario();
 
-  const { nombre, unidadCompra, unidadReceta, equivalencia, categoria, proveedor, contacto } =
-    await req.json();
+  const {
+    nombre,
+    unidadCompra,
+    unidadReceta,
+    equivalencia,
+    categoria,
+    proveedor,
+    contacto,
+    rendimientoPct,
+  } = await req.json();
 
   if (!nombre || !nombre.toString().trim()) {
     return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 });
@@ -166,6 +204,10 @@ export async function POST(req: NextRequest) {
       { error: 'La equivalencia debe ser mayor a 0 (ej. 1 Litro = 1000 ml)' },
       { status: 400 }
     );
+  }
+  const rendimiento = leerRendimiento(rendimientoPct);
+  if ('error' in rendimiento) {
+    return NextResponse.json({ error: rendimiento.error }, { status: 400 });
   }
 
   const [biblioteca, activos] = await Promise.all([
@@ -192,6 +234,17 @@ export async function POST(req: NextRequest) {
     (contacto || '').toString().trim(),
     '',
   ]);
+
+  /*
+    El rendimiento se escribe aparte y no en el appendRow de arriba: su
+    columna se resuelve por nombre porque no está en la misma posición en
+    todas las hojas —esta es anterior a la columna— y meterlo en el arreglo
+    fijo lo pondría encima de la celda de al lado.
+  */
+  if (rendimiento.pct !== null) {
+    const fila = biblioteca.length + 2; // +1 encabezado, +1 la que se acaba de agregar
+    await updateCell(HOJA_BIBLIOTECA, fila, await columnaRendimiento(), rendimiento.pct);
+  }
 
   // Relación 1:1 — cada insumo de biblioteca nace con su registro activo
   const idAct = siguienteId(activos, 'ID_Activo', 'ACT');
@@ -277,6 +330,16 @@ export async function PATCH(req: NextRequest) {
     [COL_BIB.contacto]: (datos?.contacto || '').toString().trim(),
   };
 
+  /*
+    Se valida antes de tocar la hoja: si el rendimiento viniera mal y se
+    revisara después, el insumo ya se habría guardado a medias — con el
+    nombre nuevo y el rendimiento viejo.
+  */
+  const rendimiento = leerRendimiento(datos?.rendimientoPct);
+  if ('error' in rendimiento) {
+    return NextResponse.json({ error: rendimiento.error }, { status: 400 });
+  }
+
   // Corregir un precio mal capturado sin tener que inventar una compra
   if (datos?.ultimoPrecioCompra !== undefined && datos.ultimoPrecioCompra !== '') {
     const precio = parseFloat(datos.ultimoPrecioCompra);
@@ -287,6 +350,33 @@ export async function PATCH(req: NextRequest) {
   }
 
   await updateCells(HOJA_BIBLIOTECA, fila, cambios);
+
+  /*
+    El rendimiento va aparte de `cambios` porque su columna se resuelve por
+    nombre: la hoja es anterior a esta función y en varias instalaciones la
+    columna no está en la misma posición. Escribir por número fijo aquí
+    machacaría la celda de al lado.
+
+    Se manda como número —no como texto— a propósito: la hoja está en
+    español y Google lee "66.7" escrito como cadena y lo guarda como una
+    fecha de julio.
+  */
+  if (datos?.rendimientoPct !== undefined) {
+    const leido = rendimiento;
+    const antes = (actual.Rendimiento_Pct ?? '').toString().trim();
+    const ahora = leido.pct === null ? '' : String(leido.pct);
+    // Solo se escribe si de verdad cambió: casi ningún insumo usa este
+    // campo, y sin esta guarda cada guardado gastaría un viaje a Google
+    // para volver a poner la misma celda vacía.
+    if (antes !== ahora) {
+      await updateCell(
+        HOJA_BIBLIOTECA,
+        fila,
+        await columnaRendimiento(),
+        leido.pct === null ? '' : leido.pct
+      );
+    }
+  }
 
   // Cascada del nombre a las recetas (Ingrediente = columna C en Catalogo)
   const nombreViejo = (actual.Nombre || '').toString().trim();

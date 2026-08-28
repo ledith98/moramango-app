@@ -19,7 +19,7 @@
  */
 
 import { ensureColumn, ensureSheet, getSheetData } from './googleSheets';
-import { HOJA_BIBLIOTECA } from './inventario';
+import { factorCrudo, HOJA_BIBLIOTECA } from './inventario';
 
 export const HOJA_RECETARIO = 'Recetario';
 
@@ -129,6 +129,9 @@ export function recetarioComoCatalogo(
   biblioteca: Record<string, string>[]
 ): Record<string, string>[] {
   const nombrePorId = new Map(biblioteca.map((b) => [b.ID_Biblioteca, b.Nombre || '']));
+  const rendimientoPorId = new Map(
+    biblioteca.map((b) => [b.ID_Biblioteca, b.Rendimiento_Pct ?? ''])
+  );
 
   const porProducto = new Map<string, Record<string, string>[]>();
   for (const r of recetario) {
@@ -144,10 +147,18 @@ export function recetarioComoCatalogo(
       // renombrar un insumo nunca rompe una receta.
       const nombre = nombrePorId.get(l.idBiblioteca) ?? '';
       if (!nombre) continue;
+      /*
+        La receta dice lo que se SIRVE; el inventario guarda lo que se
+        COMPRÓ. Para el pollo no son lo mismo: 100 g cocidos salieron de
+        150 g crudos, y descontar 100 dejaría el stock creyendo que
+        todavía hay medio paquete de más. Aquí se traduce a crudo, y de
+        este punto en adelante nadie más se entera de la diferencia.
+      */
+      const cantidad = l.cantidad * factorCrudo(rendimientoPorId.get(l.idBiblioteca));
       salida.push({
         ID_Producto: idProducto,
         Ingrediente: nombre,
-        Cantidad_Receta: String(l.cantidad),
+        Cantidad_Receta: String(cantidad),
         Merma_Pct: l.merma,
         Extra_Requerido: l.extra,
       });

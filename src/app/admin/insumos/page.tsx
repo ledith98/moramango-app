@@ -23,6 +23,10 @@ interface ItemBiblioteca {
   equivalencia: number;
   ultimoPrecioCompra: number;
   costoPorUnidadReceta: number | null;
+  /** Cuánto queda de 100 al cocinar; '' en los que no cambian de peso */
+  rendimientoPct: string;
+  /** Lo que cuesta la unidad que llega al plato, ya con la conversión */
+  costoPorUnidadServida: number | null;
   categoria: string;
   proveedor: string;
   contacto: string;
@@ -162,7 +166,19 @@ const FORM_VACIO = {
   proveedor: '',
   contacto: '',
   ultimoPrecioCompra: '',
+  rendimientoPct: '',
 };
+
+/**
+ * Precio por unidad, con los decimales que hagan falta y no más.
+ *
+ * Un mililitro de leche cuesta $0.025 y ahí los cuatro decimales son el
+ * dato; un kilo de pollo cuesta $74.9625 y ahí sobran dos y estorban al
+ * leer. El corte en $1 separa los dos mundos.
+ */
+function precioUnidad(n: number): string {
+  return n >= 1 ? `$${n.toFixed(2)}` : `$${Math.round(n * 10000) / 10000}`;
+}
 
 /**
  * Sugerencia automática: un ingrediente de receta corresponde al insumo si
@@ -443,6 +459,7 @@ El stock quedará igual a lo que contaste.`)) return;
       proveedor: b.proveedor,
       contacto: b.contacto,
       ultimoPrecioCompra: b.ultimoPrecioCompra ? String(b.ultimoPrecioCompra) : '',
+      rendimientoPct: b.rendimientoPct,
     });
     setEditandoId(b.id);
     setError('');
@@ -1447,11 +1464,13 @@ El stock quedará igual a lo que contaste.`)) return;
                 </div>
                 <div>
                   <p className="text-[11px] text-neutral-600 uppercase tracking-wide">
-                    Cuesta cada {b.unidadReceta}
+                    {/* Con conversión hay dos precios y hay que decir cuál es
+                        cuál; sin ella el rótulo de siempre. */}
+                    {b.rendimientoPct ? `Cada ${b.unidadReceta} crudo` : `Cuesta cada ${b.unidadReceta}`}
                   </p>
                   <p className="font-semibold text-neutral-900">
                     {b.costoPorUnidadReceta !== null ? (
-                      `$${b.costoPorUnidadReceta}`
+                      precioUnidad(b.costoPorUnidadReceta)
                     ) : (
                       <span className="text-neutral-600 font-normal text-xs">
                         registra una compra
@@ -1459,6 +1478,24 @@ El stock quedará igual a lo que contaste.`)) return;
                     )}
                   </p>
                 </div>
+                {/*
+                  El precio que de verdad cuenta para el menú: lo que cuesta
+                  el kilo que llega al plato. Solo sale en los insumos que
+                  cambian de peso, que son un puñado.
+                */}
+                {b.rendimientoPct && b.costoPorUnidadServida !== null && (
+                  <div>
+                    <p className="text-[11px] text-neutral-600 uppercase tracking-wide">
+                      Cada {b.unidadReceta} servido
+                    </p>
+                    <p className="font-semibold text-neutral-900">
+                      {precioUnidad(b.costoPorUnidadServida)}
+                      <span className="font-normal text-[11px] text-neutral-700">
+                        {' '}· quedan {b.rendimientoPct} de 100
+                      </span>
+                    </p>
+                  </div>
+                )}
               </div>
 
               {(b.proveedor || b.contacto) && (
@@ -1667,6 +1704,85 @@ El stock quedará igual a lo que contaste.`)) return;
             />
             <span className="text-sm text-neutral-700 text-neutral-900">{form.unidadReceta || 'u'}</span>
           </div>
+
+          {/*
+            Rendimiento al cocinar.
+
+            Va aquí, pegado a la equivalencia, porque son la misma idea en
+            dos pasos: la equivalencia traduce del empaque a la unidad de
+            receta, y esto traduce de lo crudo a lo que se sirve. Se
+            declara UNA vez en el insumo y lo respetan todas las recetas
+            que lo llevan.
+
+            Vacío es lo normal: casi nada cambia de peso.
+          */}
+          <label className="block text-xs font-semibold text-neutral-700 mb-1 mt-3">
+            ¿Cambia de peso al cocinarse?
+          </label>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm text-neutral-700 whitespace-nowrap">
+              De cada 100 {form.unidadReceta || 'u'} quedan
+            </span>
+            <input
+              type="number"
+              inputMode="decimal"
+              step="0.1"
+              value={form.rendimientoPct}
+              onChange={(e) => setForm({ ...form, rendimientoPct: e.target.value })}
+              placeholder="100"
+              className={`${inputCls} max-w-[7rem]`}
+            />
+            <span className="text-sm text-neutral-700 whitespace-nowrap">
+              {form.unidadReceta || 'u'}
+            </span>
+          </div>
+          {(() => {
+            const pct = parseFloat((form.rendimientoPct || '').replace(',', '.'));
+            const equiv = parseFloat(form.equivalencia);
+            const precio = parseFloat(form.ultimoPrecioCompra);
+            if (!form.rendimientoPct.trim()) {
+              return (
+                <p className="text-xs text-neutral-700 mt-1">
+                  Déjalo vacío si pesa lo mismo antes y después. Solo lo llenan cosas
+                  como el pollo, que se compra crudo y se sirve cocido.
+                </p>
+              );
+            }
+            if (isNaN(pct) || pct <= 0 || pct > 1000) {
+              return (
+                <p className="text-xs text-red-700 font-semibold mt-1">
+                  Tiene que ser un número entre 1 y 1000.
+                </p>
+              );
+            }
+            const u = form.unidadReceta || 'u';
+            /*
+              El precio se enseña calculado y no solo el porcentaje: "66.7"
+              no le dice nada a nadie, y "$75 el kilo cocido" sí. Es el
+              número con el que se decide si un platillo deja o no deja.
+            */
+            const crudo = equiv > 0 && precio > 0 ? precio / equiv : null;
+            const servido = crudo !== null ? crudo * (100 / pct) : null;
+            return (
+              <div className="text-xs text-neutral-800 mt-1 space-y-0.5">
+                <p>
+                  {pct < 100
+                    ? `Pierde ${Math.round((100 - pct) * 10) / 10}% al cocinarse.`
+                    : pct > 100
+                      ? `Gana ${Math.round((pct - 100) * 10) / 10}% al cocinarse.`
+                      : 'Pesa lo mismo cocido que crudo.'}{' '}
+                  Las recetas siguen anotándose con lo que se sirve; la app hace la
+                  cuenta de lo crudo que se ocupa.
+                </p>
+                {servido !== null && (
+                  <p className="font-semibold text-neutral-900">
+                    Crudo {precioUnidad(crudo!)} el {u} → servido{' '}
+                    {precioUnidad(servido)} el {u}
+                  </p>
+                )}
+              </div>
+            );
+          })()}
 
           <label className="block text-xs font-semibold text-neutral-700 mb-1 mt-3">Categoría</label>
           <select

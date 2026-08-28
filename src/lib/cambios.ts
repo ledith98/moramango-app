@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-27',
+    tipo: 'mejora',
+    titulo: 'Una presentación anotada por error ya se puede borrar aunque le hayas comprado',
+    detalle:
+      'Antes, si una forma de comprar un insumo ya tenía una compra encima, el botón “La anoté por error, bórrala” se negaba y no había manera de quitarla: se quedaba para siempre ensuciando la comparación de precios. Ahora sí se borra, pero te pregunta dos veces: te dice cuántas compras y cuántos precios cuelgan de ella y te deja elegir entre “Mejor no” y “Sí, bórrala”. Las compras NO se pierden: siguen en “Lo que he comprado” con su fecha, su precio y dónde la hiciste, porque son el registro del dinero que salió. Lo único que se va es el renglón de “Cómo se compra”.',
+    donde: 'Insumos → Cómo se compra',
+  },
+  {
+    fecha: '2026-08-27',
     tipo: 'nuevo',
     titulo: 'El pollo se compra crudo y ahora la app sola lo pasa a cocido',
     detalle:

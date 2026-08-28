@@ -237,13 +237,32 @@ export async function anotarPrecio(
  * apuntando a la nada y se perdería su historial de precios; para eso está
  * desactivarla.
  */
+/**
+ * Borra una presentación dejando su clave de lápida.
+ *
+ * Se vacía todo MENOS ID_Presentacion, y por dos razones distintas:
+ *
+ *  1. leerPresentaciones exige ID_Presentacion **y** ID_Biblioteca, así
+ *     que sin la segunda el renglón desaparece de la app igual que si se
+ *     hubiera borrado entero.
+ *  2. siguienteId toma la clave más alta que exista. Si se vaciara
+ *     también la clave, la siguiente presentación heredaría la del
+ *     muerto — y las compras viejas, que guardan ID_Presentacion, se le
+ *     colgarían a un insumo que no tiene nada que ver. Es exactamente lo
+ *     que pasó con BIB-064 y BIB-065.
+ *
+ * Las compras NO se tocan: son el registro del dinero que salió y
+ * conservan fecha, precio, dónde y quién. Lo único que queda huérfano es
+ * el vínculo con la presentación, que es justo lo que se quiso borrar.
+ */
 export async function borrarPresentacion(id: string): Promise<void> {
   await prepararPresentaciones();
   const filas = await getSheetData(HOJA_PRESENTACIONES, { crudo: true });
   const i = filas.findIndex((f) => f.ID_Presentacion === id);
   if (i === -1) return;
   const vacias: Record<number, string> = {};
-  for (let c = 1; c <= COLS.length; c++) vacias[c] = '';
+  // Desde la 2: la 1 es ID_Presentacion y esa se queda
+  for (let c = 2; c <= COLS.length; c++) vacias[c] = '';
   await updateCells(HOJA_PRESENTACIONES, i + 2, vacias);
 }
 

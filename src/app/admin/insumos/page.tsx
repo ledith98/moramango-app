@@ -279,6 +279,19 @@ export default function InsumosPage() {
   const [presForm, setPresForm] = useState({ marca: '', unidadCompra: '', contenido: '', proveedor: '', ultimoPrecio: '' });
   const [presEditando, setPresEditando] = useState<Presentacion | null>(null);
   /**
+   * Segunda pregunta al borrar una presentación con compras encima.
+   *
+   * Guarda el texto que mandó el servidor —dice cuántas compras y cuántos
+   * precios quedarían sueltos, que es el dato con el que se decide— junto
+   * con la presentación a la que pertenece. Amarrarlo al id lo invalida
+   * solo: al cambiar de presentación el aviso deja de coincidir y no se
+   * pinta, sin tener que acordarse de limpiarlo en cada lugar que abre el
+   * modal.
+   */
+  const [presBorrarAviso, setPresBorrarAviso] = useState<{ id: string; texto: string } | null>(
+    null
+  );
+  /**
    * El aviso de por qué no se pudo borrar.
    *
    * Va hasta abajo del modal, debajo de los botones, y en un teléfono queda
@@ -580,6 +593,47 @@ El stock quedará igual a lo que contaste.`)) return;
   /** Precio por unidad de receta, legible aunque sean centavos. */
   const porUnidadTexto = (n: number) =>
     n >= 1 ? `$${n.toFixed(2)}` : `$${n.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}`;
+
+  /**
+   * Borra una presentación, preguntando dos veces si ya tiene compras.
+   *
+   * La primera llamada va sin confirmar. Si el servidor contesta
+   * TIENE_COMPRAS, su mensaje se guarda y la pantalla cambia el botón por
+   * la pregunta; la segunda llamada ya lleva `confirmado`.
+   *
+   * Quien decide cuántas compras hay es el servidor y no esta pantalla: es
+   * el único que ve la hoja al momento de borrar, y entre que se abrió el
+   * modal y se picó el botón alguien más pudo registrar una compra.
+   */
+  async function borrarPresentacionAhora(confirmado: boolean) {
+    if (!presEditando) return;
+    setOcupado(true);
+    setError('');
+    try {
+      const url =
+        '/api/admin/presentaciones?id=' +
+        encodeURIComponent(presEditando.id) +
+        (confirmado ? '&confirmado=si' : '');
+      const res = await fetch(url, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}) as { error?: string; codigo?: string });
+      if (!res.ok) {
+        if (data.codigo === 'TIENE_COMPRAS' && data.error) {
+          setPresBorrarAviso({ id: presEditando.id, texto: data.error });
+          return;
+        }
+        setError(data.error || `No se pudo borrar (error ${res.status})`);
+        return;
+      }
+      setPresBorrarAviso(null);
+      setPresDe(null);
+      setPresEditando(null);
+      await cargar();
+    } catch {
+      setError('No se pudo conectar. Revisa tu internet y vuelve a intentarlo.');
+    } finally {
+      setOcupado(false);
+    }
+  }
 
   async function guardarPresentacion() {
     if (!presDe) return;
@@ -2296,6 +2350,7 @@ El stock quedará igual a lo que contaste.`)) return;
             onCerrar={() => {
               setPresDe(null);
               setPresEditando(null);
+              setPresBorrarAviso(null);
               setError('');
             }}
           >
@@ -2428,37 +2483,44 @@ El stock quedará igual a lo que contaste.`)) return;
               </button>
             )}
 
-            {/* Borrar de verdad, para lo capturado por error. El servidor lo
-                impide si ya tiene compras: esas quedarían sin a qué apuntar
-                y se perdería el historial que sostiene la comparación. */}
-            {presEditando && (
+            {/* Borrar de verdad, para lo capturado por error. Si ya tiene
+                compras encima el servidor no se niega: contesta cuántas son
+                y se pregunta una segunda vez, porque esas compras se van a
+                quedar sin a qué apuntar. */}
+            {presEditando && presBorrarAviso?.id !== presEditando.id && (
               <button
-                onClick={async () => {
-                  setOcupado(true);
-                  setError('');
-                  try {
-                    const url =
-                      '/api/admin/presentaciones?id=' + encodeURIComponent(presEditando.id);
-                    const res = await fetch(url, { method: 'DELETE' });
-                    const data = await res.json().catch(() => ({}) as { error?: string });
-                    if (!res.ok) {
-                      setError(data.error || `No se pudo borrar (error ${res.status})`);
-                      return;
-                    }
-                    setPresDe(null);
-                    setPresEditando(null);
-                    await cargar();
-                  } catch {
-                    setError('No se pudo conectar. Revisa tu internet y vuelve a intentarlo.');
-                  } finally {
-                    setOcupado(false);
-                  }
-                }}
+                onClick={() => borrarPresentacionAhora(false)}
                 disabled={ocupado}
                 className="w-full bg-red-50 text-red-700 font-semibold py-3 rounded-xl mt-2 active:scale-95 disabled:opacity-50"
               >
                 🗑️ La anoté por error, bórrala
               </button>
+            )}
+
+            {/* La segunda pregunta reemplaza al botón en vez de ponerse
+                debajo: con los dos a la vista se puede volver a picar el de
+                arriba sin haber leído el aviso, que es lo que el aviso
+                intenta evitar. */}
+            {presEditando && presBorrarAviso?.id === presEditando.id && (
+              <div className="mt-2 border-2 border-red-300 bg-red-50 rounded-xl p-3 space-y-2">
+                <p className="text-sm font-semibold text-red-800">{presBorrarAviso.texto}</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setPresBorrarAviso(null)}
+                    disabled={ocupado}
+                    className="flex-1 bg-white text-neutral-900 font-bold py-3 rounded-xl border border-neutral-300 active:scale-95 disabled:opacity-50"
+                  >
+                    Mejor no
+                  </button>
+                  <button
+                    onClick={() => borrarPresentacionAhora(true)}
+                    disabled={ocupado}
+                    className="flex-1 bg-red-600 text-white font-bold py-3 rounded-xl active:scale-95 disabled:opacity-50"
+                  >
+                    Sí, bórrala
+                  </button>
+                </div>
+              </div>
             )}
 
             {/* Junto a los botones: si el mensaje quedara arriba, al tocar
@@ -2474,7 +2536,7 @@ El stock quedará igual a lo que contaste.`)) return;
 
             <p className="text-xs text-neutral-600 mt-2 text-center">
               {presEditando
-                ? '«Ya no la compro así» la esconde y conserva su historial de precios. Borrarla solo se puede si nunca le has comprado.'
+                ? '«Ya no la compro así» la esconde y conserva su historial de precios. Borrarla la quita de una vez; si ya le compraste, se te avisa antes.'
                 : 'No se borra: su historial de precios se conserva para poder comparar.'}
             </p>
           </Modal>

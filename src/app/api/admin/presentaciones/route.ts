@@ -22,7 +22,7 @@ import {
   guardarPresentacion,
   leerPresentaciones,
 } from '@/lib/presentaciones';
-import { anotarEnHistorial } from '@/lib/historialPrecios';
+import { anotarEnHistorial, HOJA_HISTORIAL } from '@/lib/historialPrecios';
 import { idDeProveedor } from '@/lib/proveedores';
 import { getAdminSession } from '@/lib/roles';
 
@@ -273,7 +273,8 @@ export async function DELETE(req: NextRequest) {
   if (!sesion) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
-  const id = new URL(req.url).searchParams.get('id');
+  const parametros = new URL(req.url).searchParams;
+  const id = parametros.get('id');
   if (!id) return NextResponse.json({ error: 'Falta la presentación' }, { status: 400 });
 
   const todas = await leerPresentaciones();
@@ -281,24 +282,53 @@ export async function DELETE(req: NextRequest) {
   if (!actual) return NextResponse.json({ error: 'Presentación no encontrada' }, { status: 404 });
 
   /**
-   * Con compras encima no se borra.
+   * Con compras encima se pregunta una segunda vez.
    *
-   * Esas compras quedarían apuntando a la nada y se perdería su historial
-   * de precios, que es lo que permite comparar proveedores. Para dejar de
-   * usarla existe "ya no la compro así", que la esconde sin romper nada.
+   * Antes no se dejaba borrar y punto, para no dejar compras apuntando a
+   * la nada. Pero una presentación capturada por error puede tener ya una
+   * compra encima —se anota mal y se le compra igual— y entonces quedaba
+   * atorada para siempre, ensuciando la comparación de precios sin manera
+   * de quitarla.
+   *
+   * Ahora se avisa cuántas compras cuelgan de ella y se pide confirmar. Lo
+   * que se borra es SOLO el renglón de "cómo se compra": las compras
+   * conservan su fecha, su precio, dónde y quién, porque son el registro
+   * del dinero que salió y ese no se toca nunca.
    */
-  const compras = await getSheetData(HOJA_COMPRAS, { crudo: true }).catch(() => []);
-  const cuantas = compras.filter((c) => (c.ID_Presentacion || '').toString().trim() === id).length;
-  if (cuantas > 0) {
+  const [compras, historial] = await Promise.all([
+    getSheetData(HOJA_COMPRAS, { crudo: true }).catch(() => []),
+    getSheetData(HOJA_HISTORIAL, { crudo: true }).catch(() => []),
+  ]);
+  const suya = (c: Record<string, string>) => (c.ID_Presentacion || '').toString().trim() === id;
+  const cuantas = compras.filter(suya).length;
+  const cuantosPrecios = historial.filter(suya).length;
+
+  if (cuantas > 0 && parametros.get('confirmado') !== 'si') {
+    const c = `${cuantas} compra${cuantas === 1 ? '' : 's'}`;
+    const pr =
+      cuantosPrecios > 0
+        ? ` y ${cuantosPrecios} precio${cuantosPrecios === 1 ? '' : 's'} en su historial`
+        : '';
     return NextResponse.json(
       {
-        error: `No se puede borrar: ya tiene ${cuantas} compra${cuantas === 1 ? '' : 's'} registrada${cuantas === 1 ? '' : 's'}. Usa "ya no la compro así" para dejar de verla, sin perder su historial de precios.`,
+        // El código lo lee la pantalla para preguntar en vez de rendirse
+        codigo: 'TIENE_COMPRAS',
+        cuantas,
+        cuantosPrecios,
+        error: `Ojo: esta forma de comprarla ya tiene ${c}${pr}. Si la borras, ${cuantas === 1 ? 'esa compra se queda' : 'esas compras se quedan'} en "Lo que he comprado" con su precio y su fecha, pero ya no se ${cuantas === 1 ? 'va a poder ligar' : 'van a poder ligar'} a esta presentación${cuantosPrecios > 0 ? ', y su historial de precios deja de servir para comparar' : ''}. ¿De todos modos la borras?`,
       },
       { status: 409 }
     );
   }
 
   await borrarPresentacion(id);
-  await anotar(quienDe(sesion), 'Insumos', `Borró una presentación (${id})`, 'no tenía compras');
-  return NextResponse.json({ success: true });
+  await anotar(
+    quienDe(sesion),
+    'Insumos',
+    `Borró una presentación (${id})`,
+    cuantas === 0
+      ? 'no tenía compras'
+      : `tenía ${cuantas} compra(s) y ${cuantosPrecios} precio(s); se confirmó el borrado`
+  );
+  return NextResponse.json({ success: true, cuantas });
 }

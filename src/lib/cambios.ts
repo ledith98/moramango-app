@@ -34,8 +34,8 @@ export const CAMBIOS: Cambio[] = [
     tipo: 'nuevo',
     titulo: 'El pollo se compra crudo y ahora la app sola lo pasa a cocido',
     detalle:
-      'En el insumo hay un campo nuevo: “¿Cambia de peso al cocinarse?”. En el pollo dice que de cada 100 quedan 66.7, porque 3 kg crudos rinden 2 kg cocidos. Con eso la tarjeta te enseña los dos precios: el kilo crudo a $50 y el kilo servido a $74.96, que es el que de verdad cuenta para saber si un platillo deja. Las recetas se siguen anotando con lo que se sirve —los 100 g que le pones al sándwich— y la app calcula sola los 150 g crudos que hay que ocupar y los descuenta del inventario. Antes ese 50% se escribía a mano en cada receta con pollo, y en el Chicken Sandwich se había olvidado: costeaba $5.00 cuando en realidad son $7.50. Ya quedó, y los Combos 2 y 3, que llevan pollo adentro, se corrigieron solos.',
-    donde: 'Insumos',
+      'En el Recetario, los renglones de pollo ahora traen el aviso “🔥 En crudo son 0.15 kg”, para que al preparar sepas cuánto sacar del refri sin hacer la cuenta. En el insumo hay un campo nuevo: “¿Cambia de peso al cocinarse?”. En el pollo dice que de cada 100 quedan 66.7, porque 3 kg crudos rinden 2 kg cocidos. Con eso la tarjeta te enseña los dos precios: el kilo crudo a $50 y el kilo servido a $74.96, que es el que de verdad cuenta para saber si un platillo deja. Las recetas se siguen anotando con lo que se sirve —los 100 g que le pones al sándwich— y la app calcula sola los 150 g crudos que hay que ocupar y los descuenta del inventario. Antes ese 50% se escribía a mano en cada receta con pollo, y en el Chicken Sandwich se había olvidado: costeaba $5.00 cuando en realidad son $7.50. Ya quedó, y los Combos 2 y 3, que llevan pollo adentro, se corrigieron solos.',
+    donde: 'Insumos y Recetario',
   },
   {
     fecha: '2026-08-27',

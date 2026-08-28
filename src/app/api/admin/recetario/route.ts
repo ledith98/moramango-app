@@ -15,6 +15,7 @@ import { appendRow, getSheetData, updateCells } from '@/lib/googleSheets';
 import { factorMerma } from '@/lib/insumos';
 import {
   costoPorUnidadServida,
+  factorCrudo,
   HOJA_BIBLIOTECA,
   prepararInventario,
   redondear,
@@ -136,6 +137,18 @@ export async function GET() {
 
         const bib = bibPorId.get(r.ID_Biblioteca);
         const costoUnidad = costoDeInsumo(r.ID_Biblioteca);
+        /*
+          Cuánto crudo hay que ocupar para servir esta cantidad.
+
+          La receta dice 100 g de pollo porque es lo que se pesa en el
+          plato, pero quien va a cocinar necesita saber que eso salen de
+          150 g crudos. El dato ya está en el insumo; aquí solo se aplica
+          a esta cantidad para no tener que sacar la cuenta a mano cada
+          vez. Null en los insumos que no cambian de peso, que son casi
+          todos.
+        */
+        const rendimiento = (bib?.Rendimiento_Pct ?? '').toString().trim();
+        const factor = factorCrudo(rendimiento);
         return {
           id: r.ID_Linea,
           tipo: 'insumo' as const,
@@ -146,6 +159,10 @@ export async function GET() {
           insumo: bib?.Nombre ?? '(insumo eliminado)',
           unidad: bib?.Unidad_Receta ?? '',
           cantidad,
+          /** Cuánto queda de 100 al cocinar; '' si no cambia de peso */
+          rendimientoPct: rendimiento,
+          /** Lo crudo que hay que ocupar para servir `cantidad` */
+          cantidadCruda: rendimiento && factor !== 1 ? redondear(cantidad * factor, 3) : null,
           merma: r.Merma_Pct || '',
           nota: r.Notas || '',
           /** Si viene, este renglón solo cuenta cuando se pide ese extra */

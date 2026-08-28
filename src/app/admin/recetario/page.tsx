@@ -20,6 +20,10 @@ interface LineaReceta {
   insumo: string;
   unidad: string;
   cantidad: number;
+  /** Cuánto queda de 100 al cocinar; '' si el insumo no cambia de peso */
+  rendimientoPct?: string;
+  /** Lo crudo que hay que ocupar para servir `cantidad`; null si no aplica */
+  cantidadCruda?: number | null;
   merma: string;
   nota: string;
   costo: number | null;
@@ -259,6 +263,21 @@ export default function RecetarioPage() {
                           {l.insumo}
                           {l.huerfano && <span className="text-red-600"> (ya no existe)</span>}
                         </p>
+                        {/*
+                          El aviso de crudo va ARRIBA de la nota y no
+                          abajo: es lo que hay que leer con las manos en
+                          la tabla, mientras que la nota es contexto.
+                          La cantidad de la derecha es la servida, que es
+                          la que define la receta; esto es la traducción.
+                        */}
+                        {l.cantidadCruda != null && (
+                          <p className="text-[11px] font-semibold text-orange-800">
+                            🔥 En crudo son {l.cantidadCruda} {l.unidad}
+                            <span className="font-normal text-neutral-700">
+                              {' '}· de cada 100 quedan {l.rendimientoPct}
+                            </span>
+                          </p>
+                        )}
                         {l.nota && <p className="text-[11px] text-amber-700">📝 {l.nota}</p>}
                       </div>
                       <span className="text-sm font-semibold text-neutral-900 whitespace-nowrap">

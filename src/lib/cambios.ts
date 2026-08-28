@@ -32,6 +32,22 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-08-27',
     tipo: 'nuevo',
+    titulo: 'Al cerrar el día te avisa si quedaron ventas sin entregar',
+    detalle:
+      'En Dinero → El cajón, antes de hacer el corte, si quedan ventas del día sin marcar como entregadas te lo dice y te pregunta: “¿Ya se entregaron todas?”. Si dices que sí, las cierra todas de un golpe. Si dices que no, te las muestra una por una para que marques las que sí. Las que no digan cómo te pagaron no se cierran a ciegas: te pregunta el método, porque cerrarlas sin eso metería un cobro de terminal al cajón y descuadraría el corte.',
+    donde: 'Dinero',
+  },
+  {
+    fecha: '2026-08-27',
+    tipo: 'arreglo',
+    titulo: 'Los combos ya se enteran cuando se acaba un licuado',
+    detalle:
+      'Si se acababa el Licuado de Plátano, el Combo Croissant lo seguía ofreciendo: en el combo la opción se llama solo “Plátano” y el producto “Licuado de Plátano”, así que los nombres no empataban y nunca se apagaba. Ahora el nombre del grupo sirve de pista — grupo “Licuado” más opción “Plátano” es el Licuado de Plátano — y la opción se apaga sola. Si se acaba TODO un grupo, el combo entero sale del menú. Los que ya usaban el nombre completo, como el Combo 1 y el Combo 2, seguían funcionando bien.',
+    donde: 'Tienda',
+  },
+  {
+    fecha: '2026-08-27',
+    tipo: 'nuevo',
     titulo: 'Movimientos en Mercado Pago: todo lo que entra y sale, en un solo lugar',
     detalle:
       'En Dinero → La cuenta ahora está el estado de cuenta completo, desde tu primera venta: lo que entró por ventas ya sin comisión, más el rendimiento, MENOS todo lo que sacaste, y cuánto debe haber hoy — comparado contra lo que dice Mercado Pago. Abajo van los gastos uno por uno, con su fecha y en qué fue, para cuando el total no cuadra con lo que recuerdas haber gastado. Y plegados al final, todos los saldos que has anotado, con cuánto cambió cada vez. Antes cada captura de saldo borraba la anterior y los gastos no se veían por ningún lado, aunque sí se estuvieran restando. De paso se arregló que la fecha del saldo se veía como “46260”: Google la convertía en número al guardarla.',

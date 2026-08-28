@@ -66,6 +66,21 @@ export interface EstadoCaja {
   /** contado − esperado; negativo = falta, positivo = sobra */
   diferencia: number | null;
   notas: string;
+  /**
+   * Las ventas de hoy que siguen sin marcarse como entregadas.
+   *
+   * Se miran al cerrar y no en cualquier momento: durante el día es normal
+   * que haya pedidos en curso. A la hora del corte ya no, y si se quedan
+   * así el reporte de mañana los sigue arrastrando.
+   */
+  sinEntregar: {
+    id: string;
+    cliente: string;
+    total: number;
+    estado: string;
+    /** Vacío = todavía no se sabe cómo pagaron; hace falta para entregar */
+    metodo: string;
+  }[];
   /** Se abrió sola con la primera venta: falta confirmar el fondo */
   abrioSola: boolean;
   /** Se cerró sola a la hora de cierre y nadie contó el efectivo */
@@ -90,7 +105,8 @@ function filaAEstado(
   fila: Record<string, string> | undefined,
   fecha: string,
   ventasEfectivo: number,
-  movimientos: MovimientoCaja[] = []
+  movimientos: MovimientoCaja[] = [],
+  sinEntregar: EstadoCaja['sinEntregar'] = []
 ): EstadoCaja {
   const salidas = movimientos
     .filter((m) => m.tipo === 'Salida')
@@ -121,6 +137,7 @@ function filaAEstado(
     diferencia:
       contado !== null && esperado !== null ? Math.round((contado - esperado) * 100) / 100 : null,
     notas: fila?.Notas || '',
+    sinEntregar,
     abrioSola: (fila?.Abrio || '') === ABIERTA_SOLA,
     // Hay hora de corte pero nadie escribió cuánto había
     cerroSola: !!(fila?.Hora_Corte || '').toString().trim() && contado === null,
@@ -129,16 +146,31 @@ function filaAEstado(
 
 export async function leerCaja(fechaISO = fechaHoyMTY()): Promise<EstadoCaja> {
   await preparar();
-  const [filas, ventas, movimientos] = await Promise.all([
+  const [filas, ventas, movimientos, pedidos] = await Promise.all([
     getSheetData(HOJA),
     ventasEfectivoDelDia(fechaISO),
     leerMovimientos(fechaISO),
+    getSheetData('PEDIDOS').catch(() => [] as Record<string, string>[]),
   ]);
+
+  const sinEntregar = pedidos
+    .filter((p) => p.ID_Pedido)
+    .filter((p) => p.Estado !== 'Entregado' && p.Estado !== 'Cancelado')
+    .filter((p) => parsearFechaHora(p.Fecha_Hora)?.fechaISO === fechaISO)
+    .map((p) => ({
+      id: p.ID_Pedido,
+      cliente: (p.Nombre_Cliente_Snap || '').trim(),
+      total: parseFloat(p.Total_Final) || 0,
+      estado: p.Estado || '',
+      metodo: (p.Metodo_Pago || '').trim(),
+    }));
+
   return filaAEstado(
     filas.find((f) => f.Fecha === fechaISO),
     fechaISO,
     ventas,
-    movimientos
+    movimientos,
+    sinEntregar
   );
 }
 

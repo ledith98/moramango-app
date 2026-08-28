@@ -37,6 +37,16 @@ export async function GET() {
         .map((p) => claveNombre(p.Nombre))
     );
 
+    /**
+     * Los nombres de todo el menú, para poder ligar una opción de combo
+     * con su producto aunque esté escrita corta ("Plátano" por "Licuado
+     * de Plátano").
+     */
+    const nombresDelMenu = todos
+      .filter((p) => (p.Eliminado || '').toUpperCase() !== 'TRUE')
+      .map((p) => (p.Nombre || '').trim())
+      .filter(Boolean);
+
     const publicos = todos
       // Tres estados, no dos:
       //   Oculto=TRUE            → ni siquiera aparece
@@ -61,7 +71,11 @@ export async function GET() {
         // Lo que el cliente elige dentro del producto: queso, sabor…
         opciones: parsearOpciones(p.Opciones ?? ''),
         // Cuáles de esas opciones no se pueden preparar hoy
-        opcionesAgotadas: agotadasDeGrupos(parsearOpciones(p.Opciones ?? ''), agotados),
+        opcionesAgotadas: agotadasDeGrupos(
+          parsearOpciones(p.Opciones ?? ''),
+          agotados,
+          nombresDelMenu
+        ),
         // Toppings opcionales que suman al precio
         extras: parsearExtras(p.Extras ?? ''),
         // Existencias por producto: solo se usa en los de reventa (conchas,
@@ -80,7 +94,7 @@ export async function GET() {
           (p.Disponible ?? '').toString().toUpperCase() !== 'FALSE' &&
           !comboImposible(
             parsearOpciones(p.Opciones ?? ''),
-            agotadasDeGrupos(parsearOpciones(p.Opciones ?? ''), agotados)
+            agotadasDeGrupos(parsearOpciones(p.Opciones ?? ''), agotados, nombresDelMenu)
           ),
         orden: parseInt(p.Orden_Menu) || 999,
       }))

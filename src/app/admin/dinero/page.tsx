@@ -44,6 +44,7 @@ interface EstadoCaja {
   notas: string;
   abrioSola: boolean;
   cerroSola: boolean;
+  sinEntregar: { id: string; cliente: string; total: number; estado: string; metodo: string }[];
   insumos?: { id: string; nombre: string }[];
 }
 
@@ -131,6 +132,60 @@ export default function DineroPage() {
   const [saldoTocado, setSaldoTocado] = useState(false);
   /** Cuántas capturas de saldo se muestran */
   const [verSaldos, setVerSaldos] = useState<'pocos' | 'todos'>('pocos');
+  /** Ver una por una las ventas que faltan por entregar */
+  const [revisandoEntregas, setRevisandoEntregas] = useState(false);
+  /** A qué venta se le está preguntando cómo pagaron */
+  const [preguntandoMetodo, setPreguntandoMetodo] = useState<string | null>(null);
+
+  /**
+   * Marca una venta como entregada.
+   *
+   * Si no se sabe cómo pagaron, el servidor no la deja pasar —el corte no
+   * cuadraría— así que se pregunta y se reintenta con la respuesta.
+   */
+  const entregar = async (id: string, metodoPago?: string) => {
+    setOcupado(true);
+    try {
+      const res = await fetch('/api/admin/pedidos', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          idPedido: id,
+          nuevoEstado: 'Entregado',
+          ...(metodoPago ? { metodoPago } : {}),
+        }),
+      });
+      const d = await res.json().catch(() => ({}) as { codigo?: string });
+      if (!res.ok && d.codigo === 'FALTA_METODO_PAGO') {
+        setPreguntandoMetodo(id);
+        return false;
+      }
+      setPreguntandoMetodo(null);
+      await cargar();
+      return res.ok;
+    } catch {
+      return false;
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  /**
+   * «Sí, ya se entregaron todas».
+   *
+   * Va una por una y no todas de golpe: las que no dicen cómo pagaron se
+   * quedan, y hay que preguntarlas. Cerrarlas a ciegas metería cobros de
+   * terminal en el cajón y descuadraría el corte, que es justo lo que
+   * este aviso viene a evitar.
+   */
+  const entregarTodas = async () => {
+    if (!caja) return;
+    const conMetodo = caja.sinEntregar.filter((v) => v.metodo);
+    for (const v of conMetodo) await entregar(v.id);
+    const faltan = caja.sinEntregar.filter((v) => !v.metodo);
+    if (faltan.length > 0) setRevisandoEntregas(true);
+  };
+
   /** Cuántos movimientos de la cuenta se muestran */
   const [verMovsCuenta, setVerMovsCuenta] = useState<'pocos' | 'todos'>('pocos');
 
@@ -355,6 +410,96 @@ export default function DineroPage() {
 
               {!caja.cerrada ? (
                 <div className="border-t border-neutral-100 pt-3 space-y-3">
+                  {/*
+                    Antes de cerrar, las ventas que quedaron colgando.
+
+                    Aquí y no en Pedidos porque este es el momento en que se
+                    revisa el día: una venta sin marcar entregada se arrastra
+                    al reporte de mañana y ya nadie se acuerda de qué pasó.
+                  */}
+                  {caja.sinEntregar.length > 0 && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
+                      <p className="text-sm font-bold text-amber-900">
+                        {caja.sinEntregar.length === 1
+                          ? 'Queda 1 venta sin marcar como entregada'
+                          : `Quedan ${caja.sinEntregar.length} ventas sin marcar como entregadas`}
+                      </p>
+                      <p className="text-xs text-amber-800">
+                        ¿Ya se entregaron todas? Si las dejas así, mañana siguen apareciendo
+                        como pendientes.
+                      </p>
+
+                      {!revisandoEntregas ? (
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={entregarTodas}
+                            disabled={ocupado}
+                            className="bg-amber-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl active:scale-95 disabled:opacity-50"
+                          >
+                            Sí, ya se entregaron todas
+                          </button>
+                          <button
+                            onClick={() => setRevisandoEntregas(true)}
+                            disabled={ocupado}
+                            className="bg-white border border-amber-300 text-amber-900 text-sm font-semibold px-4 py-2.5 rounded-xl active:scale-95 disabled:opacity-50"
+                          >
+                            No, déjame ver cuáles
+                          </button>
+                        </div>
+                      ) : (
+                        <ul className="space-y-1.5">
+                          {caja.sinEntregar.map((v) => (
+                            <li
+                              key={v.id}
+                              className="bg-white border border-amber-200 rounded-lg p-2.5"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="min-w-0">
+                                  <span className="block text-sm font-semibold text-neutral-900 truncate">
+                                    {v.cliente || v.id}
+                                  </span>
+                                  <span className="block text-[11px] text-neutral-600">
+                                    {v.estado} · {money(v.total)}
+                                    {v.metodo ? ` · ${v.metodo}` : ''}
+                                  </span>
+                                </span>
+                                <button
+                                  onClick={() => entregar(v.id)}
+                                  disabled={ocupado}
+                                  className="shrink-0 bg-marron text-white text-xs font-bold px-3 py-2 rounded-lg active:scale-95 disabled:opacity-50"
+                                >
+                                  Entregada
+                                </button>
+                              </div>
+
+                              {preguntandoMetodo === v.id && (
+                                <div className="mt-2 border-t border-neutral-100 pt-2">
+                                  <p className="text-xs font-semibold text-neutral-800 mb-1.5">
+                                    ¿Cómo te pagó?
+                                  </p>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {['Efectivo', 'Terminal', 'Transferencia', 'Pago en línea'].map(
+                                      (m) => (
+                                        <button
+                                          key={m}
+                                          onClick={() => entregar(v.id, m)}
+                                          disabled={ocupado}
+                                          className="bg-marron text-white text-xs font-semibold px-3 py-2 rounded-lg active:scale-95 disabled:opacity-50"
+                                        >
+                                          {m}
+                                        </button>
+                                      )
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+
                   <h3 className="font-bold text-neutral-900">2. Hacer el corte</h3>
                   {/*
                     Cerró sola a la hora de cierre, pero el corte sigue

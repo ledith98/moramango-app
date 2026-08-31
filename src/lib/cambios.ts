@@ -30,6 +30,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 
 export const CAMBIOS: Cambio[] = [
   {
+    fecha: '2026-08-31',
+    tipo: 'aviso',
+    titulo: 'El botón de rendimiento anotaba de más — ahora le dices cuánto fue',
+    detalle:
+      'Cuando el saldo de Mercado Pago era mayor que el de la app, salía un botón que anotaba TODA la diferencia como “rendimiento”, y el texto decía que casi siempre eso era. No es cierto: el rendimiento de un día son unos pesos, y esa diferencia puede ser una venta que no se registró o un depósito de otra cuenta. Con eso se coló un rendimiento de $130.18 el 31 de agosto cuando el real de ese día fueron $2.01 — los otros $128 quedaron disfrazados de rendimiento y ya no había cómo notarlos. Ahora te pregunta cuánto fue de verdad, lo copias de Mercado Pago, y el resto SE QUEDA marcado como diferencia hasta que encuentres de dónde salió. Un peso mal etiquetado se vuelve invisible; uno que sigue sin cuadrar te obliga a buscarlo.',
+    donde: 'Dinero → La cuenta',
+  },
+  {
     fecha: '2026-08-28',
     tipo: 'arreglo',
     titulo: 'Al abrir un pedido ya se ve lo que pidió, sin que el método de pago lo tape',

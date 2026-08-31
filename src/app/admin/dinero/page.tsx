@@ -250,6 +250,16 @@ export default function DineroPage() {
 
   /** Cuántos movimientos de la cuenta se muestran */
   const [verMovsCuenta, setVerMovsCuenta] = useState<'pocos' | 'todos'>('pocos');
+  /**
+   * Cuánto de la diferencia contra Mercado Pago fue rendimiento.
+   *
+   * Se teclea, no se asume. Antes había un botón que anotaba la
+   * diferencia ENTERA como rendimiento, y con eso se coló un "rendimiento"
+   * de $130.18 el 31 de agosto cuando el real de ese día fueron $2.01: los
+   * otros $128 eran dinero que entró por otro lado y quedó disfrazado, sin
+   * manera de notarlo después.
+   */
+  const [rendReal, setRendReal] = useState('');
 
   // Movimiento (compartido)
   const [bolsa, setBolsa] = useState<'Efectivo' | 'Digital'>('Efectivo');
@@ -1011,26 +1021,73 @@ export default function DineroPage() {
                     </p>
                     <p className="text-xs text-amber-800 mt-1">
                       {diferencia > 0
-                        ? 'Casi siempre es el rendimiento que el banco te pagó y todavía no está anotado.'
+                        ? 'Puede ser el rendimiento que te pagó el banco, una venta que no se registró, o un depósito de otra cuenta. El rendimiento de un día son unos pesos: si sobra mucho más que eso, búscalo antes de anotarlo.'
                         : 'Puede ser un gasto que saliste de la cuenta y no has anotado, o una transferencia que registraste y nunca llegó.'}
                     </p>
                     {diferencia > 0 && (
-                      <button
-                        onClick={() =>
-                          accion('/api/admin/cuenta', {
-                            accion: 'movimiento',
-                            tipo: 'Rendimiento',
-                            monto: String(diferencia),
-                            motivo: 'Rendimiento de Mercado Pago',
-                            cuenta: 'Digital',
-                            fechaISO: diaISO(0),
-                          })
-                        }
-                        disabled={ocupado}
-                        className="mt-2 w-full bg-amber-700 text-white text-sm font-semibold py-2.5 rounded-xl active:scale-95 disabled:opacity-50"
-                      >
-                        Anotar {money(diferencia)} como rendimiento
-                      </button>
+                      <div className="mt-2 space-y-2">
+                        <label className="block text-xs font-semibold text-amber-900">
+                          ¿Cuánto de eso fue rendimiento? Míralo en Mercado Pago
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            value={rendReal}
+                            onChange={(e) => setRendReal(e.target.value)}
+                            placeholder="0.00"
+                            className={`${inputCls} w-full mt-1`}
+                          />
+                        </label>
+                        {/*
+                          El resto NO se anota: se queda como diferencia a la
+                          vista. Un peso mal etiquetado como rendimiento se
+                          vuelve invisible; uno que sigue sin cuadrar te
+                          obliga a ir a buscarlo, que es lo correcto.
+                        */}
+                        {(() => {
+                          const puesto = parseFloat((rendReal || '').replace(',', '.'));
+                          const bueno = puesto > 0 && puesto <= diferencia + 0.01;
+                          const resto = bueno ? Math.round((diferencia - puesto) * 100) / 100 : 0;
+                          return (
+                            <>
+                              {bueno && resto >= 0.05 && (
+                                <p className="text-xs text-amber-800">
+                                  Los otros {money(resto)} seguirán marcados como diferencia hasta
+                                  que encuentres de dónde salieron. Casi siempre es una venta que
+                                  no se registró o un depósito de otra cuenta.
+                                </p>
+                              )}
+                              {puesto > diferencia + 0.01 && (
+                                <p className="text-xs font-semibold text-red-700">
+                                  No puede ser más que la diferencia de {money(diferencia)}.
+                                </p>
+                              )}
+                              <button
+                                onClick={() =>
+                                  accion('/api/admin/cuenta', {
+                                    accion: 'movimiento',
+                                    tipo: 'Rendimiento',
+                                    monto: String(puesto),
+                                    motivo: 'Rendimiento de Mercado Pago',
+                                    cuenta: 'Digital',
+                                    // El día del saldo, no el de hoy: si estás
+                                    // capturando el viernes en lunes, el
+                                    // rendimiento fue del viernes.
+                                    fechaISO: cuenta.saldoFecha || diaISO(0),
+                                  }).then(() => setRendReal(''))
+                                }
+                                disabled={ocupado || !bueno}
+                                className="w-full bg-amber-700 text-white text-sm font-semibold py-2.5 rounded-xl active:scale-95 disabled:opacity-50"
+                              >
+                                {bueno ? `Anotar ${money(puesto)} de rendimiento` : 'Anotar rendimiento'}
+                              </button>
+                            </>
+                          );
+                        })()}
+                        <p className="text-xs text-amber-800">
+                          El rendimiento de un día son unos pesos. Si la diferencia es de cientos,
+                          casi seguro no es rendimiento — anota solo lo que diga Mercado Pago.
+                        </p>
+                      </div>
                     )}
                   </div>
                 );

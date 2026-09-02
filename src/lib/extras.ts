@@ -81,3 +81,61 @@ export function claveExtras(extras: Extra[]): string {
     .sort()
     .join(',');
 }
+
+/**
+ * El mismo topping escrito de otra forma.
+ *
+ * "Jamon" y "Jamón" son lo mismo; "Jalapeño" y "Jalapeños" también. Sin
+ * esto se veían como toppings distintos y había que mantenerles el precio
+ * por separado — que es justo el trabajo que el catálogo viene a quitar.
+ *
+ * Se quitan acentos, mayúsculas y la -s final. La -s se corta solo en
+ * palabras de más de tres letras para no confundir "Pan" con "Pa".
+ */
+export function claveExtra(nombre: string): string {
+  return (nombre ?? '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .split(/\s+/)
+    .map((p) => (p.length > 3 && p.endsWith('s') ? p.slice(0, -1) : p))
+    .join(' ');
+}
+
+/** Un topping del catálogo, con en cuántos productos se usa. */
+export interface ExtraConocido extends Extra {
+  usos: number;
+}
+
+/**
+ * Los toppings que ya existen en el menú, del más usado al menos.
+ *
+ * Sirve para proponerlos al agregar uno nuevo: casi siempre el topping
+ * que se va a poner ya está en otro producto, y volver a teclearlo es la
+ * puerta por la que entran "Jamon" y "Queso suizo".
+ *
+ * Cuando el mismo topping aparece con precios distintos gana el más
+ * repetido — es el que está bien en más lugares.
+ */
+export function catalogoExtras(listas: string[]): ExtraConocido[] {
+  const porClave = new Map<string, { nombre: string; precios: Map<number, number> }>();
+
+  for (const crudo of listas) {
+    for (const e of parsearExtras(crudo)) {
+      const clave = claveExtra(e.nombre);
+      if (!clave) continue;
+      if (!porClave.has(clave)) porClave.set(clave, { nombre: e.nombre, precios: new Map() });
+      const x = porClave.get(clave)!;
+      x.precios.set(e.precio, (x.precios.get(e.precio) ?? 0) + 1);
+    }
+  }
+
+  return [...porClave.values()]
+    .map(({ nombre, precios }) => {
+      const [precio] = [...precios.entries()].sort((a, b) => b[1] - a[1])[0];
+      return { nombre, precio, usos: [...precios.values()].reduce((s, n) => s + n, 0) };
+    })
+    .sort((a, b) => b.usos - a.usos || a.nombre.localeCompare(b.nombre));
+}

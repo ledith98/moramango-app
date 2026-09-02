@@ -5,7 +5,7 @@ import { comprimirImagen, enMegas } from '@/lib/comprimirImagen';
 import { esEnlaceDeVisorDrive } from '@/lib/imagenes';
 import { parsearTamanos, TAMANOS_SUGERIDOS, type Tamano } from '@/lib/tamanos';
 import { type GrupoOpcion, parsearOpciones } from '@/lib/opciones';
-import { type Extra, parsearExtras } from '@/lib/extras';
+import { catalogoExtras, claveExtra, type Extra, parsearExtras } from '@/lib/extras';
 import { claveCategoria, posicionCategoria } from '@/lib/categorias';
 
 interface Producto {
@@ -296,6 +296,40 @@ export default function ProductosPage() {
     setPegarUrl(false);
     setError('');
   };
+
+  /**
+   * Los toppings que ya existen en el menú, del más usado al menos.
+   *
+   * Sale de los productos que ya están cargados, así que no cuesta ni una
+   * lectura más. Se recalcula al guardar porque `productos` cambia, y con
+   * eso un topping nuevo aparece de inmediato para los demás.
+   */
+  const extrasDelMenu = catalogoExtras(productos.map((p) => p.Extras ?? ''));
+
+  /**
+   * Los que este producto todavía no lleva, para ofrecerlos de un toque.
+   *
+   * Se compara con claveExtra y no por texto: si el producto ya trae
+   * "Jamón", no tiene caso volver a ofrecerle "Jamon".
+   */
+  const extrasQueFaltan = extrasDelMenu.filter(
+    (x) => !form.extras.some((e) => claveExtra(e.nombre) === claveExtra(x.nombre))
+  );
+
+  /**
+   * Toppings repetidos dentro de este producto.
+   *
+   * El servidor ya los rechaza al guardar, pero enterarse hasta entonces
+   * cuesta un viaje y un mensaje de error. Aquí se ve al momento, que es
+   * cuando se puede corregir sin perder nada.
+   */
+  const extrasRepetidos = [
+    ...new Set(
+      form.extras
+        .map((e) => claveExtra(e.nombre))
+        .filter((c, i, todas) => c && todas.indexOf(c) !== i)
+    ),
+  ].map((c) => form.extras.find((e) => claveExtra(e.nombre) === c)!.nombre);
 
   const abrirCrear = () => {
     setCreando(true);
@@ -920,10 +954,34 @@ export default function ProductosPage() {
               {form.extras.map((e, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <input
+                    list="toppings-del-menu"
                     value={e.nombre}
                     onChange={(ev) => {
                       const copia = [...form.extras];
                       copia[i] = { ...copia[i], nombre: ev.target.value };
+                      setForm({ ...form, extras: copia });
+                    }}
+                    onBlur={(ev) => {
+                      /*
+                        Al salir del campo, si lo escrito es un topping que
+                        ya existe en el menú, se adopta su nombre exacto y
+                        su precio.
+
+                        El nombre, para que "jamon" no nazca como un
+                        topping aparte de "Jamón". El precio, solo si
+                        todavía está en cero: el mismo topping cuesta lo
+                        mismo en toda la carta, y volver a teclearlo es la
+                        puerta por la que entran las diferencias.
+                      */
+                      const conocido = extrasDelMenu.find(
+                        (x) => claveExtra(x.nombre) === claveExtra(ev.target.value)
+                      );
+                      if (!conocido) return;
+                      const copia = [...form.extras];
+                      copia[i] = {
+                        nombre: conocido.nombre,
+                        precio: copia[i].precio > 0 ? copia[i].precio : conocido.precio,
+                      };
                       setForm({ ...form, extras: copia });
                     }}
                     placeholder="Chía"
@@ -956,12 +1014,64 @@ export default function ProductosPage() {
                 </div>
               ))}
 
+              {extrasRepetidos.length > 0 && (
+                <p className="text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded-xl p-2.5">
+                  {extrasRepetidos.length === 1
+                    ? `"${extrasRepetidos[0]}" está dos veces. Quita uno antes de guardar.`
+                    : `Estos están repetidos: ${extrasRepetidos.join(', ')}. Quita los de más antes de guardar.`}
+                </p>
+              )}
+
+              {/*
+                Los toppings que ya usa el menú, de un toque.
+
+                Es el camino corto y el que mantiene la carta pareja: casi
+                siempre el topping que se va a poner ya está en otro
+                producto, y tecleándolo otra vez es como nacieron "Jamon"
+                y "Queso suizo" como toppings aparte del que ya existía.
+              */}
+              {extrasQueFaltan.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-neutral-700 mb-1">
+                    Ya los usas en otros productos — tócalos para agregarlos
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {extrasQueFaltan.map((x) => (
+                      <button
+                        key={x.nombre}
+                        type="button"
+                        onClick={() =>
+                          setForm({
+                            ...form,
+                            extras: [...form.extras, { nombre: x.nombre, precio: x.precio }],
+                          })
+                        }
+                        className="px-3 py-2 rounded-xl bg-neutral-100 text-neutral-900 text-xs font-semibold active:scale-95"
+                      >
+                        {x.nombre}
+                        <span className="font-normal text-neutral-700">
+                          {' '}
+                          +${x.precio}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Para escribirlos: el mismo catálogo, en el teclado */}
+              <datalist id="toppings-del-menu">
+                {extrasDelMenu.map((x) => (
+                  <option key={x.nombre} value={x.nombre} />
+                ))}
+              </datalist>
+
               <button
                 type="button"
                 onClick={() => setForm({ ...form, extras: [...form.extras, { nombre: '', precio: 0 }] })}
                 className="w-full border-2 border-dashed border-neutral-300 rounded-xl py-3 text-sm font-semibold text-neutral-700 active:scale-95"
               >
-                + Agregar topping
+                + Agregar uno que no está en la lista
               </button>
             </div>
 

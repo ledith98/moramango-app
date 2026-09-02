@@ -30,6 +30,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 
 export const CAMBIOS: Cambio[] = [
   {
+    fecha: '2026-09-01',
+    tipo: 'mejora',
+    titulo: 'Los toppings se proponen solos, con su precio',
+    detalle:
+      'Al editar un producto, abajo de los toppings ahora salen los que ya usas en el resto del menú — “Granola +$8”, “Jamón +$10” — y con tocarlos se agregan con su precio ya puesto. Los que ya trae ese producto no aparecen, para no ofrecerte lo que ya tiene. Si prefieres escribirlo, el campo te va sugiriendo mientras tecleas, y si escribes uno que ya existe se le pone el nombre y el precio buenos: escribes “jamon” y queda “Jamón +$10”. Así el mismo topping cuesta lo mismo en toda la carta sin que tengas que ir producto por producto. Y si pones dos veces el mismo, te avisa antes de guardar en vez de fallar al final. De paso se unificaron tres que estaban escritos de dos formas: “Jamon” quedó como “Jamón”, “Jalapeño” como “Jalapeños” y “Queso suizo” como “Queso Suizo”. Ningún precio cambió.',
+    donde: 'Productos',
+  },
+  {
     fecha: '2026-08-31',
     tipo: 'aviso',
     titulo: 'El botón de rendimiento anotaba de más — ahora le dices cuánto fue',

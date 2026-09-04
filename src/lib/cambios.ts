@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-09-04',
+    tipo: 'nuevo',
+    titulo: 'La tienda ya se puede instalar como aplicación, y hay cartel para el mostrador',
+    detalle:
+      'Dos cosas. La primera: quien entre a moramango.app desde un Android ahora ve un aviso abajo — “Ten Moramango a la mano” — y con un toque la tienda se le guarda en la pantalla del teléfono, como cualquier app. Ya no tiene que escribir la dirección ni buscarla. Si dice “ahora no”, no se le vuelve a ofrecer. En iPhone no sale nada porque Apple no lo permite; ahí se agrega con Compartir → Añadir a inicio. La segunda: hay una pestaña nueva, 🖨️ Cartel, con una hoja lista para imprimir y pegar junto a la caja: el código QR grande, la dirección moramango.app y el gancho de los 10 sellos. Sale en una hoja carta desde tu impresora, sin diseñar nada ni pagar imprenta.',
+    donde: 'Cartel',
+  },
+  {
+    fecha: '2026-09-04',
     tipo: 'mejora',
     titulo: 'Todo cambio en el catálogo y en los insumos queda registrado',
     detalle:

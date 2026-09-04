@@ -18,6 +18,7 @@ const TABS = [
   { href: '/admin/avisos', label: 'Avisos', icon: '🔔' },
   { href: '/admin/ajustes', label: 'Ajustes', icon: '⚙️' },
   { href: '/admin/app', label: 'APP', icon: '📱' },
+  { href: '/admin/cartel', label: 'Cartel', icon: '🖨️' },
 ];
 
 export function AdminNav() {

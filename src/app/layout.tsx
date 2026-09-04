@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
+import { InstalarApp } from './InstalarApp';
 import { Providers } from './providers';
 
 const geistSans = Geist({
@@ -52,6 +53,9 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <Providers>{children}</Providers>
+        {/* No pinta nada hasta que el navegador dice que se puede
+            instalar, así que en iPhone y en escritorio no estorba. */}
+        <InstalarApp />
       </body>
     </html>
   );

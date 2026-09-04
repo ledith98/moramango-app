@@ -682,6 +682,24 @@ export default function PedidosPage() {
                   )}
                   {p.Nombre_Cliente_Snap}
                 </p>
+                {/*
+                  Qué pidió, sin abrirlo.
+
+                  Los productos ya venían en la lista —se usaban para el
+                  filtro— y nadie los estaba enseñando: había que picarle
+                  a cada pedido para saber si el de las 8 era un jugo o
+                  tres sándwiches. Con esto se lee de corrido.
+
+                  Se corta a dos renglones: la lista tiene que seguir
+                  siendo una lista. Lo completo está adentro.
+                */}
+                {(p.Productos ?? []).length > 0 && (
+                  <p className="text-xs text-neutral-800 line-clamp-2">
+                    {(p.Productos ?? [])
+                      .map((it) => `${it.cantidad}× ${it.nombre}`)
+                      .join(' · ')}
+                  </p>
+                )}
                 <p className="text-xs text-neutral-700 font-mono flex items-center gap-1.5 flex-wrap">
                   <span>{p.ID_Pedido}</span>
                   {/* Con qué se pagó, a la vista en la lista. Antes había

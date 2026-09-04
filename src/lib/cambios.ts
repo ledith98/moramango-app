@@ -32,6 +32,22 @@ export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-09-04',
     tipo: 'nuevo',
+    titulo: 'En la lista de pedidos ya se ve qué pidió cada quien',
+    detalle:
+      'Antes había que abrir pedido por pedido para saber si el de las 8 era un jugo o tres sándwiches. Ahora debajo del nombre sale lo que llevó: “2× Combo 1 · 1× Combo Croissant”. Se corta a dos renglones para que la lista siga siendo una lista; lo completo sigue estando adentro.',
+    donde: 'Pedidos',
+  },
+  {
+    fecha: '2026-09-04',
+    tipo: 'arreglo',
+    titulo: 'Ya no se puede capturar “1 kilo = 100 gramos”',
+    detalle:
+      'La equivalencia de un insumo dice cuántas unidades de receta trae lo que compras. Cuando sale mal no se nota: el costo y el inventario de ese insumo quedan multiplicados o divididos por diez, y eso se descubre semanas después cuadrando un margen que no da. Ya había pasado dos veces: las Rajas de Jalapeño decían “1 kilo = 100 gramos” y la Avena “1 kg = 500 g”. Ahora la app lo dice mientras escribes, en rojo, con un botón para ponerle el número bueno — y no deja guardar si sigue mal. También atrapa el otro caso: si pones “1 pieza = 500 piezas”, te dice que lo que compras es un PAQUETE de 500 y que eso va en “Se compra por”. Y al anotar una presentación, si el contenido parece gramos donde van piezas, te lo pregunta antes de guardar. Los dos insumos que estaban mal ya quedaron en 1000.',
+    donde: 'Insumos',
+  },
+  {
+    fecha: '2026-09-04',
+    tipo: 'nuevo',
     titulo: 'Los pedidos ya no se quedan abiertos: se cierran solos',
     detalle:
       'Marcar “Entregado” era un paso que se caía con gente esperando, y por eso se juntaron 17 pedidos abiertos, el más viejo de casi un mes. Ahora son tres cosas: (1) en el punto de venta la venta nace ya como ENTREGADA, porque en el mostrador se cobra y el cliente se lleva su jugo en el momento — se puede cambiar si lo va a recoger después; (2) un pedido que lleve más de media hora sin que nadie lo mueva se marca entregado solo; (3) al cerrar el día, a las 7 de la noche, lo que quede abierto se cierra de una vez, sea de hoy o de hace semanas, y el corte de Telegram te dice cuántos fueron. Lo único que NO se cierra solo son los pedidos que no dicen cómo se pagaron: cerrarlos sería darlos por vendidos sin saber si entró efectivo, terminal o transferencia. Esos te los nombra el aviso para que los contestes.',

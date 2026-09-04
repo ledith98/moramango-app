@@ -34,6 +34,7 @@ import { elegirPrecio, USAR_ULTIMA_COMPRA, type PresentacionPrecio } from '@/lib
 import { leerPresentaciones } from '@/lib/presentaciones';
 import { redondear } from '@/lib/inventario';
 import { siguienteId } from '@/lib/ids';
+import { revisarEquivalencia } from '@/lib/unidades';
 import { getAdminSession } from '@/lib/roles';
 
 /**
@@ -235,6 +236,15 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
+  /*
+    Un kilo son mil gramos siempre. Dejar pasar "1 kilo = 100 gramos"
+    divide entre diez el costo y el inventario de ese insumo, y no se
+    nota hasta que un margen no da semanas después.
+  */
+  const revision = revisarEquivalencia(unidadCompra, unidadReceta, equiv);
+  if (!revision.ok) {
+    return NextResponse.json({ error: revision.mensaje }, { status: 400 });
+  }
   const rendimiento = leerRendimiento(rendimientoPct);
   if ('error' in rendimiento) {
     return NextResponse.json({ error: rendimiento.error }, { status: 400 });
@@ -364,6 +374,14 @@ export async function PATCH(req: NextRequest) {
   const equiv = parseFloat(datos?.equivalencia);
   if (isNaN(equiv) || equiv <= 0) {
     return NextResponse.json({ error: 'Equivalencia inválida' }, { status: 400 });
+  }
+  const revision = revisarEquivalencia(
+    (datos?.unidadCompra ?? '').toString(),
+    (datos?.unidadReceta ?? '').toString(),
+    equiv
+  );
+  if (!revision.ok) {
+    return NextResponse.json({ error: revision.mensaje }, { status: 400 });
   }
 
   const claveNueva = normalizarNombre(nombreNuevo);

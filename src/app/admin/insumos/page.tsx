@@ -14,6 +14,7 @@
 
 import { Fragment, useCallback, useEffect, useState, useRef } from 'react';
 import { CATEGORIAS_INSUMOS } from '@/lib/insumos';
+import { contenidoSospechoso, revisarEquivalencia } from '@/lib/unidades';
 
 interface ItemBiblioteca {
   id: string;
@@ -1758,6 +1759,35 @@ El stock quedará igual a lo que contaste.`)) return;
             />
             <span className="text-sm text-neutral-700 text-neutral-900">{form.unidadReceta || 'u'}</span>
           </div>
+          {/*
+            El aviso sale mientras se escribe, no al guardar. Enterarse de
+            que el número está mal después de llenar todo el formulario es
+            la manera más segura de que alguien lo "arregle" tecleando
+            cualquier cosa con tal de que lo deje guardar.
+          */}
+          {(() => {
+            if (!form.equivalencia.trim()) return null;
+            const r = revisarEquivalencia(
+              form.unidadCompra,
+              form.unidadReceta,
+              parseFloat(form.equivalencia)
+            );
+            if (r.ok) return null;
+            return (
+              <div className="text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded-xl p-2.5 mt-1 space-y-1.5">
+                <p>{r.mensaje}</p>
+                {r.esperado !== undefined && (
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, equivalencia: String(r.esperado) })}
+                    className="bg-red-700 text-white px-3 py-1.5 rounded-lg active:scale-95"
+                  >
+                    Ponerle {r.esperado}
+                  </button>
+                )}
+              </div>
+            );
+          })()}
 
           {/*
             Rendimiento al cocinar.
@@ -2415,6 +2445,25 @@ El stock quedará igual a lo que contaste.`)) return;
                     {presDe.unidadReceta}
                   </span>
                 </div>
+                {/*
+                  Aviso, no candado: un paquete de mil servilletas existe.
+                  Pero una presentación del plátano decía "trae 1000"
+                  cuando la receta lo pide por pieza —alguien anotó los
+                  gramos— y eso dejó el plátano en 2 centavos sin que
+                  nada lo dijera.
+                */}
+                {(() => {
+                  const aviso = contenidoSospechoso(
+                    presDe.unidadReceta,
+                    parseFloat(presForm.contenido)
+                  );
+                  if (!aviso) return null;
+                  return (
+                    <p className="text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2.5 mt-1">
+                      {aviso}
+                    </p>
+                  );
+                })()}
               </div>
             </div>
 

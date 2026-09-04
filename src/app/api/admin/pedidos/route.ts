@@ -16,6 +16,7 @@ import { getSheetData, findRow, updateCell, ensureColumn } from '@/lib/googleShe
 import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 import { METODO_PAGO_EN_LINEA, normalizarMetodoPago } from '@/lib/negocio';
 import { anotar } from '@/lib/bitacora';
+import { cerrarPedidosPendientes, MINUTOS_PARA_CERRAR_SOLO } from '@/lib/cierreDia';
 import { getAdminSession } from '@/lib/roles';
 import { moverStockDePedido } from '@/lib/stock';
 import { revertirLealtad } from '@/lib/lealtad';
@@ -29,11 +30,49 @@ export const ESTADOS_VALIDOS = [
   'Cancelado',
 ];
 
+/**
+ * Cuándo se barrió por última vez, para no hacerlo en cada carga.
+ *
+ * El barrido lee la hoja entera, y la pantalla de pedidos se recarga
+ * sola cada pocos segundos. Sin este freno se comería la cuota de Google
+ * y escribiría lo mismo una y otra vez. Vive en memoria: si el servidor
+ * se reinicia, el peor caso es un barrido de más.
+ */
+let ultimoBarrido = 0;
+const CADA_MS = 10 * 60 * 1000;
+
+/**
+ * Cierra solos los pedidos que llevan más de media hora sin moverse.
+ *
+ * Va aquí y no en una tarea programada porque las tareas de Vercel
+ * corren una vez al día: para que el pedido de las 9 de la mañana esté
+ * cerrado a las 10, el barrido tiene que pasar mientras alguien usa el
+ * panel — que es justo cuando importa que la pantalla esté limpia.
+ *
+ * Nunca interrumpe: si falla, se anota y la lista se devuelve igual.
+ */
+async function barrerPendientes(quien: string): Promise<void> {
+  const ahora = Date.now();
+  if (ahora - ultimoBarrido < CADA_MS) return;
+  ultimoBarrido = ahora;
+  try {
+    await cerrarPedidosPendientes({
+      minutos: MINUTOS_PARA_CERRAR_SOLO,
+      quien,
+      motivo: `Pasó más de ${MINUTOS_PARA_CERRAR_SOLO} min sin moverse`,
+    });
+  } catch (e) {
+    console.error('No se pudieron cerrar los pedidos viejos:', e);
+  }
+}
+
 // ── GET: pedidos filtrados por fecha (default hoy) y estado opcional ─────────
 export async function GET(req: NextRequest) {
-  if (!(await getAdminSession())) {
+  const sesion = await getAdminSession();
+  if (!sesion) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
+  await barrerPendientes(sesion.user?.name || sesion.user?.email || 'Panel');
 
   const { searchParams } = new URL(req.url);
   // Rango [desde, hasta]. Compatibilidad: ?fecha= sigue sirviendo para un

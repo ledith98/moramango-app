@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { cerrarCajaSinContar } from '@/lib/caja';
+import { cerrarPedidosPendientes, resumenCierre } from '@/lib/cierreDia';
 import { armarCorteDelDia } from '@/lib/corteDia';
 import { fechaHoyMTY } from '@/lib/pedidoFecha';
 import { getAdminSession } from '@/lib/roles';
@@ -51,6 +52,25 @@ export async function GET(req: NextRequest) {
    * Si alguien ya la cerró contando, no se toca.
    */
   if (esCron(req)) {
+    /*
+      Primero se cierran los pedidos y después se arma el corte... no: el
+      corte ya se armó arriba. Da igual — el corte suma por método de
+      pago y por venta, no por estado, así que cerrar pedidos no le mueve
+      un peso. Lo que sí hace es dejar la pantalla del día limpia para
+      mañana, que es de lo que se trata.
+    */
+    let cierre = null;
+    try {
+      cierre = await cerrarPedidosPendientes({
+        // Sin filtro de minutos: a la hora de cerrar, lo que quede
+        // abierto se cierra, sea de hoy o de hace tres semanas.
+        quien: 'Cierre automático',
+        motivo: 'Cierre del día',
+      });
+    } catch (e) {
+      console.error('No se pudieron cerrar los pedidos del día:', e);
+    }
+
     let cerroSola = false;
     try {
       cerroSola = await cerrarCajaSinContar(
@@ -60,16 +80,29 @@ export async function GET(req: NextRequest) {
       console.error('No se pudo cerrar la caja sola:', e);
     }
 
-    if (!texto) return NextResponse.json({ enviado: false, cerroSola });
+    const notaPedidos = cierre ? resumenCierre(cierre) : '';
 
-    const aviso = cerroSola
-      ? `${texto}
+    /*
+      Un día sin ventas no manda corte, pero SÍ manda el aviso de pedidos
+      que quedaron sin método de pago: esos son de días anteriores y
+      seguirían escondidos hasta que alguien los buscara.
+    */
+    if (!texto) {
+      if (notaPedidos) await enviarTelegram(notaPedidos);
+      return NextResponse.json({ enviado: !!notaPedidos, cerroSola, cierre });
+    }
 
-🔒 <b>La caja se cerró sola</b>
+    const partes = [texto];
+    if (cerroSola) {
+      partes.push(
+        `🔒 <b>La caja se cerró sola</b>
    Nadie contó el efectivo, así que el corte no dice si cuadra. Cuéntalo y anótalo en Dinero.`
-      : texto;
-    await enviarTelegram(aviso);
-    return NextResponse.json({ enviado: true, cerroSola });
+      );
+    }
+    if (notaPedidos) partes.push(notaPedidos);
+
+    await enviarTelegram(partes.join('\n\n'));
+    return NextResponse.json({ enviado: true, cerroSola, cierre });
   }
 
   return NextResponse.json({ fecha, corte: texto, huboVentas: texto !== null });

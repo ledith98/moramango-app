@@ -103,7 +103,16 @@ export default function VentaPage() {
   const [efectivoRecibido, setEfectivoRecibido] = useState('');
   /** false = se la lleva fiada; el cobro queda pendiente */
   const [yaPago, setYaPago] = useState(true);
-  const [estado, setEstado] = useState('Recibido');
+  /*
+    Nace ENTREGADA, no "Recibido".
+
+    Esto es el punto de venta del mostrador: se cobra y el cliente se
+    lleva su jugo en el momento. Arrancar en "Recibido" obligaba a volver
+    al panel a marcarlo entregado con gente esperando, y ese es el paso
+    que se caía — 17 pedidos quedaron abiertos así, el más viejo de casi
+    un mes. Se sigue pudiendo cambiar para lo que se va a recoger después.
+  */
+  const [estado, setEstado] = useState('Entregado');
   const [notas, setNotas] = useState('');
   const [registrando, setRegistrando] = useState(false);
   const [error, setError] = useState('');
@@ -392,7 +401,7 @@ export default function VentaPage() {
     setMetodoPago('Efectivo');
     setEfectivoRecibido('');
     setYaPago(true);
-    setEstado('Recibido');
+    setEstado('Entregado');
     setNotas('');
     setCliente(null);
     setAplicarBeneficio(false);
@@ -1213,7 +1222,12 @@ export default function VentaPage() {
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 space-y-4">
           <h3 className="font-bold text-neutral-900">📝 Preparación</h3>
           <div className="space-y-1.5">
-            <label className="text-sm font-semibold text-neutral-700">Estado inicial</label>
+            <label className="text-sm font-semibold text-neutral-700">
+              ¿Ya se lo llevó?
+            </label>
+            <p className="text-xs text-neutral-700">
+              Entregado es lo normal en el mostrador. Cámbialo solo si lo va a recoger después.
+            </p>
             <div className="flex flex-wrap gap-2">
               {ESTADOS.map((e) => (
                 <button

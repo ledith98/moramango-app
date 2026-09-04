@@ -30,6 +30,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 
 export const CAMBIOS: Cambio[] = [
   {
+    fecha: '2026-09-04',
+    tipo: 'nuevo',
+    titulo: 'Los pedidos ya no se quedan abiertos: se cierran solos',
+    detalle:
+      'Marcar “Entregado” era un paso que se caía con gente esperando, y por eso se juntaron 17 pedidos abiertos, el más viejo de casi un mes. Ahora son tres cosas: (1) en el punto de venta la venta nace ya como ENTREGADA, porque en el mostrador se cobra y el cliente se lleva su jugo en el momento — se puede cambiar si lo va a recoger después; (2) un pedido que lleve más de media hora sin que nadie lo mueva se marca entregado solo; (3) al cerrar el día, a las 7 de la noche, lo que quede abierto se cierra de una vez, sea de hoy o de hace semanas, y el corte de Telegram te dice cuántos fueron. Lo único que NO se cierra solo son los pedidos que no dicen cómo se pagaron: cerrarlos sería darlos por vendidos sin saber si entró efectivo, terminal o transferencia. Esos te los nombra el aviso para que los contestes.',
+    donde: 'Pedidos y Punto de venta',
+  },
+  {
     fecha: '2026-09-01',
     tipo: 'mejora',
     titulo: 'Los toppings se proponen solos, con su precio',

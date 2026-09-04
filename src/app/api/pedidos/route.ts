@@ -26,6 +26,7 @@ import { METODO_PAGO_EN_LINEA } from '@/lib/negocio';
 import { enviarTelegram } from '@/lib/telegram';
 import { abrirCajaSiHaceFalta } from '@/lib/caja';
 import { moverStockDePedido } from '@/lib/stock';
+import { puedePedir } from '@/lib/topePedidos';
 import { leerAjustes } from '@/lib/ajustes';
 import { estadoTienda } from '@/lib/horario';
 import { horaBonita, horaValida } from '@/lib/recoleccion';
@@ -129,6 +130,25 @@ export async function POST(req: NextRequest) {
   }
 
   const usuario = session.user as any;
+
+  /**
+   * El tope va ANTES de tocar la hoja.
+   *
+   * Ponerlo después no serviría de nada: lo que se protege es justo la
+   * cuota de lectura de Google, y para cuando se contara el pedido ya se
+   * habría gastado. Cinco en cinco minutos es más de lo que pide nadie de
+   * verdad; lo que corta es el bucle.
+   */
+  const veredicto = puedePedir(usuario.id_usuario || session.user?.email || '');
+  if (!veredicto.permitido) {
+    return NextResponse.json(
+      {
+        error: `Vas muy rápido. Espera ${veredicto.esperaSegundos} segundos y vuelve a intentarlo.`,
+      },
+      { status: 429 }
+    );
+  }
+
   const ahora = new Date();
   const fechaStr = ahora.toLocaleString('es-MX', { timeZone: 'America/Monterrey' });
 

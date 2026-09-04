@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-09-04',
+    tipo: 'mejora',
+    titulo: 'Un candado para que nadie pueda llenar la tienda de pedidos falsos',
+    detalle:
+      'Para pedir basta con entrar con Google, y eso lo puede hacer cualquiera. Sin un tope, alguien podría mandar cientos de pedidos falsos en un minuto: además de ensuciarte la lista, agotaría la cuota de lecturas de Google y dejaría la tienda caída para los clientes de verdad. Ahora cada persona puede mandar hasta 5 pedidos en 5 minutos. Es mucho más de lo que nadie pide en una visita, así que un cliente normal nunca lo va a topar; lo único que corta es el abuso.',
+    donde: 'Tienda',
+  },
+  {
+    fecha: '2026-09-04',
     tipo: 'nuevo',
     titulo: 'La tienda ya se puede instalar como aplicación, y hay cartel para el mostrador',
     detalle:

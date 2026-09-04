@@ -31,6 +31,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 export const CAMBIOS: Cambio[] = [
   {
     fecha: '2026-09-04',
+    tipo: 'mejora',
+    titulo: 'Todo cambio en el catálogo y en los insumos queda registrado',
+    detalle:
+      'Ocho personas entran al panel y todas siguen pudiendo revisar y corregir el catálogo y los insumos — no se le quitó permiso a nadie. Lo que cambia es que ahora queda constancia: quién lo hizo, cuándo, y sobre todo CÓMO ESTABA ANTES. En la Bitácora vas a ver cosas como “Editó el insumo Avena — Equivalencia: 500 → 1000” o “Editó cómo se compra — Trae: 72 → 7”. No es para vigilar a nadie: es para poder devolver las cosas. Antes, cuando un costo amanecía raro, la única forma de corregirlo era adivinar cómo estaba. Se registran también los insumos que se crean, los que se eliminan y los cambios de a qué recetas surte cada uno.',
+    donde: 'Bitácora',
+  },
+  {
+    fecha: '2026-09-04',
     tipo: 'nuevo',
     titulo: 'En la lista de pedidos ya se ve qué pidió cada quien',
     detalle:

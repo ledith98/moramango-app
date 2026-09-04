@@ -11,7 +11,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { anotar } from '@/lib/bitacora';
+import { anotar, cambios } from '@/lib/bitacora';
 import { appendRow, getSheetData } from '@/lib/googleSheets';
 import { siguienteId } from '@/lib/ids';
 import { normalizarNombre } from '@/lib/insumos';
@@ -264,7 +264,35 @@ export async function PATCH(req: NextRequest) {
       fecha: (fechaPrecio ?? '').toString().trim() || undefined,
     });
   }
-  await anotar(quienDe(sesion), 'Insumos', `Editó una presentación (${id})`);
+  /*
+    Con el antes → después, no solo el id. "Editó una presentación
+    (PRE-0098)" no sirve para nada cuando el costo de una receta amanece
+    al doble: lo que hace falta es ver que el contenido pasó de 72 a 7.
+  */
+  const queCambio = cambios(
+    {
+      Marca: actual.marca,
+      'Se compra por': actual.unidadCompra,
+      Trae: actual.contenido,
+      Precio: actual.ultimoPrecio,
+      'Se compra hoy': actual.activa ? 'sí' : 'no',
+    },
+    {
+      Marca: datos.marca ?? actual.marca,
+      'Se compra por': datos.unidadCompra ?? actual.unidadCompra,
+      Trae: datos.contenido ?? actual.contenido,
+      Precio: datos.ultimoPrecio ?? actual.ultimoPrecio,
+      'Se compra hoy': (datos.activa ?? actual.activa) ? 'sí' : 'no',
+    }
+  );
+  if (queCambio) {
+    await anotar(
+      quienDe(sesion),
+      'Insumos',
+      `Editó cómo se compra un insumo`,
+      `${actual.idBiblioteca} · ${id} · ${queCambio}`
+    );
+  }
   return NextResponse.json({ success: true });
 }
 

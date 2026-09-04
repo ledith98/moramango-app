@@ -12,7 +12,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { anotar } from '@/lib/bitacora';
+import { anotar, cambios } from '@/lib/bitacora';
 import { appendRow, getSheetData, updateCell, updateCells } from '@/lib/googleSheets';
 import { normalizarNombre } from '@/lib/insumos';
 import {
@@ -43,6 +43,9 @@ import { getAdminSession } from '@/lib/roles';
  * Una fila con ID pero sin nombre no es un insumo, es basura de la hoja;
  * salía como tarjeta en blanco que no se podía ni identificar ni borrar.
  */
+const quienDe = (s: { user?: { name?: string | null; email?: string | null } } | null) =>
+  s?.user?.name || s?.user?.email || '';
+
 const vivos = (filas: Record<string, string>[]) =>
   filas.filter(
     (b) =>
@@ -210,7 +213,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!(await getAdminSession())) {
+  const sesion = await getAdminSession();
+  if (!sesion) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
   await prepararInventario();
@@ -286,6 +290,13 @@ export async function POST(req: NextRequest) {
     await updateCell(HOJA_BIBLIOTECA, fila, await columnaRendimiento(), rendimiento.pct);
   }
 
+  await anotar(
+    quienDe(sesion),
+    'Insumos',
+    `Creó el insumo "${nombre.toString().trim()}"`,
+    `${idBib} · 1 ${(unidadCompra || '?').toString().trim()} = ${equiv} ${(unidadReceta || '?').toString().trim()}${categoria ? ` · ${categoria}` : ''}${proveedor ? ` · ${proveedor}` : ''}`
+  );
+
   // Relación 1:1 — cada insumo de biblioteca nace con su registro activo
   const idAct = siguienteId(activos, 'ID_Activo', 'ACT');
   await appendRow(HOJA_ACTIVOS, [idAct, idBib, 0, '', 'Fresco', '', '', 'si']);
@@ -321,12 +332,22 @@ export async function PATCH(req: NextRequest) {
     if (!Array.isArray(ingredientes)) {
       return NextResponse.json({ error: 'Lista inválida' }, { status: 400 });
     }
+    const antesIng = leerIngredientes(actual.Ingredientes).join(', ');
+    const ahoraIng = ingredientes.map(String).join(', ');
     await updateCell(
       HOJA_BIBLIOTECA,
       fila,
       await columnaIngredientes(),
       escribirIngredientes(ingredientes.map(String))
     );
+    if (antesIng !== ahoraIng) {
+      await anotar(
+        quienDe(sesion),
+        'Insumos',
+        `Cambió a qué recetas surte ${actual.Nombre || id}`,
+        `${antesIng || '(por nombre)'} → ${ahoraIng || '(por nombre)'}`
+      );
+    }
     return NextResponse.json({ success: true });
   }
 
@@ -363,6 +384,12 @@ export async function PATCH(req: NextRequest) {
     if (filaAct !== -1) {
       await updateCell(HOJA_ACTIVOS, filaAct + 2, await columnaEnUso(), 'no');
     }
+    await anotar(
+      quienDe(sesion),
+      'Insumos',
+      `Eliminó el insumo "${actual.Nombre || id}"`,
+      `${id} · se conserva en la hoja para no romper recetas ni historial`
+    );
     return NextResponse.json({ success: true });
   }
 
@@ -391,7 +418,7 @@ export async function PATCH(req: NextRequest) {
 
   // Todas las celdas del insumo en UN solo viaje a Google (antes eran
   // ~8 seguidos y por eso tardaba/se colgaba al guardar)
-  const cambios: Record<number, string | number> = {
+  const celdas: Record<number, string | number> = {
     [COL_BIB.nombre]: nombreNuevo,
     [COL_BIB.unidadCompra]: (datos?.unidadCompra || '').toString().trim(),
     [COL_BIB.unidadReceta]: (datos?.unidadReceta || '').toString().trim(),
@@ -417,10 +444,41 @@ export async function PATCH(req: NextRequest) {
     if (isNaN(precio) || precio < 0) {
       return NextResponse.json({ error: 'Precio inválido' }, { status: 400 });
     }
-    cambios[COL_BIB.ultimoPrecio] = precio;
+    celdas[COL_BIB.ultimoPrecio] = precio;
   }
 
-  await updateCells(HOJA_BIBLIOTECA, fila, cambios);
+  await updateCells(HOJA_BIBLIOTECA, fila, celdas);
+
+  /*
+    El antes → después de cada campo. Ocho personas editan el catálogo, y
+    cuando un costo amanece raro lo primero que hace falta no es saber a
+    quién regañar: es saber cómo estaba antes para poder devolverlo.
+  */
+  const queCambio = cambios(
+    {
+      Nombre: actual.Nombre,
+      'Se compra por': actual.Unidad_Compra,
+      'Unidad de receta': actual.Unidad_Receta,
+      Equivalencia: actual.Equivalencia,
+      Categoría: actual.Categoria,
+      Proveedor: actual.Proveedor,
+      Contacto: actual.Contacto_Proveedor,
+      'Último precio': actual.Ultimo_Precio_Compra,
+    },
+    {
+      Nombre: nombreNuevo,
+      'Se compra por': celdas[COL_BIB.unidadCompra],
+      'Unidad de receta': celdas[COL_BIB.unidadReceta],
+      Equivalencia: equiv,
+      Categoría: celdas[COL_BIB.categoria],
+      Proveedor: celdas[COL_BIB.proveedor],
+      Contacto: celdas[COL_BIB.contacto],
+      'Último precio': celdas[COL_BIB.ultimoPrecio] ?? actual.Ultimo_Precio_Compra,
+    }
+  );
+  if (queCambio) {
+    await anotar(quienDe(sesion), 'Insumos', `Editó el insumo "${nombreNuevo}"`, queCambio);
+  }
 
   /*
     El rendimiento va aparte de `cambios` porque su columna se resuelve por

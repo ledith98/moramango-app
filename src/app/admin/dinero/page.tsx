@@ -63,6 +63,9 @@ interface EstadoCuenta {
   porMetodo: PorMetodo[];
   disponibleTotal: number;
   rendimiento: number;
+  /** Ventas por transferencia cuyo pago aún no se confirma */
+  porCobrar: number;
+  porCobrarPedidos: { id: string; cliente: string; total: number; fecha: string }[];
   /** Todo lo que ha entrado a la cuenta desde la primera venta */
   totalHistorico: number;
   /** Cada vez que se anotó cuánto había, de lo más nuevo hacia atrás */
@@ -1019,6 +1022,20 @@ export default function DineroPage() {
                       {diferencia > 0 ? 'Sobran' : 'Faltan'} {money(Math.abs(diferencia))} en
                       Mercado Pago
                     </p>
+                    {/*
+                      Lo que falta que caiga se nombra aquí mismo. Sin
+                      esto, una transferencia que el cliente prometió y no
+                      hizo se busca como si fuera dinero perdido — y no lo
+                      es: nunca entró a la cuenta.
+                    */}
+                    {cuenta.porCobrar > 0 && (
+                      <p className="text-xs text-amber-800 mt-1">
+                        Ojo: hay {money(cuenta.porCobrar)} de ventas que dijeron que iban a
+                        transferir y todavía no caen (
+                        {cuenta.porCobrarPedidos.map((x) => x.id).join(', ')}). Ese dinero NO
+                        está contado aquí — si ya llegó, confírmalo en Pedidos.
+                      </p>
+                    )}
                     <p className="text-xs text-amber-800 mt-1">
                       {diferencia > 0
                         ? 'Puede ser el rendimiento que te pagó el banco, una venta que no se registró, o un depósito de otra cuenta. El rendimiento de un día son unos pesos: si sobra mucho más que eso, búscalo antes de anotarlo.'

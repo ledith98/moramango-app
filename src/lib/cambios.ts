@@ -30,6 +30,14 @@ export const ETIQUETA_TIPO: Record<TipoCambio, { texto: string; color: string }>
 
 export const CAMBIOS: Cambio[] = [
   {
+    fecha: '2026-09-08',
+    tipo: 'arreglo',
+    titulo: 'Las transferencias que aún no caen ya no cuentan como dinero en la cuenta',
+    detalle:
+      'Cuando un cliente dice que va a transferir, el pedido queda con el pago en “Pendiente”. La app lo estaba contando como si el dinero ya estuviera en Mercado Pago, y eso inflaba el saldo: hacía ver un faltante que en parte no existía. Ahora ese dinero no se suma hasta que confirmas que llegó, y el aviso de diferencia te dice cuánto está por caer y de qué pedidos, para que no lo busques como si se hubiera perdido. Los pedidos viejos que tienen el estado de pago en blanco no se tocan: ese dinero ya está en la cuenta y sacarlo rompería la conciliación.',
+    donde: 'Dinero → La cuenta',
+  },
+  {
     fecha: '2026-09-04',
     tipo: 'mejora',
     titulo: 'Un candado para que nadie pueda llenar la tienda de pedidos falsos',

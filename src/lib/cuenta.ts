@@ -56,6 +56,13 @@ export interface EstadoCuenta {
   disponibleTotal: number;
   /** Lo que pagó el banco por tener el dinero ahí */
   rendimiento: number;
+  /**
+   * Ventas que dicen que se van a pagar por transferencia o en línea y
+   * cuyo pago todavía no se confirma. NO cuentan como dinero en la
+   * cuenta: el cliente dijo que iba a transferir, no que ya transfirió.
+   */
+  porCobrar: number;
+  porCobrarPedidos: { id: string; cliente: string; total: number; fecha: string }[];
   /** Movimientos a mano que no son ventas ni rendimiento */
   otrasEntradas: number;
   salidas: number;
@@ -162,8 +169,21 @@ export async function leerCuenta(desde: string, hasta: string): Promise<EstadoCu
    * formas de cobro, misma comisión — para que la comparación signifique
    * algo.
    */
+  /*
+    Un pedido con el pago en 'Pendiente' es alguien que DIJO que iba a
+    transferir. Contarlo como dinero en la cuenta infla el saldo y hace
+    ver un faltante que no existe — o esconde uno que sí.
+
+    El estado en blanco NO se excluye: son los pedidos anteriores a que
+    existiera la confirmación de pago, y su dinero ya está en la cuenta.
+    Sacarlos rompería la conciliación que cuadró al centavo.
+  */
+  const yaLlego = (p: Record<string, string>) =>
+    (p.Estado_Pago ?? '').toString().trim() !== 'Pendiente';
+
   const disponibleHistorico = vivos
     .filter((p) => METODOS_EN_CUENTA.includes(normalizarMetodoPago(p.Metodo_Pago)))
+    .filter(yaLlego)
     .reduce((suma, p) => {
       const metodo = normalizarMetodoPago(p.Metodo_Pago);
       const total = parseFloat(p.Total_Final) || 0;
@@ -190,6 +210,24 @@ export async function leerCuenta(desde: string, hasta: string): Promise<EstadoCu
     .map((p) => parsearFechaHora(p.Fecha_Hora)?.fechaISO ?? '')
     .filter(Boolean)
     .sort()[0] ?? '';
+
+  /** Lo que falta que caiga, para que no se busque como si faltara. */
+  const pendientes = vivos
+    .filter((p) => METODOS_EN_CUENTA.includes(normalizarMetodoPago(p.Metodo_Pago)))
+    .filter((p) => !yaLlego(p));
+  const porCobrar = redondear(
+    pendientes.reduce((s, p) => {
+      const metodo = normalizarMetodoPago(p.Metodo_Pago);
+      const total = parseFloat(p.Total_Final) || 0;
+      return s + total - (METODOS_CON_COMISION.includes(metodo) ? comisionDeVenta(total, metodo) : 0);
+    }, 0)
+  );
+  const porCobrarPedidos = pendientes.map((p) => ({
+    id: p.ID_Pedido,
+    cliente: p.Nombre_Cliente_Snap || '',
+    total: parseFloat(p.Total_Final) || 0,
+    fecha: parsearFechaHora(p.Fecha_Hora)?.fechaISO ?? '',
+  }));
 
   const porMetodo: EntradaPorMetodo[] = [];
   for (const metodo of METODOS_EN_CUENTA) {
@@ -230,6 +268,8 @@ export async function leerCuenta(desde: string, hasta: string): Promise<EstadoCu
     comisionTotal: suma((e) => e.comision),
     disponibleTotal,
     rendimiento,
+    porCobrar,
+    porCobrarPedidos,
     otrasEntradas,
     salidas,
     movimientoNeto: redondear(disponibleTotal + rendimiento + otrasEntradas - salidas),

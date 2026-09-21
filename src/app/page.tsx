@@ -44,9 +44,12 @@ import {
 } from '@/lib/opciones';
 import { claveExtras, type Extra, precioExtras, resumenExtras } from '@/lib/extras';
 import {
+  extrasPermitidos,
   GRUPO_TOPPING,
   gruposConTopping,
+  limpiarExtras,
   limpiarTopping,
+  TOPPINGS_CON_COSTO_DEFAULT,
   type ToppingsDeProducto,
 } from '@/lib/toppingIncluido';
 
@@ -174,6 +177,8 @@ function FotoProducto({
 export default function Home() {
   const { data: session } = useSession();
   const [productos, setProductos] = useState<any[]>([]);
+  /** Toppings que nunca van incluidos en el combo (la proteína) */
+  const [toppingsConCosto, setToppingsConCosto] = useState<string[]>(TOPPINGS_CON_COSTO_DEFAULT);
   const [cargando, setCargando] = useState(true);
   const [enviando, setEnviando] = useState(false);
   const [categoriaActiva, setCategoriaActiva] = useState<string>('Todos');
@@ -256,6 +261,7 @@ export default function Home() {
       .then((res) => res.json())
       .then((data) => {
         if (data.productos) setProductos(data.productos);
+        if (Array.isArray(data.toppingsConCosto)) setToppingsConCosto(data.toppingsConCosto);
         if (data.tienda) setTienda(data.tienda);
         if (data.local) setLocal(data.local);
         if (data.horariosRecoleccion) setHorariosRecoleccion(data.horariosRecoleccion);
@@ -487,7 +493,7 @@ export default function Home() {
   /** Qué toppings trae cada bebida, para preguntarlo dentro del combo */
   const menuToppings: ToppingsDeProducto[] = productos.map((p: any) => ({
     nombre: p.nombre ?? '',
-    toppings: (p.extras ?? []).map((e: Extra) => e.nombre),
+    toppings: p.extras ?? [],
   }));
 
   const agregarAlCarrito = (
@@ -505,7 +511,12 @@ export default function Home() {
     // se abre la ficha. Con los toppings no llevar ninguno es una respuesta
     // válida, pero hay que dejarle verlos antes de darla por hecha.
     const tamanos: Tamano[] = producto.tamanos ?? [];
-    const grupos: GrupoOpcion[] = gruposConTopping(producto.opciones ?? [], eleccion, menuToppings);
+    const grupos: GrupoOpcion[] = gruposConTopping(
+      producto.opciones ?? [],
+      eleccion,
+      menuToppings,
+      toppingsConCosto
+    );
     const extrasProducto: Extra[] = producto.extras ?? [];
     if (
       (tamanos.length > 0 && !tamano) ||
@@ -881,7 +892,7 @@ export default function Home() {
       const base: GrupoOpcion[] = actual.opciones ?? [];
       const eleccionBase = eleccionDesdeNombre(base, item.nombre);
       // Si la bebida trae toppings, también hay que saber cuál llevaba
-      const grupos = gruposConTopping(base, eleccionBase ?? {}, menuToppings);
+      const grupos = gruposConTopping(base, eleccionBase ?? {}, menuToppings, toppingsConCosto);
       const eleccion = eleccionBase && eleccionDesdeNombre(grupos, item.nombre);
       if (eleccion === null) {
         noDisponibles.push(item.nombre);
@@ -1108,9 +1119,17 @@ export default function Home() {
   const gruposDetalle: GrupoOpcion[] = gruposConTopping(
     productoDetalle?.opciones ?? [],
     opcionesElegidas,
-    menuToppings
+    menuToppings,
+    toppingsConCosto
   );
   const extrasDetalle: Extra[] = productoDetalle?.extras ?? [];
+  /** Del licuado del combo: el segundo topping y los que nunca van incluidos */
+  const toppingsBebidaDetalle: Extra[] = extrasPermitidos(
+    extrasDetalle,
+    productoDetalle?.opciones ?? [],
+    opcionesElegidas,
+    menuToppings
+  ).slice(extrasDetalle.length);
   /** Opciones que hoy no se pueden preparar (el jugo se acabó, etc.) */
   const agotadasDetalle: string[] = productoDetalle?.opcionesAgotadas ?? [];
   /** Grupos que todavía no contesta. Sin preselección, hay que exigirlo. */
@@ -2401,11 +2420,19 @@ export default function Home() {
                               key={o}
                               disabled={agotada}
                               onClick={() => {
-                                setOpcionesElegidas((prev) =>
-                                  limpiarTopping(
-                                    productoDetalle?.opciones ?? [],
-                                    { ...prev, [g.nombre]: o },
-                                    menuToppings
+                                const base: GrupoOpcion[] = productoDetalle?.opciones ?? [];
+                                const nueva = limpiarTopping(
+                                  base,
+                                  { ...opcionesElegidas, [g.nombre]: o },
+                                  menuToppings,
+                                  toppingsConCosto
+                                );
+                                setOpcionesElegidas(nueva);
+                                // Los toppings pagados de la bebida anterior ya no aplican
+                                setExtrasElegidos((prev) =>
+                                  limpiarExtras(
+                                    prev,
+                                    extrasPermitidos(extrasDetalle, base, nueva, menuToppings)
                                   )
                                 );
                                 setGrupoAbierto(null);
@@ -2433,13 +2460,18 @@ export default function Home() {
                 })}
 
                 {/* Toppings: se pueden marcar varios o ninguno */}
-                {extrasDetalle.length > 0 && (
-                  <div className="mb-4">
+                {[
+                  { titulo: '¿Le agregamos algo?', lista: extrasDetalle },
+                  { titulo: 'Más toppings para tu bebida', lista: toppingsBebidaDetalle },
+                ]
+                  .filter((s) => s.lista.length > 0)
+                  .map((s) => (
+                  <div key={s.titulo} className="mb-4">
                     <p className="text-sm font-semibold text-neutral-800 mb-2">
-                      ¿Le agregamos algo? <span className="font-normal text-neutral-600">(opcional)</span>
+                      {s.titulo} <span className="font-normal text-neutral-700">(opcional)</span>
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      {extrasDetalle.map((e) => {
+                      {s.lista.map((e) => {
                         const activo = extrasElegidos.some((x) => x.nombre === e.nombre);
                         return (
                           <button
@@ -2465,7 +2497,7 @@ export default function Home() {
                       })}
                     </div>
                   </div>
-                )}
+                ))}
 
                 {/* Tamaño: solo si el producto se vende en varios */}
                 {tamanosDetalle.length > 0 && (

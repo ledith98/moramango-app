@@ -6,6 +6,9 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { DIAS_NOMBRE, estadoTienda, HORARIO_DEFAULT, type Horario } from '@/lib/horario';
+import { catalogoExtras, claveExtra, type ExtraConocido } from '@/lib/extras';
+import { parsearOpciones } from '@/lib/opciones';
+import { productoDeOpcion, toppingsDeHoja } from '@/lib/toppingIncluido';
 
 interface Producto {
   nombre: string;
@@ -58,6 +61,13 @@ export default function AjustesPage() {
   const [localGuardado, setLocalGuardado] = useState({ direccion: '', mapa: '' });
   const [guardandoLocal, setGuardandoLocal] = useState(false);
   const [okLocal, setOkLocal] = useState(false);
+  /** Toppings que pueden tocarle al licuado de un combo */
+  const [toppingsCombo, setToppingsCombo] = useState<ExtraConocido[]>([]);
+  const [conCosto, setConCosto] = useState<string[]>([]);
+  const [conCostoGuardado, setConCostoGuardado] = useState<string[]>([]);
+  const [guardandoCosto, setGuardandoCosto] = useState(false);
+  const [okCosto, setOkCosto] = useState(false);
+  const [errorCosto, setErrorCosto] = useState('');
   /** Los respaldos guardados de la información del negocio */
   const [respaldos, setRespaldos] = useState<
     { nombre: string; fecha: string; url: string; bytes: number }[]
@@ -133,6 +143,28 @@ export default function AjustesPage() {
       }));
     setProductos(lista);
 
+    // Solo interesan los toppings de las bebidas que se eligen dentro de
+    // un combo: el jamón del sándwich nunca va "incluido" en nada.
+    const filas: Record<string, string>[] = (p.productos || []).filter(
+      (x: Record<string, string>) => (x.Eliminado || '').toUpperCase() !== 'TRUE'
+    );
+    const menu = toppingsDeHoja(filas);
+    const deBebidas = new Set<string>();
+    for (const f of filas) {
+      for (const g of parsearOpciones(f.Opciones ?? '')) {
+        for (const o of g.opciones) {
+          const bebida = productoDeOpcion(g.nombre, o, menu);
+          if (bebida && bebida.toppings.length > 0) {
+            deBebidas.add(filas.find((x) => x.Nombre === bebida.nombre)?.Extras ?? '');
+          }
+        }
+      }
+    }
+    setToppingsCombo(catalogoExtras([...deBebidas]));
+    const guardadosCosto: string[] = a?.toppingsConCosto ?? [];
+    setConCosto(guardadosCosto);
+    setConCostoGuardado(guardadosCosto);
+
     // El orden guardado manda, pero la lista que se ve son los grupos que
     // de verdad existen hoy: si se crea uno nuevo aparece al final, y si se
     // deja de usar uno deja de estorbar.
@@ -200,6 +232,27 @@ export default function AjustesPage() {
     setTopeGuardado(data.ajustes?.topeArticuloGratis ?? n);
     setOk(true);
     setTimeout(() => setOk(false), 2500);
+  }
+
+  async function guardarConCosto() {
+    setGuardandoCosto(true);
+    setErrorCosto('');
+    const res = await fetch('/api/admin/ajustes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ toppingsConCosto: conCosto }),
+    });
+    const data = await res.json();
+    setGuardandoCosto(false);
+    if (!res.ok) {
+      setErrorCosto(data.error || 'No se pudo guardar');
+      return;
+    }
+    const final: string[] = data.ajustes?.toppingsConCosto ?? conCosto;
+    setConCosto(final);
+    setConCostoGuardado(final);
+    setOkCosto(true);
+    setTimeout(() => setOkCosto(false), 2500);
   }
 
   async function guardarLocal() {
@@ -604,6 +657,64 @@ export default function AjustesPage() {
           )}
         </div>
       </div>
+
+      {toppingsCombo.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5 space-y-4">
+          <div>
+            <h2 className="font-bold text-neutral-900">🍓 Toppings del licuado en los combos</h2>
+            <p className="text-sm text-neutral-700 mt-1">
+              El licuado del combo lleva <b>un topping incluido, sin costo</b>. Del segundo en
+              adelante se cobra. Marca aquí los que <b>nunca</b> van incluidos y siempre se cobran,
+              aunque sean el primero.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {toppingsCombo.map((t) => {
+              const cobra = conCosto.some((c) => claveExtra(c) === claveExtra(t.nombre));
+              return (
+                <button
+                  key={t.nombre}
+                  onClick={() =>
+                    setConCosto((prev) =>
+                      cobra
+                        ? prev.filter((c) => claveExtra(c) !== claveExtra(t.nombre))
+                        : [...prev, t.nombre]
+                    )
+                  }
+                  className={`px-3 py-2 rounded-xl border-2 text-sm font-semibold text-left active:scale-95 ${
+                    cobra
+                      ? 'border-marron bg-marron/10 text-neutral-900'
+                      : 'border-neutral-200 bg-white text-neutral-800'
+                  }`}
+                >
+                  <span className="block">
+                    {cobra ? '💲 ' : ''}
+                    {t.nombre} <span className="font-bold">${t.precio.toFixed(2)}</span>
+                  </span>
+                  <span className="block text-xs font-medium text-neutral-700">
+                    {cobra ? 'Siempre se cobra' : 'Puede ir incluido'}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center gap-3 flex-wrap">
+            <button
+              onClick={guardarConCosto}
+              disabled={
+                guardandoCosto ||
+                [...conCosto].sort().join('|') === [...conCostoGuardado].sort().join('|')
+              }
+              className="bg-marron text-white font-semibold px-5 py-3 rounded-xl active:scale-95 disabled:opacity-50"
+            >
+              {guardandoCosto ? 'Guardando…' : okCosto ? '✅ Guardado' : 'Guardar'}
+            </button>
+            {errorCosto && <p className="text-sm text-red-600">{errorCosto}</p>}
+          </div>
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5">
         <h2 className="font-bold text-neutral-900 mb-2">⭐ Cómo funciona la lealtad</h2>

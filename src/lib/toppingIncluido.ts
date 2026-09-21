@@ -7,47 +7,49 @@
  * Fresa") y no había dónde decir si llevaba granola, avena o nada. Así no
  * quedaba registro del topping y su insumo nunca se descontaba.
  *
- * Aquí, al elegir una bebida que en el menú tiene toppings, aparece una
- * pregunta más —"Topping"— con esos mismos toppings y "Sin topping". Va
- * incluido en el combo: no suma al precio. Los extras de abajo siguen
- * cobrándose como siempre.
+ * Las reglas del local:
+ *   - Al elegir una bebida que en el menú tiene toppings, se pregunta
+ *     "Topping": uno va incluido en el combo, sin costo, o "Sin topping".
+ *   - Hay toppings que NUNCA van incluidos (la proteína): se cobran
+ *     siempre. Cuáles son se edita en Ajustes, no en código.
+ *   - Del segundo topping en adelante, y los que siempre se cobran, se
+ *     ofrecen aparte como "Más toppings" con su precio.
  *
- * Se arma como un grupo de opciones más, así que lo que ya existe para
- * las opciones (validar, el resumen del ticket, la llave del renglón)
- * lo trata igual sin cambios.
+ * El incluido se arma como un grupo de opciones más, así que lo que ya
+ * existe para las opciones (validar, el resumen del ticket, la llave del
+ * renglón) lo trata igual sin cambios. Los de costo son extras normales.
  *
  * Lógica pura, sin Google Sheets: la usan la tienda, el mostrador y el
  * servidor al cobrar.
  */
 
-import { parsearExtras } from './extras';
+import { claveExtra, type Extra, parsearExtras } from './extras';
 import type { Eleccion, GrupoOpcion } from './opciones';
 
 /** Nombre de la pregunta; también es la etiqueta en el ticket. */
 export const GRUPO_TOPPING = 'Topping';
 export const SIN_TOPPING = 'Sin topping';
 
+/** Si nadie lo ha cambiado en Ajustes, la proteína es la que se cobra. */
+export const TOPPINGS_CON_COSTO_DEFAULT = ['Scoop proteina'];
+
 /** Lo único que hace falta saber de cada producto del menú. */
 export interface ToppingsDeProducto {
   nombre: string;
-  toppings: string[];
+  toppings: Extra[];
 }
 
 /** Desde las filas de la hoja Productos (columna Extras en texto). */
 export function toppingsDeHoja(filas: { Nombre?: string; Extras?: string }[]): ToppingsDeProducto[] {
-  return filas.map((f) => ({
-    nombre: f.Nombre ?? '',
-    toppings: parsearExtras(f.Extras ?? '').map((e) => e.nombre),
-  }));
+  return filas.map((f) => ({ nombre: f.Nombre ?? '', toppings: parsearExtras(f.Extras ?? '') }));
 }
 
-const clave = (t: string) =>
-  (t ?? '')
-    .toString()
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
+const mismo = (a: string, b: string) => claveExtra(a) === claveExtra(b);
+
+/** ¿Este topping se cobra siempre, aunque sea el primero? */
+export function siempreConCosto(nombre: string, conCosto: string[]): boolean {
+  return conCosto.some((c) => mismo(c, nombre));
+}
 
 /**
  * El producto del menú al que se refiere una opción.
@@ -61,6 +63,7 @@ export function productoDeOpcion(
   opcion: string,
   productos: ToppingsDeProducto[]
 ): ToppingsDeProducto | undefined {
+  const clave = (t: string) => t.trim().toLowerCase().normalize('NFC');
   const exacto = clave(opcion);
   const armado = clave(`${grupo} de ${opcion}`);
   return (
@@ -69,53 +72,106 @@ export function productoDeOpcion(
   );
 }
 
+/** La bebida elegida que trae toppings, y en qué grupo se eligió. */
+function bebidaConToppings(
+  grupos: GrupoOpcion[],
+  eleccion: Eleccion | undefined,
+  productos: ToppingsDeProducto[]
+): { indice: number; toppings: Extra[] } | null {
+  for (let i = 0; i < grupos.length; i++) {
+    const valor = eleccion?.[grupos[i].nombre];
+    if (!valor) continue;
+    const toppings = productoDeOpcion(grupos[i].nombre, valor, productos)?.toppings ?? [];
+    if (toppings.length > 0) return { indice: i, toppings };
+  }
+  return null;
+}
+
 /**
- * Los grupos del producto más, si hace falta, la pregunta del topping.
+ * Los grupos del producto más, si hace falta, la pregunta del topping
+ * incluido.
  *
  * Solo aparece cuando ya se eligió una bebida que tiene toppings en el
- * menú; si se cambia a un jugo sin toppings, la pregunta se va.
+ * menú; si se cambia a un jugo sin toppings, la pregunta se va. Los que se
+ * cobran siempre no se ofrecen aquí.
  */
 export function gruposConTopping(
   grupos: GrupoOpcion[],
   eleccion: Eleccion | undefined,
-  productos: ToppingsDeProducto[]
+  productos: ToppingsDeProducto[],
+  conCosto: string[]
 ): GrupoOpcion[] {
   if (grupos.some((g) => g.nombre === GRUPO_TOPPING)) return grupos;
-  for (let i = 0; i < grupos.length; i++) {
-    const g = grupos[i];
-    const valor = eleccion?.[g.nombre];
-    if (!valor) continue;
-    const toppings = productoDeOpcion(g.nombre, valor, productos)?.toppings ?? [];
-    if (toppings.length === 0) continue;
-    // Justo debajo de la bebida: es de ella de quien se está hablando
-    return [
-      ...grupos.slice(0, i + 1),
-      { nombre: GRUPO_TOPPING, opciones: [...toppings, SIN_TOPPING] },
-      ...grupos.slice(i + 1),
-    ];
-  }
-  return grupos;
+  const bebida = bebidaConToppings(grupos, eleccion, productos);
+  if (!bebida) return grupos;
+  const incluibles = bebida.toppings
+    .map((t) => t.nombre)
+    .filter((n) => !siempreConCosto(n, conCosto));
+  if (incluibles.length === 0) return grupos;
+  // Justo debajo de la bebida: es de ella de quien se está hablando
+  return [
+    ...grupos.slice(0, bebida.indice + 1),
+    { nombre: GRUPO_TOPPING, opciones: [...incluibles, SIN_TOPPING] },
+    ...grupos.slice(bebida.indice + 1),
+  ];
 }
 
 /**
- * Si se cambió de bebida, el topping elegido para la anterior puede ya no
- * existir en la nueva (la proteína solo va en el de plátano). Se borra
- * para volver a preguntar en vez de guardar algo que no se ofrece.
+ * Los toppings de la bebida que se pueden agregar pagando: todos menos el
+ * que ya va incluido. Aquí caen la proteína y el segundo topping.
+ */
+export function toppingsConCostoDeBebida(
+  grupos: GrupoOpcion[],
+  eleccion: Eleccion | undefined,
+  productos: ToppingsDeProducto[]
+): Extra[] {
+  const bebida = bebidaConToppings(grupos, eleccion, productos);
+  if (!bebida) return [];
+  const incluido = eleccion?.[GRUPO_TOPPING] ?? '';
+  return bebida.toppings.filter((t) => !incluido || !mismo(t.nombre, incluido));
+}
+
+/**
+ * Todos los extras que se pueden cobrar en el renglón: los del producto y
+ * los de la bebida. Si el nombre se repite gana el del producto.
+ */
+export function extrasPermitidos(
+  propios: Extra[],
+  grupos: GrupoOpcion[],
+  eleccion: Eleccion | undefined,
+  productos: ToppingsDeProducto[]
+): Extra[] {
+  const deBebida = toppingsConCostoDeBebida(grupos, eleccion, productos).filter(
+    (t) => !propios.some((p) => mismo(p.nombre, t.nombre))
+  );
+  return [...propios, ...deBebida];
+}
+
+/**
+ * Al cambiar de bebida, lo elegido para la anterior puede ya no existir en
+ * la nueva (la proteína solo va en el de plátano). Se borra para volver a
+ * preguntar en vez de guardar algo que no se ofrece.
  */
 export function limpiarTopping(
   grupos: GrupoOpcion[],
   eleccion: Eleccion,
-  productos: ToppingsDeProducto[]
+  productos: ToppingsDeProducto[],
+  conCosto: string[]
 ): Eleccion {
   const actual = eleccion[GRUPO_TOPPING];
   if (!actual) return eleccion;
-  const grupo = gruposConTopping(grupos, eleccion, productos).find(
+  const grupo = gruposConTopping(grupos, eleccion, productos, conCosto).find(
     (g) => g.nombre === GRUPO_TOPPING
   );
-  if (grupo?.opciones.some((o) => clave(o) === clave(actual))) return eleccion;
+  if (grupo?.opciones.some((o) => mismo(o, actual))) return eleccion;
   const resto = { ...eleccion };
   delete resto[GRUPO_TOPPING];
   return resto;
+}
+
+/** Quita de lo marcado lo que ya no se ofrece (se cambió de bebida). */
+export function limpiarExtras(elegidos: Extra[], permitidos: Extra[]): Extra[] {
+  return elegidos.filter((e) => permitidos.some((p) => mismo(p.nombre, e.nombre)));
 }
 
 /**
@@ -128,7 +184,7 @@ export function toppingDesdeNombre(nombre: string): string {
   const parte = (m?.[1] ?? '')
     .split('·')
     .map((x) => x.trim())
-    .find((x) => clave(x).startsWith(`${clave(GRUPO_TOPPING)}:`));
+    .find((x) => x.toLowerCase().startsWith(`${GRUPO_TOPPING.toLowerCase()}:`));
   const valor = parte ? parte.slice(parte.indexOf(':') + 1).trim() : '';
-  return clave(valor) === clave(SIN_TOPPING) ? '' : valor;
+  return mismo(valor, SIN_TOPPING) ? '' : valor;
 }

@@ -11,6 +11,7 @@
 
 import { appendRow, ensureSheet, getSheetData, updateCell } from './googleSheets';
 import { HORARIO_DEFAULT, Horario, parsearHorario, serializarHorario } from './horario';
+import { TOPPINGS_CON_COSTO_DEFAULT } from './toppingIncluido';
 
 const HOJA = 'Ajustes_Tienda';
 const COLS = ['Clave', 'Valor', 'Nota', 'Fecha'];
@@ -46,6 +47,13 @@ export const CLAVE_HORARIO = 'HorarioTienda';
 export const CLAVE_DIRECCION = 'DireccionLocal';
 export const CLAVE_MAPA = 'MapaLocal';
 
+/**
+ * Toppings que nunca entran como el incluido del combo: se cobran siempre
+ * (la proteína). Si la fila no existe se usa la lista de siempre; si
+ * existe vacía, es que se decidió que ninguno se cobra.
+ */
+export const CLAVE_TOPPINGS_CON_COSTO = 'ToppingsConCosto';
+
 export interface Ajustes {
   topeArticuloGratis: number;
   ordenCategorias: string[];
@@ -53,6 +61,7 @@ export interface Ajustes {
   /** Dónde está el local y cómo llegar; ambos pueden ir vacíos */
   direccion: string;
   mapa: string;
+  toppingsConCosto: string[];
 }
 
 // Viven en su propio archivo para que la tienda y el panel las puedan usar
@@ -104,6 +113,12 @@ export async function leerAjustes(): Promise<Ajustes> {
       horario: parsearHorario(horarioCrudo),
       direccion: texto(CLAVE_DIRECCION),
       mapa: texto(CLAVE_MAPA),
+      toppingsConCosto: filas.some((f) => f.Clave === CLAVE_TOPPINGS_CON_COSTO)
+        ? texto(CLAVE_TOPPINGS_CON_COSTO)
+            .split(SEPARADOR)
+            .map((t) => t.trim())
+            .filter(Boolean)
+        : TOPPINGS_CON_COSTO_DEFAULT,
     };
     cache = { valor: ajustes, hasta: Date.now() + VIDA_CACHE_MS };
     return ajustes;
@@ -118,6 +133,7 @@ export async function leerAjustes(): Promise<Ajustes> {
       horario: HORARIO_DEFAULT,
       direccion: '',
       mapa: '',
+      toppingsConCosto: TOPPINGS_CON_COSTO_DEFAULT,
     };
   }
 }
@@ -138,6 +154,16 @@ export async function guardarOrdenCategorias(orden: string[]): Promise<void> {
     CLAVE_ORDEN_CATEGORIAS,
     limpio.join(SEPARADOR),
     'Orden de los grupos de alimentos en la tienda'
+  );
+}
+
+/** Guarda qué toppings se cobran siempre, aunque sean el primero. */
+export async function guardarToppingsConCosto(lista: string[]): Promise<void> {
+  const limpio = [...new Set(lista.map((t) => t.trim()).filter(Boolean))];
+  await guardarAjuste(
+    CLAVE_TOPPINGS_CON_COSTO,
+    limpio.join(SEPARADOR),
+    'Toppings que nunca van incluidos en el combo; siempre se cobran'
   );
 }
 

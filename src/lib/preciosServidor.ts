@@ -20,7 +20,13 @@ import {
 } from './opciones';
 import { claveLinea, nombreConTamano, parsearTamanos, precioDeTamano } from './tamanos';
 import { claveNombre } from './opcionesAgotadas';
-import { GRUPO_TOPPING, gruposConTopping, toppingsDeHoja } from './toppingIncluido';
+import { leerAjustes } from './ajustes';
+import {
+  extrasPermitidos,
+  GRUPO_TOPPING,
+  gruposConTopping,
+  toppingsDeHoja,
+} from './toppingIncluido';
 import {
   claveExtras,
   type Extra,
@@ -71,7 +77,10 @@ export async function validarItems(items: ItemEntrante[]): Promise<ResultadoVali
     return { ok: false, error: 'El carrito está vacío' };
   }
 
-  const productos = await getSheetData('Productos', { crudo: true });
+  const [productos, { toppingsConCosto }] = await Promise.all([
+    getSheetData('Productos', { crudo: true }),
+    leerAjustes(),
+  ]);
   const porId = new Map(productos.map((p) => [p.ID_Producto, p]));
   const menuToppings = toppingsDeHoja(
     productos.filter((p) => (p.Eliminado || '').toUpperCase() !== 'TRUE')
@@ -132,7 +141,8 @@ export async function validarItems(items: ItemEntrante[]): Promise<ResultadoVali
     // No cambian el precio, pero sí lo que hay que preparar, así que se
     // exigen igual que el tamaño.
     // Si la bebida elegida trae toppings, se pregunta cuál (va incluido).
-    const grupos = gruposConTopping(parsearOpciones(p.Opciones ?? ''), item.opciones, menuToppings);
+    const gruposBase = parsearOpciones(p.Opciones ?? '');
+    const grupos = gruposConTopping(gruposBase, item.opciones, menuToppings, toppingsConCosto);
     const revision = validarEleccion(grupos, item.opciones);
     if (!revision.ok) {
       return { ok: false, error: `${revision.error} en "${p.Nombre}"` };
@@ -155,7 +165,11 @@ export async function validarItems(items: ItemEntrante[]): Promise<ResultadoVali
 
     // Toppings: son opcionales, pero el que se pida tiene que existir y
     // se cobra con el precio de la hoja, no con el que mande el navegador.
-    const revisionExtras = validarExtras(parsearExtras(p.Extras ?? ''), item.extras);
+    // Del licuado del combo se pueden pedir más toppings pagando
+    const revisionExtras = validarExtras(
+      extrasPermitidos(parsearExtras(p.Extras ?? ''), gruposBase, eleccion, menuToppings),
+      item.extras
+    );
     if (!revisionExtras.ok) {
       return { ok: false, error: `${revisionExtras.error} en "${p.Nombre}"` };
     }

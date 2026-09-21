@@ -10,9 +10,12 @@ import {
   resumenEleccion,
 } from '@/lib/opciones';
 import {
+  extrasPermitidos,
   GRUPO_TOPPING,
   gruposConTopping,
+  limpiarExtras,
   limpiarTopping,
+  TOPPINGS_CON_COSTO_DEFAULT,
   toppingsDeHoja,
 } from '@/lib/toppingIncluido';
 import { claveExtras, type Extra, parsearExtras, precioExtras, resumenExtras } from '@/lib/extras';
@@ -145,6 +148,8 @@ export default function VentaPage() {
   const [topeArticulo, setTopeArticulo] = useState(35);
   /** Orden de los grupos, el mismo del panel y de la tienda */
   const [ordenCategorias, setOrdenCategorias] = useState<string[]>([]);
+  /** Toppings que nunca van incluidos en el combo (la proteína) */
+  const [toppingsConCosto, setToppingsConCosto] = useState<string[]>(TOPPINGS_CON_COSTO_DEFAULT);
 
   useEffect(() => {
     fetch('/api/admin/productos')
@@ -163,6 +168,7 @@ export default function VentaPage() {
       .then((d) => {
         if (d?.topeArticuloGratis) setTopeArticulo(d.topeArticuloGratis);
         setOrdenCategorias(d?.ordenCategorias || []);
+        if (Array.isArray(d?.toppingsConCosto)) setToppingsConCosto(d.toppingsConCosto);
       })
       .catch(() => {});
   }, []);
@@ -257,7 +263,12 @@ export default function VentaPage() {
   const agregar = (p: Producto, tamano?: string, eleccion?: Eleccion, extras?: Extra[]) => {
     setVentaOk(null);
     const tamanos = parsearTamanos(p.Tamanos ?? '');
-    const grupos = gruposConTopping(parsearOpciones(p.Opciones ?? ''), eleccion, menuToppings);
+    const grupos = gruposConTopping(
+      parsearOpciones(p.Opciones ?? ''),
+      eleccion,
+      menuToppings,
+      toppingsConCosto
+    );
     const extrasProducto = parsearExtras(p.Extras ?? '');
     // Hay decisiones que las toma el cliente: se abre el selector en vez
     // de adivinar el tamaño, el sabor o si quiere algún topping
@@ -580,7 +591,12 @@ export default function VentaPage() {
               </h3>
             </div>
 
-            {gruposConTopping(parsearOpciones(configurando.Opciones ?? ''), opcionesTemp, menuToppings).map((g) => {
+            {gruposConTopping(
+              parsearOpciones(configurando.Opciones ?? ''),
+              opcionesTemp,
+              menuToppings,
+              toppingsConCosto
+            ).map((g) => {
               const elegido = opcionesTemp[g.nombre];
               const abierto = !elegido || grupoAbierto === g.nombre;
 
@@ -620,11 +636,24 @@ export default function VentaPage() {
                         <button
                           key={o}
                           onClick={() => {
-                            setOpcionesTemp((prev) =>
-                              limpiarTopping(
-                                parsearOpciones(configurando.Opciones ?? ''),
-                                { ...prev, [g.nombre]: o },
-                                menuToppings
+                            const base = parsearOpciones(configurando.Opciones ?? '');
+                            const nueva = limpiarTopping(
+                              base,
+                              { ...opcionesTemp, [g.nombre]: o },
+                              menuToppings,
+                              toppingsConCosto
+                            );
+                            setOpcionesTemp(nueva);
+                            // Los toppings pagados de la bebida anterior ya no aplican
+                            setExtrasTemp((prev) =>
+                              limpiarExtras(
+                                prev,
+                                extrasPermitidos(
+                                  parsearExtras(configurando.Extras ?? ''),
+                                  base,
+                                  nueva,
+                                  menuToppings
+                                )
                               )
                             );
                             setGrupoAbierto(null);
@@ -647,13 +676,28 @@ export default function VentaPage() {
               );
             })}
 
-            {parsearExtras(configurando.Extras ?? '').length > 0 && (
-              <div>
+            {(() => {
+              const propios = parsearExtras(configurando.Extras ?? '');
+              const deBebida = extrasPermitidos(
+                propios,
+                parsearOpciones(configurando.Opciones ?? ''),
+                opcionesTemp,
+                menuToppings
+              ).slice(propios.length);
+              return [
+                { titulo: 'Extras', lista: propios },
+                // El segundo topping del licuado, y los que nunca van incluidos
+                { titulo: 'Más toppings para la bebida', lista: deBebida },
+              ];
+            })()
+              .filter((s) => s.lista.length > 0)
+              .map((s) => (
+              <div key={s.titulo}>
                 <p className="text-sm font-semibold text-neutral-800 mb-2">
-                  Extras <span className="font-normal text-neutral-600">(opcional)</span>
+                  {s.titulo} <span className="font-normal text-neutral-700">(opcional, con costo)</span>
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {parsearExtras(configurando.Extras ?? '').map((e) => {
+                  {s.lista.map((e) => {
                     const activo = extrasTemp.some((x) => x.nombre === e.nombre);
                     return (
                       <button
@@ -676,7 +720,7 @@ export default function VentaPage() {
                   })}
                 </div>
               </div>
-            )}
+            ))}
 
             {parsearTamanos(configurando.Tamanos ?? '').length > 0 && (
               <div>
@@ -707,7 +751,8 @@ export default function VentaPage() {
               const gruposT = gruposConTopping(
                 parsearOpciones(configurando.Opciones ?? ''),
                 opcionesTemp,
-                menuToppings
+                menuToppings,
+                toppingsConCosto
               );
               const faltan = gruposT
                 .filter((g) => !opcionesTemp[g.nombre])

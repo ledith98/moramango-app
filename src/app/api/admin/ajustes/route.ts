@@ -14,6 +14,7 @@ import {
   guardarAjuste,
   guardarHorario,
   guardarOrdenCategorias,
+  guardarToppingsConCosto,
   leerAjustes,
 } from '@/lib/ajustes';
 import { aMinutos, DIAS_NOMBRE } from '@/lib/horario';
@@ -36,7 +37,8 @@ export async function POST(req: NextRequest) {
   // Cómo estaban antes, para que la bitácora diga "de X a Y"
   const previos = await leerAjustes();
 
-  const { topeArticuloGratis, ordenCategorias, horario, direccion, mapa } = await req.json();
+  const { topeArticuloGratis, ordenCategorias, horario, direccion, mapa, toppingsConCosto } =
+    await req.json();
 
   if (topeArticuloGratis !== undefined) {
     const tope = parseFloat(topeArticuloGratis);
@@ -110,6 +112,13 @@ export async function POST(req: NextRequest) {
     await guardarAjuste(CLAVE_MAPA, url, 'Enlace para llegar al local');
   }
 
+  if (toppingsConCosto !== undefined) {
+    if (!Array.isArray(toppingsConCosto) || toppingsConCosto.some((t) => typeof t !== 'string')) {
+      return NextResponse.json({ error: 'Lista de toppings inválida' }, { status: 400 });
+    }
+    await guardarToppingsConCosto(toppingsConCosto);
+  }
+
   const ahora = await leerAjustes();
   const detalle = [
     topeArticuloGratis !== undefined && previos.topeArticuloGratis !== ahora.topeArticuloGratis
@@ -121,6 +130,9 @@ export async function POST(req: NextRequest) {
       ? `Dirección: ${ahora.direccion}`
       : '',
     mapa !== undefined && previos.mapa !== ahora.mapa ? 'Cambió el enlace del mapa' : '',
+    toppingsConCosto !== undefined
+      ? `Toppings que siempre se cobran: ${ahora.toppingsConCosto.join(', ') || 'ninguno'} (antes: ${previos.toppingsConCosto.join(', ') || 'ninguno'})`
+      : '',
   ]
     .filter(Boolean)
     .join(' · ');

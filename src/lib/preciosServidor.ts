@@ -20,6 +20,7 @@ import {
 } from './opciones';
 import { claveLinea, nombreConTamano, parsearTamanos, precioDeTamano } from './tamanos';
 import { claveNombre } from './opcionesAgotadas';
+import { GRUPO_TOPPING, gruposConTopping, toppingsDeHoja } from './toppingIncluido';
 import {
   claveExtras,
   type Extra,
@@ -72,6 +73,9 @@ export async function validarItems(items: ItemEntrante[]): Promise<ResultadoVali
 
   const productos = await getSheetData('Productos', { crudo: true });
   const porId = new Map(productos.map((p) => [p.ID_Producto, p]));
+  const menuToppings = toppingsDeHoja(
+    productos.filter((p) => (p.Eliminado || '').toUpperCase() !== 'TRUE')
+  );
 
   // Productos que hoy no se pueden preparar. Sirve para frenar un combo
   // que pide un jugo agotado: la tienda ya no deja elegirlo, pero quien
@@ -127,7 +131,8 @@ export async function validarItems(items: ItemEntrante[]): Promise<ResultadoVali
     // Opciones a elegir dentro del producto (queso, sabor de la bebida…).
     // No cambian el precio, pero sí lo que hay que preparar, así que se
     // exigen igual que el tamaño.
-    const grupos = parsearOpciones(p.Opciones ?? '');
+    // Si la bebida elegida trae toppings, se pregunta cuál (va incluido).
+    const grupos = gruposConTopping(parsearOpciones(p.Opciones ?? ''), item.opciones, menuToppings);
     const revision = validarEleccion(grupos, item.opciones);
     if (!revision.ok) {
       return { ok: false, error: `${revision.error} en "${p.Nombre}"` };
@@ -137,6 +142,9 @@ export async function validarItems(items: ItemEntrante[]): Promise<ResultadoVali
     // Lo elegido tiene que poder prepararse: de nada sirve aceptar un
     // Combo 1 con jugo de mango si el mango se acabó hace dos horas.
     for (const [grupo, valor] of Object.entries(eleccion)) {
+      // El topping no es un producto del menú: "Avena" el topping no se
+      // agota porque la avena de la tienda esté oculta.
+      if (grupo === GRUPO_TOPPING) continue;
       if (agotados.has(claveNombre(valor))) {
         return {
           ok: false,

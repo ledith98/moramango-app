@@ -43,6 +43,12 @@ import {
   resumenEleccion,
 } from '@/lib/opciones';
 import { claveExtras, type Extra, precioExtras, resumenExtras } from '@/lib/extras';
+import {
+  GRUPO_TOPPING,
+  gruposConTopping,
+  limpiarTopping,
+  type ToppingsDeProducto,
+} from '@/lib/toppingIncluido';
 
 interface ItemCarrito {
   id: string;
@@ -478,6 +484,12 @@ export default function Home() {
     return [...prev, nuevo()];
   };
 
+  /** Qué toppings trae cada bebida, para preguntarlo dentro del combo */
+  const menuToppings: ToppingsDeProducto[] = productos.map((p: any) => ({
+    nombre: p.nombre ?? '',
+    toppings: (p.extras ?? []).map((e: Extra) => e.nombre),
+  }));
+
   const agregarAlCarrito = (
     producto: any,
     tamano?: string,
@@ -493,7 +505,7 @@ export default function Home() {
     // se abre la ficha. Con los toppings no llevar ninguno es una respuesta
     // válida, pero hay que dejarle verlos antes de darla por hecha.
     const tamanos: Tamano[] = producto.tamanos ?? [];
-    const grupos: GrupoOpcion[] = producto.opciones ?? [];
+    const grupos: GrupoOpcion[] = gruposConTopping(producto.opciones ?? [], eleccion, menuToppings);
     const extrasProducto: Extra[] = producto.extras ?? [];
     if (
       (tamanos.length > 0 && !tamano) ||
@@ -866,8 +878,11 @@ export default function Home() {
       // recupera del nombre guardado. Si no se puede — porque ese sabor ya
       // no se vende o el pedido es de antes de que existieran las
       // opciones — se manda a elegirlo, en vez de servir otra cosa.
-      const grupos: GrupoOpcion[] = actual.opciones ?? [];
-      const eleccion = eleccionDesdeNombre(grupos, item.nombre);
+      const base: GrupoOpcion[] = actual.opciones ?? [];
+      const eleccionBase = eleccionDesdeNombre(base, item.nombre);
+      // Si la bebida trae toppings, también hay que saber cuál llevaba
+      const grupos = gruposConTopping(base, eleccionBase ?? {}, menuToppings);
+      const eleccion = eleccionBase && eleccionDesdeNombre(grupos, item.nombre);
       if (eleccion === null) {
         noDisponibles.push(item.nombre);
         continue;
@@ -1090,7 +1105,11 @@ export default function Home() {
 
   // Info del producto en detalle (para el modal)
   const tamanosDetalle: Tamano[] = productoDetalle?.tamanos ?? [];
-  const gruposDetalle: GrupoOpcion[] = productoDetalle?.opciones ?? [];
+  const gruposDetalle: GrupoOpcion[] = gruposConTopping(
+    productoDetalle?.opciones ?? [],
+    opcionesElegidas,
+    menuToppings
+  );
   const extrasDetalle: Extra[] = productoDetalle?.extras ?? [];
   /** Opciones que hoy no se pueden preparar (el jugo se acabó, etc.) */
   const agotadasDetalle: string[] = productoDetalle?.opcionesAgotadas ?? [];
@@ -2369,6 +2388,9 @@ export default function Home() {
                     <div key={g.nombre} className="mb-4">
                       <p className="text-sm font-semibold text-neutral-800 mb-2">
                         Elige {g.nombre.toLowerCase()}
+                        {g.nombre === GRUPO_TOPPING && (
+                          <span className="font-normal text-neutral-700"> (ya va incluido)</span>
+                        )}
                       </p>
                       <div className="flex flex-wrap gap-2">
                         {g.opciones.map((o) => {
@@ -2379,7 +2401,13 @@ export default function Home() {
                               key={o}
                               disabled={agotada}
                               onClick={() => {
-                                setOpcionesElegidas((prev) => ({ ...prev, [g.nombre]: o }));
+                                setOpcionesElegidas((prev) =>
+                                  limpiarTopping(
+                                    productoDetalle?.opciones ?? [],
+                                    { ...prev, [g.nombre]: o },
+                                    menuToppings
+                                  )
+                                );
                                 setGrupoAbierto(null);
                               }}
                               className={`px-3.5 py-2 rounded-xl border-2 text-sm font-semibold transition-colors ${

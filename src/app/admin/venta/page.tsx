@@ -9,6 +9,12 @@ import {
   parsearOpciones,
   resumenEleccion,
 } from '@/lib/opciones';
+import {
+  GRUPO_TOPPING,
+  gruposConTopping,
+  limpiarTopping,
+  toppingsDeHoja,
+} from '@/lib/toppingIncluido';
 import { claveExtras, type Extra, parsearExtras, precioExtras, resumenExtras } from '@/lib/extras';
 import { claveCategoria, posicionCategoria } from '@/lib/categorias';
 import { claveNombre } from '@/lib/opcionesAgotadas';
@@ -245,10 +251,13 @@ export default function VentaPage() {
         .sort((a, b) => (parseInt(a.Orden_Menu ?? '') || 9999) - (parseInt(b.Orden_Menu ?? '') || 9999)),
     }));
 
+  /** Qué toppings trae cada bebida, para preguntarlo dentro del combo */
+  const menuToppings = toppingsDeHoja(productos);
+
   const agregar = (p: Producto, tamano?: string, eleccion?: Eleccion, extras?: Extra[]) => {
     setVentaOk(null);
     const tamanos = parsearTamanos(p.Tamanos ?? '');
-    const grupos = parsearOpciones(p.Opciones ?? '');
+    const grupos = gruposConTopping(parsearOpciones(p.Opciones ?? ''), eleccion, menuToppings);
     const extrasProducto = parsearExtras(p.Extras ?? '');
     // Hay decisiones que las toma el cliente: se abre el selector en vez
     // de adivinar el tamaño, el sabor o si quiere algún topping
@@ -571,7 +580,7 @@ export default function VentaPage() {
               </h3>
             </div>
 
-            {parsearOpciones(configurando.Opciones ?? '').map((g) => {
+            {gruposConTopping(parsearOpciones(configurando.Opciones ?? ''), opcionesTemp, menuToppings).map((g) => {
               const elegido = opcionesTemp[g.nombre];
               const abierto = !elegido || grupoAbierto === g.nombre;
 
@@ -595,7 +604,12 @@ export default function VentaPage() {
 
               return (
                 <div key={g.nombre}>
-                  <p className="text-sm font-semibold text-neutral-800 mb-2">{g.nombre}</p>
+                  <p className="text-sm font-semibold text-neutral-800 mb-2">
+                    {g.nombre}
+                    {g.nombre === GRUPO_TOPPING && (
+                      <span className="font-normal text-neutral-700"> (va incluido, sin costo)</span>
+                    )}
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     {g.opciones.map((o) => {
                       const activo = elegido === o;
@@ -606,7 +620,13 @@ export default function VentaPage() {
                         <button
                           key={o}
                           onClick={() => {
-                            setOpcionesTemp((prev) => ({ ...prev, [g.nombre]: o }));
+                            setOpcionesTemp((prev) =>
+                              limpiarTopping(
+                                parsearOpciones(configurando.Opciones ?? ''),
+                                { ...prev, [g.nombre]: o },
+                                menuToppings
+                              )
+                            );
                             setGrupoAbierto(null);
                           }}
                           className={`px-3 py-2 rounded-xl border-2 text-sm font-semibold active:scale-95 ${
@@ -684,7 +704,12 @@ export default function VentaPage() {
             )}
 
             {(() => {
-              const faltan = parsearOpciones(configurando.Opciones ?? '')
+              const gruposT = gruposConTopping(
+                parsearOpciones(configurando.Opciones ?? ''),
+                opcionesTemp,
+                menuToppings
+              );
+              const faltan = gruposT
                 .filter((g) => !opcionesTemp[g.nombre])
                 .map((g) => g.nombre.toLowerCase());
               return (
@@ -697,7 +722,7 @@ export default function VentaPage() {
                     ? `Falta elegir ${enumerar(faltan)}`
                     : `Agregar a la venta${[
                         tamanoTemp,
-                        resumenEleccion(parsearOpciones(configurando.Opciones ?? ''), opcionesTemp),
+                        resumenEleccion(gruposT, opcionesTemp),
                         resumenExtras(extrasTemp),
                       ]
                         .filter(Boolean)

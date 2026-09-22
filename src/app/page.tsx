@@ -49,6 +49,7 @@ import {
   GRUPO_TOPPING,
   gruposConTopping,
   limpiarExtras,
+  esPorcionDoble,
   limpiarTopping,
   TOPPINGS_CON_COSTO_DEFAULT,
   type ToppingsDeProducto,
@@ -2605,6 +2606,7 @@ export default function Home() {
                           >
                             {activo ? '✓ ' : '+ '}
                             {e.nombre}
+                            {esPorcionDoble(e.nombre, opcionesElegidas) && ' (doble)'}
                             <span className="font-bold"> ${e.precio.toFixed(2)}</span>
                           </button>
                         );

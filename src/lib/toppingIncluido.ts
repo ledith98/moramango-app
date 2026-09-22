@@ -142,18 +142,22 @@ export function gruposConTopping(
 }
 
 /**
- * Los toppings de la bebida que se pueden agregar pagando: todos menos el
- * que ya va incluido. Aquí caen la proteína y el segundo topping.
+ * Los toppings de la bebida que se pueden agregar pagando: todos, incluso
+ * el que ya va incluido — pedirlo otra vez es la porción doble. Aquí caen
+ * la proteína y el segundo topping.
  */
 export function toppingsConCostoDeBebida(
   grupos: GrupoOpcion[],
   eleccion: Eleccion | undefined,
   productos: ToppingsDeProducto[]
 ): Extra[] {
-  const bebida = bebidaConToppings(grupos, eleccion, productos);
-  if (!bebida) return [];
+  return bebidaConToppings(grupos, eleccion, productos)?.toppings ?? [];
+}
+
+/** ¿Este extra es otra porción del topping que ya va incluido? */
+export function esPorcionDoble(nombre: string, eleccion: Eleccion | undefined): boolean {
   const incluido = eleccion?.[GRUPO_TOPPING] ?? '';
-  return bebida.toppings.filter((t) => !incluido || !mismo(t.nombre, incluido));
+  return !!incluido && mismo(nombre, incluido);
 }
 
 /**
@@ -165,13 +169,10 @@ export function extrasPermitidos(
   grupos: GrupoOpcion[],
   eleccion: Eleccion | undefined,
   productos: ToppingsDeProducto[],
-  /** Licuado suelto: el topping incluido no se vuelve a cobrar */
+  /** Licuado suelto: sus propios toppings, también el incluido (doble) */
   propiosIncluibles = false
 ): Extra[] {
-  if (propiosIncluibles) {
-    const incluido = eleccion?.[GRUPO_TOPPING] ?? '';
-    return propios.filter((t) => !incluido || !mismo(t.nombre, incluido));
-  }
+  if (propiosIncluibles) return propios;
   const deBebida = toppingsConCostoDeBebida(grupos, eleccion, productos).filter(
     (t) => !propios.some((p) => mismo(p.nombre, t.nombre))
   );

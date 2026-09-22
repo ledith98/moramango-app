@@ -72,7 +72,10 @@ export function consumoPorInsumo(
       // Renglones que solo aplican si se pidió cierto extra: la avena del
       // licuado se descuenta nada más cuando se pidió con avena.
       const pide = (receta.Extra_Requerido || '').trim();
-      if (pide && !(item.extras ?? []).some((e) => igual(e, pide))) continue;
+      // Cuántas veces se pidió: el incluido más uno cobrado es porción
+      // doble y se descuenta el doble.
+      const veces = pide ? (item.extras ?? []).filter((e) => igual(e, pide)).length : 1;
+      if (veces === 0) continue;
       const clave = normalizarNombre(receta.Ingrediente);
       if (!clave) continue;
 
@@ -80,7 +83,7 @@ export function consumoPorInsumo(
       // `factor` es cuántas porciones vale el tamaño vendido: un litro son
       // dos veces la receta de 500 ml. Sin tamaño vale 1 y no cambia nada.
       const porciones = item.factor && item.factor > 0 ? item.factor : 1;
-      const total = porUnidad * item.cantidad * porciones * factorMerma(receta.Merma_Pct);
+      const total = porUnidad * veces * item.cantidad * porciones * factorMerma(receta.Merma_Pct);
       if (total <= 0) continue;
 
       consumo.set(clave, (consumo.get(clave) || 0) + total);

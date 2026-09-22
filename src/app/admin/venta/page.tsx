@@ -14,6 +14,7 @@ import {
   GRUPO_TOPPING,
   gruposConTopping,
   limpiarExtras,
+  esPorcionDoble,
   limpiarTopping,
   TOPPINGS_CON_COSTO_DEFAULT,
   toppingsDeHoja,
@@ -746,7 +747,9 @@ export default function VentaPage() {
                         }`}
                       >
                         {activo ? '✓ ' : '+ '}
-                        {e.nombre} <span className="font-bold">${e.precio.toFixed(2)}</span>
+                        {e.nombre}
+                        {esPorcionDoble(e.nombre, opcionesTemp) && ' (doble)'}{' '}
+                        <span className="font-bold">${e.precio.toFixed(2)}</span>
                       </button>
                     );
                   })}

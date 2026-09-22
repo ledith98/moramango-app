@@ -17,6 +17,7 @@ import {
   limpiarTopping,
   TOPPINGS_CON_COSTO_DEFAULT,
   toppingsDeHoja,
+  toppingsPropios,
 } from '@/lib/toppingIncluido';
 import { claveExtras, type Extra, parsearExtras, precioExtras, resumenExtras } from '@/lib/extras';
 import { claveCategoria, posicionCategoria } from '@/lib/categorias';
@@ -267,6 +268,9 @@ export default function VentaPage() {
 
   /** Qué toppings trae cada bebida, para preguntarlo dentro del combo */
   const menuToppings = toppingsDeHoja(productos);
+  /** Licuado suelto: sus toppings, de los que uno va incluido */
+  const propiosDe = (p: Producto) =>
+    toppingsPropios(p.Categoría ?? '', parsearExtras(p.Extras ?? ''));
 
   const agregar = (p: Producto, tamano?: string, eleccion?: Eleccion, extras?: Extra[]) => {
     setVentaOk(null);
@@ -275,7 +279,8 @@ export default function VentaPage() {
       parsearOpciones(p.Opciones ?? ''),
       eleccion,
       menuToppings,
-      toppingsConCosto
+      toppingsConCosto,
+      propiosDe(p)
     );
     const extrasProducto = parsearExtras(p.Extras ?? '');
     // Hay decisiones que las toma el cliente: se abre el selector en vez
@@ -608,7 +613,8 @@ export default function VentaPage() {
               parsearOpciones(configurando.Opciones ?? ''),
               opcionesTemp,
               menuToppings,
-              toppingsConCosto
+              toppingsConCosto,
+              propiosDe(configurando)
             ).map((g) => {
               const elegido = opcionesTemp[g.nombre];
               const abierto = !elegido || grupoAbierto === g.nombre;
@@ -654,10 +660,12 @@ export default function VentaPage() {
                               base,
                               { ...opcionesTemp, [g.nombre]: o },
                               menuToppings,
-                              toppingsConCosto
+                              toppingsConCosto,
+                              propiosDe(configurando)
                             );
                             setOpcionesTemp(nueva);
-                            // Los toppings pagados de la bebida anterior ya no aplican
+                            // Los toppings pagados de la bebida anterior ya no
+                            // aplican, ni el que ahora va incluido
                             setExtrasTemp((prev) =>
                               limpiarExtras(
                                 prev,
@@ -665,7 +673,8 @@ export default function VentaPage() {
                                   parsearExtras(configurando.Extras ?? ''),
                                   base,
                                   nueva,
-                                  menuToppings
+                                  menuToppings,
+                                  propiosDe(configurando).length > 0
                                 )
                               )
                             );
@@ -697,8 +706,18 @@ export default function VentaPage() {
                 opcionesTemp,
                 menuToppings
               ).slice(propios.length);
+              // Licuado suelto: primero el incluido; los de costo aparecen
+              // después, sin el que ya va gratis
+              const esLicuado = propiosDe(configurando).length > 0;
               return [
-                { titulo: 'Extras', lista: propios },
+                {
+                  titulo: esLicuado ? '¿Otro topping?' : 'Extras',
+                  lista: !esLicuado
+                    ? propios
+                    : opcionesTemp[GRUPO_TOPPING]
+                    ? extrasPermitidos(propios, [], opcionesTemp, menuToppings, true)
+                    : [],
+                },
                 // El segundo topping del licuado, y los que nunca van incluidos
                 { titulo: 'Más toppings para la bebida', lista: deBebida },
               ];
@@ -765,7 +784,8 @@ export default function VentaPage() {
                 parsearOpciones(configurando.Opciones ?? ''),
                 opcionesTemp,
                 menuToppings,
-                toppingsConCosto
+                toppingsConCosto,
+                propiosDe(configurando)
               );
               const faltan = gruposT
                 .filter((g) => !opcionesTemp[g.nombre])

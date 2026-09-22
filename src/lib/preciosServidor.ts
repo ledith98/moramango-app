@@ -26,6 +26,7 @@ import {
   GRUPO_TOPPING,
   gruposConTopping,
   toppingsDeHoja,
+  toppingsPropios,
 } from './toppingIncluido';
 import {
   claveExtras,
@@ -142,7 +143,16 @@ export async function validarItems(items: ItemEntrante[]): Promise<ResultadoVali
     // exigen igual que el tamaño.
     // Si la bebida elegida trae toppings, se pregunta cuál (va incluido).
     const gruposBase = parsearOpciones(p.Opciones ?? '');
-    const grupos = gruposConTopping(gruposBase, item.opciones, menuToppings, toppingsConCosto);
+    const extrasHoja = parsearExtras(p.Extras ?? '');
+    // Licuado suelto: uno de sus toppings va incluido
+    const propios = toppingsPropios((p['Categoría'] ?? p.Categoria ?? '').toString(), extrasHoja);
+    const grupos = gruposConTopping(
+      gruposBase,
+      item.opciones,
+      menuToppings,
+      toppingsConCosto,
+      propios
+    );
     const revision = validarEleccion(grupos, item.opciones);
     if (!revision.ok) {
       return { ok: false, error: `${revision.error} en "${p.Nombre}"` };
@@ -167,7 +177,7 @@ export async function validarItems(items: ItemEntrante[]): Promise<ResultadoVali
     // se cobra con el precio de la hoja, no con el que mande el navegador.
     // Del licuado del combo se pueden pedir más toppings pagando
     const revisionExtras = validarExtras(
-      extrasPermitidos(parsearExtras(p.Extras ?? ''), gruposBase, eleccion, menuToppings),
+      extrasPermitidos(extrasHoja, gruposBase, eleccion, menuToppings, propios.length > 0),
       item.extras
     );
     if (!revisionExtras.ok) {

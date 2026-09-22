@@ -661,10 +661,10 @@ export default function AjustesPage() {
       {toppingsCombo.length > 0 && (
         <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5 space-y-4">
           <div>
-            <h2 className="font-bold text-neutral-900">🍓 Toppings del licuado en los combos</h2>
+            <h2 className="font-bold text-neutral-900">🍓 Toppings de los licuados</h2>
             <p className="text-sm text-neutral-700 mt-1">
-              El licuado del combo lleva <b>un topping incluido, sin costo</b>. Del segundo en
-              adelante se cobra. Marca aquí los que <b>nunca</b> van incluidos y siempre se cobran,
+              Cada licuado —solo o en combo, de 500 ml o de 1 litro— lleva{' '}
+              <b>un topping incluido, sin costo</b>. Del segundo en adelante se cobra. Marca aquí los que <b>nunca</b> van incluidos y siempre se cobran,
               aunque sean el primero.
             </p>
           </div>

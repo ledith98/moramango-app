@@ -52,6 +52,7 @@ import {
   limpiarTopping,
   TOPPINGS_CON_COSTO_DEFAULT,
   type ToppingsDeProducto,
+  toppingsPropios,
 } from '@/lib/toppingIncluido';
 
 interface ItemCarrito {
@@ -531,13 +532,14 @@ export default function Home() {
     // se abre la ficha. Con los toppings no llevar ninguno es una respuesta
     // válida, pero hay que dejarle verlos antes de darla por hecha.
     const tamanos: Tamano[] = producto.tamanos ?? [];
+    const extrasProducto: Extra[] = producto.extras ?? [];
     const grupos: GrupoOpcion[] = gruposConTopping(
       producto.opciones ?? [],
       eleccion,
       menuToppings,
-      toppingsConCosto
+      toppingsConCosto,
+      toppingsPropios(producto.categoria ?? '', extrasProducto)
     );
-    const extrasProducto: Extra[] = producto.extras ?? [];
     if (
       (tamanos.length > 0 && !tamano) ||
       (grupos.length > 0 && grupos.some((g) => !eleccion?.[g.nombre])) ||
@@ -665,7 +667,13 @@ export default function Home() {
       const p = productos.find((x) => x.id === item.id);
       if (!p) return true; // producto desconocido: lo resuelve el servidor
       const faltaTamano = (p.tamanos ?? []).length > 0 && !item.tamano;
-      const faltaElegir = (p.opciones ?? []).some((g: GrupoOpcion) => !item.opciones?.[g.nombre]);
+      const faltaElegir = gruposConTopping(
+        p.opciones ?? [],
+        item.opciones,
+        menuToppings,
+        toppingsConCosto,
+        toppingsPropios(p.categoria ?? '', p.extras ?? [])
+      ).some((g: GrupoOpcion) => !item.opciones?.[g.nombre]);
       return !faltaTamano && !faltaElegir;
     });
     if (limpio.length === carrito.length) return;
@@ -912,7 +920,13 @@ export default function Home() {
       const base: GrupoOpcion[] = actual.opciones ?? [];
       const eleccionBase = eleccionDesdeNombre(base, item.nombre);
       // Si la bebida trae toppings, también hay que saber cuál llevaba
-      const grupos = gruposConTopping(base, eleccionBase ?? {}, menuToppings, toppingsConCosto);
+      const grupos = gruposConTopping(
+        base,
+        eleccionBase ?? {},
+        menuToppings,
+        toppingsConCosto,
+        toppingsPropios(actual.categoria ?? '', actual.extras ?? [])
+      );
       const eleccion = eleccionBase && eleccionDesdeNombre(grupos, item.nombre);
       if (eleccion === null) {
         noDisponibles.push(item.nombre);
@@ -1137,13 +1151,27 @@ export default function Home() {
 
   // Info del producto en detalle (para el modal)
   const tamanosDetalle: Tamano[] = productoDetalle?.tamanos ?? [];
+  const extrasDetalle: Extra[] = productoDetalle?.extras ?? [];
+  /** Licuado suelto: sus toppings, de los que uno va incluido */
+  const propiosDetalle: Extra[] = toppingsPropios(productoDetalle?.categoria ?? '', extrasDetalle);
   const gruposDetalle: GrupoOpcion[] = gruposConTopping(
     productoDetalle?.opciones ?? [],
     opcionesElegidas,
     menuToppings,
-    toppingsConCosto
+    toppingsConCosto,
+    propiosDetalle
   );
-  const extrasDetalle: Extra[] = productoDetalle?.extras ?? [];
+  /**
+   * Los extras que se ofrecen con costo. En el licuado aparecen hasta
+   * después de elegir el incluido, y sin él: primero el que va gratis,
+   * luego "¿quieres otro?".
+   */
+  const extrasConCostoDetalle: Extra[] =
+    propiosDetalle.length === 0
+      ? extrasDetalle
+      : opcionesElegidas[GRUPO_TOPPING]
+      ? extrasPermitidos(extrasDetalle, [], opcionesElegidas, menuToppings, true)
+      : [];
   /** Del licuado del combo: el segundo topping y los que nunca van incluidos */
   const toppingsBebidaDetalle: Extra[] = extrasPermitidos(
     extrasDetalle,
@@ -2495,14 +2523,22 @@ export default function Home() {
                                   base,
                                   { ...opcionesElegidas, [g.nombre]: o },
                                   menuToppings,
-                                  toppingsConCosto
+                                  toppingsConCosto,
+                                  propiosDetalle
                                 );
                                 setOpcionesElegidas(nueva);
-                                // Los toppings pagados de la bebida anterior ya no aplican
+                                // Los toppings pagados de la bebida anterior ya no
+                                // aplican, ni el que ahora va incluido
                                 setExtrasElegidos((prev) =>
                                   limpiarExtras(
                                     prev,
-                                    extrasPermitidos(extrasDetalle, base, nueva, menuToppings)
+                                    extrasPermitidos(
+                                      extrasDetalle,
+                                      base,
+                                      nueva,
+                                      menuToppings,
+                                      propiosDetalle.length > 0
+                                    )
                                   )
                                 );
                                 setGrupoAbierto(null);
@@ -2531,14 +2567,22 @@ export default function Home() {
 
                 {/* Toppings: se pueden marcar varios o ninguno */}
                 {[
-                  { titulo: '¿Le agregamos algo?', lista: extrasDetalle },
-                  { titulo: 'Más toppings para tu bebida', lista: toppingsBebidaDetalle },
+                  {
+                    titulo: propiosDetalle.length > 0 ? '¿Quieres otro topping?' : '¿Le agregamos algo?',
+                    nota: propiosDetalle.length > 0 ? '(con costo)' : '(opcional)',
+                    lista: extrasConCostoDetalle,
+                  },
+                  {
+                    titulo: 'Más toppings para tu bebida',
+                    nota: '(con costo)',
+                    lista: toppingsBebidaDetalle,
+                  },
                 ]
                   .filter((s) => s.lista.length > 0)
                   .map((s) => (
                   <div key={s.titulo} className="mb-4">
                     <p className="text-sm font-semibold text-neutral-800 mb-2">
-                      {s.titulo} <span className="font-normal text-neutral-700">(opcional)</span>
+                      {s.titulo} <span className="font-normal text-neutral-700">{s.nota}</span>
                     </p>
                     <div className="flex flex-wrap gap-2">
                       {s.lista.map((e) => {

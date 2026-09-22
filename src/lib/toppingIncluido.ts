@@ -15,6 +15,10 @@
  *   - Del segundo topping en adelante, y los que siempre se cobran, se
  *     ofrecen aparte como "Más toppings" con su precio.
  *
+ * Lo mismo vale para el licuado que se vende solo (500 ml o 1 litro):
+ * sus propios toppings se preguntan igual, uno incluido y los demás con
+ * costo. Eso es lo que dice el menú: "Incluye 1 topping sin costo".
+ *
  * El incluido se arma como un grupo de opciones más, así que lo que ya
  * existe para las opciones (validar, el resumen del ticket, la llave del
  * renglón) lo trata igual sin cambios. Los de costo son extras normales.
@@ -45,6 +49,20 @@ export function toppingsDeHoja(filas: { Nombre?: string; Extras?: string }[]): T
 }
 
 const mismo = (a: string, b: string) => claveExtra(a) === claveExtra(b);
+
+/**
+ * Los toppings propios que pueden ir incluidos: solo en los licuados. El
+ * jamón del sándwich o las saladitas de la ensalada siguen siendo extras
+ * que se cobran todos.
+ */
+export function toppingsPropios(categoria: string, extras: Extra[]): Extra[] {
+  const cat = (categoria ?? '')
+    .toString()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  return cat.includes('licuado') ? extras : [];
+}
 
 /** ¿Este topping se cobra siempre, aunque sea el primero? */
 export function siempreConCosto(nombre: string, conCosto: string[]): boolean {
@@ -99,9 +117,16 @@ export function gruposConTopping(
   grupos: GrupoOpcion[],
   eleccion: Eleccion | undefined,
   productos: ToppingsDeProducto[],
-  conCosto: string[]
+  conCosto: string[],
+  /** Toppings del propio producto (licuado suelto); vacío en lo demás */
+  propios: Extra[] = []
 ): GrupoOpcion[] {
   if (grupos.some((g) => g.nombre === GRUPO_TOPPING)) return grupos;
+  if (propios.length > 0) {
+    const incluibles = propios.map((t) => t.nombre).filter((n) => !siempreConCosto(n, conCosto));
+    if (incluibles.length === 0) return grupos;
+    return [...grupos, { nombre: GRUPO_TOPPING, opciones: [...incluibles, SIN_TOPPING] }];
+  }
   const bebida = bebidaConToppings(grupos, eleccion, productos);
   if (!bebida) return grupos;
   const incluibles = bebida.toppings
@@ -139,8 +164,14 @@ export function extrasPermitidos(
   propios: Extra[],
   grupos: GrupoOpcion[],
   eleccion: Eleccion | undefined,
-  productos: ToppingsDeProducto[]
+  productos: ToppingsDeProducto[],
+  /** Licuado suelto: el topping incluido no se vuelve a cobrar */
+  propiosIncluibles = false
 ): Extra[] {
+  if (propiosIncluibles) {
+    const incluido = eleccion?.[GRUPO_TOPPING] ?? '';
+    return propios.filter((t) => !incluido || !mismo(t.nombre, incluido));
+  }
   const deBebida = toppingsConCostoDeBebida(grupos, eleccion, productos).filter(
     (t) => !propios.some((p) => mismo(p.nombre, t.nombre))
   );
@@ -156,11 +187,12 @@ export function limpiarTopping(
   grupos: GrupoOpcion[],
   eleccion: Eleccion,
   productos: ToppingsDeProducto[],
-  conCosto: string[]
+  conCosto: string[],
+  propios: Extra[] = []
 ): Eleccion {
   const actual = eleccion[GRUPO_TOPPING];
   if (!actual) return eleccion;
-  const grupo = gruposConTopping(grupos, eleccion, productos, conCosto).find(
+  const grupo = gruposConTopping(grupos, eleccion, productos, conCosto, propios).find(
     (g) => g.nombre === GRUPO_TOPPING
   );
   if (grupo?.opciones.some((o) => mismo(o, actual))) return eleccion;

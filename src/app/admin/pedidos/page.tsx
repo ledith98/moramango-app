@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { comisionDeVenta, METODOS_CON_COMISION } from '@/lib/comision';
 import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
+import { fechaCorta, textoProgramado } from '@/lib/programados';
 import {
   linkWhatsApp,
   mensajePagoRecibido,
@@ -27,6 +28,8 @@ interface Pedido {
   Fecha_Hora: string;
   Estado: string;
   Hora_Recoleccion: string;
+  /** Solo en encargos para otro día: "2026-09-22" */
+  Fecha_Recoleccion?: string;
   Total_Bruto: string;
   Total_Final: string;
   Notas_Pedido: string;
@@ -675,10 +678,23 @@ export default function PedidosPage() {
                   {p.Estado_Pago === 'Pagado' && <span title="Pagado">✅ </span>}
                   {/* Para cuándo lo quiere: es lo que decide el orden de
                       preparación cuando hay varios pedidos encimados. */}
-                  {p.Hora_Recoleccion && (
-                    <span className="text-amber-700" title="Hora de recolección">
-                      ⏰ {horaBonita(p.Hora_Recoleccion)}{' '}
+                  {/* Encargo: se levantó un día y se entrega otro. El día
+                      que toca prepararlo ya no dice "mañana", dice que es
+                      encargo, para que no se confunda con uno recién
+                      llegado. */}
+                  {p.Fecha_Recoleccion ? (
+                    <span className="text-violet-800" title="Encargo para otro día">
+                      {textoProgramado(p.Fecha_Recoleccion, p.Hora_Recoleccion) ||
+                        `📅 Encargo${
+                          p.Hora_Recoleccion ? ` · ${horaBonita(p.Hora_Recoleccion)}` : ''
+                        }`}{' '}
                     </span>
+                  ) : (
+                    p.Hora_Recoleccion && (
+                      <span className="text-amber-700" title="Hora de recolección">
+                        ⏰ {horaBonita(p.Hora_Recoleccion)}{' '}
+                      </span>
+                    )
                   )}
                   {p.Nombre_Cliente_Snap}
                 </p>

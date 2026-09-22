@@ -30,7 +30,7 @@
 
 import { anotar } from './bitacora';
 import { ensureColumn, getSheetData, updateCell } from './googleSheets';
-import { fechaHoyMTY, parsearFechaHora } from './pedidoFecha';
+import { fechaDeCelda, fechaHoyMTY, parsearFechaHora } from './pedidoFecha';
 
 /**
  * Cuánto espera antes de cerrar un pedido por su cuenta.
@@ -48,6 +48,29 @@ export interface ResultadoCierre {
   cerrados: { id: string; estadoAnterior: string }[];
   /** Los que NO se cerraron por no decir cómo se pagaron */
   sinMetodo: { id: string; total: number; estado: string }[];
+}
+
+/** "08:15", "8:15:00" o "8:15 p. m." en minutos del día. */
+function horaEnMinutos(texto: string): number {
+  const m = /(\d{1,2}):(\d{2})/.exec(texto);
+  if (!m) return 23 * 60 + 59;
+  let h = +m[1];
+  if (/p\.?\s*m/i.test(texto) && h < 12) h += 12;
+  return h * 60 + +m[2];
+}
+
+/** Minutos desde una fecha y hora ("2026-09-22", "08:15") hasta ahora. */
+function minutosDesdeFechaHora(fechaISO: string, hhmm: string): number {
+  const ahora = new Date().toLocaleString('sv-SE', { timeZone: 'America/Monterrey' });
+  const [f, h] = ahora.split(' ');
+  const ahoraMin =
+    Date.UTC(+f.slice(0, 4), +f.slice(5, 7) - 1, +f.slice(8, 10)) / 60000 +
+    +h.slice(0, 2) * 60 +
+    +h.slice(3, 5);
+  const suyoMin =
+    Date.UTC(+fechaISO.slice(0, 4), +fechaISO.slice(5, 7) - 1, +fechaISO.slice(8, 10)) / 60000 +
+    horaEnMinutos(hhmm);
+  return ahoraMin - suyoMin;
 }
 
 /** Minutos que lleva un pedido desde que entró, según el reloj de Monterrey. */
@@ -98,8 +121,19 @@ export async function cerrarPedidosPendientes(opciones: {
     const cuando = parsearFechaHora(p.Fecha_Hora);
     if (!cuando || cuando.fechaISO > hasta) continue;
 
+    /*
+      Un encargo para otro día se cuenta desde el día y la hora en que se
+      entrega, no desde que se levantó. Si no, el pedido de las 9 pm para
+      mañana a las 8 se cerraría solo esa misma noche, antes de hacerlo.
+    */
+    const entrega = fechaDeCelda(p.Fecha_Recoleccion);
+    const esEncargo = /^\d{4}-\d{2}-\d{2}$/.test(entrega);
+    if (esEncargo && entrega > hasta) continue;
+
     if (minutos > 0) {
-      const edad = minutosDesde(p.Fecha_Hora);
+      const edad = esEncargo
+        ? minutosDesdeFechaHora(entrega, (p.Hora_Recoleccion ?? '').toString().trim() || '23:59')
+        : minutosDesde(p.Fecha_Hora);
       if (edad === null || edad < minutos) continue;
     }
 

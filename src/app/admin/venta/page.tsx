@@ -25,6 +25,8 @@ import { TicketBotones } from '../TicketBotones';
 import type { DatosTicket } from '@/lib/ticket';
 import { esBeneficioReactivacion, montoReactivacion } from '@/lib/beneficioCliente';
 import { comisionDeVenta } from '@/lib/comision';
+import { HORARIO_DEFAULT, type Horario } from '@/lib/horario';
+import { diasDeEntrega } from '@/lib/programados';
 
 /** Fecha/hora en formato de ticket: 2026-07-14 16:25:30 (zona Monterrey) */
 const fechaTicket = () => {
@@ -122,6 +124,11 @@ export default function VentaPage() {
     un mes. Se sigue pudiendo cambiar para lo que se va a recoger después.
   */
   const [estado, setEstado] = useState('Entregado');
+  /** Horario del local, para saber cuál es "mañana" (el siguiente día que se abre) */
+  const [horario, setHorario] = useState<Horario>(HORARIO_DEFAULT);
+  /** Encargo para otro día: vacío = la venta es de hoy */
+  const [fechaEncargo, setFechaEncargo] = useState('');
+  const [horaEncargo, setHoraEncargo] = useState('');
   const [notas, setNotas] = useState('');
   const [registrando, setRegistrando] = useState(false);
   const [error, setError] = useState('');
@@ -169,6 +176,7 @@ export default function VentaPage() {
         if (d?.topeArticuloGratis) setTopeArticulo(d.topeArticuloGratis);
         setOrdenCategorias(d?.ordenCategorias || []);
         if (Array.isArray(d?.toppingsConCosto)) setToppingsConCosto(d.toppingsConCosto);
+        if (d?.horario?.dias?.length === 7) setHorario(d.horario);
       })
       .catch(() => {});
   }, []);
@@ -370,9 +378,12 @@ export default function VentaPage() {
         nombre: nombre.trim(),
         telefono: telefono.trim(),
         metodoPago,
-        estado,
+        // Un encargo todavía no se entrega
+        estado: fechaEncargo ? 'Recibido' : estado,
         notas: notas.trim(),
         items,
+        fechaRecoleccion: fechaEncargo || undefined,
+        horaRecoleccion: fechaEncargo ? horaEncargo : undefined,
         estadoPago,
         idUsuario: cliente?.id,
         beneficioCanjeado,
@@ -422,6 +433,8 @@ export default function VentaPage() {
     setEfectivoRecibido('');
     setYaPago(true);
     setEstado('Entregado');
+    setFechaEncargo('');
+    setHoraEncargo('');
     setNotas('');
     setCliente(null);
     setAplicarBeneficio(false);
@@ -1291,6 +1304,69 @@ export default function VentaPage() {
 
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 space-y-4">
           <h3 className="font-bold text-neutral-900">📝 Preparación</h3>
+          {/*
+            ¿Para cuándo? Lo normal es hoy. "Mañana" es un encargo: se
+            levanta ahora (aunque ya se haya cerrado) y se entrega el
+            siguiente día que se abre. No se cierra solo esta noche.
+          */}
+          {(() => {
+            const siguiente = diasDeEntrega(horario).find((d) => !d.esHoy);
+            if (!siguiente) return null;
+            const encargo = fechaEncargo === siguiente.fecha;
+            return (
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-neutral-700">¿Para cuándo es?</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => {
+                      setFechaEncargo('');
+                      setHoraEncargo('');
+                    }}
+                    className={`px-3 py-2 rounded-xl text-sm font-semibold text-left ${
+                      !encargo ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-800'
+                    }`}
+                  >
+                    Hoy
+                  </button>
+                  <button
+                    onClick={() => setFechaEncargo(siguiente.fecha)}
+                    className={`px-3 py-2 rounded-xl text-sm font-semibold text-left ${
+                      encargo ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-800'
+                    }`}
+                  >
+                    📅 {siguiente.etiqueta}
+                    <span className="block text-xs font-medium">{siguiente.detalle}</span>
+                  </button>
+                </div>
+                {encargo && (
+                  <>
+                    <label className="text-sm font-semibold text-neutral-700 block pt-1">
+                      ¿A qué hora pasa?
+                    </label>
+                    <select
+                      value={horaEncargo}
+                      onChange={(e) => setHoraEncargo(e.target.value)}
+                      className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-sm text-neutral-900 focus:outline-none focus:border-black"
+                    >
+                      <option value="">Al abrir ({siguiente.apertura})</option>
+                      {siguiente.horarios
+                        .filter((h) => h.etiqueta !== siguiente.apertura)
+                        .map((h) => (
+                        <option key={h.valor} value={h.valor}>
+                          {h.etiqueta}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-neutral-800">
+                      Queda como <b>Recibido</b> para {siguiente.etiqueta.toLowerCase()}{' '}
+                      {siguiente.detalle}. Sale en Pedidos ese día con la etiqueta 📅.
+                    </p>
+                  </>
+                )}
+              </div>
+            );
+          })()}
+          {!fechaEncargo && (
           <div className="space-y-1.5">
             <label className="text-sm font-semibold text-neutral-700">
               ¿Ya se lo llevó?
@@ -1304,7 +1380,7 @@ export default function VentaPage() {
                   key={e}
                   onClick={() => setEstado(e)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                    estado === e ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-600'
+                    estado === e ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-800'
                   }`}
                 >
                   {e}
@@ -1312,6 +1388,7 @@ export default function VentaPage() {
               ))}
             </div>
           </div>
+          )}
 
           <div className="space-y-1.5">
             <label className="text-sm font-semibold text-neutral-700">Notas</label>

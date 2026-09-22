@@ -4,6 +4,7 @@ import { normalizarUrlImagen } from '@/lib/imagenes';
 import { leerAjustes, posicionCategoria } from '@/lib/ajustes';
 import { estadoTienda } from '@/lib/horario';
 import { horariosDisponibles } from '@/lib/recoleccion';
+import { diasDeEntrega } from '@/lib/programados';
 import { parsearTamanos } from '@/lib/tamanos';
 import { parsearOpciones } from '@/lib/opciones';
 import { agotadasDeGrupos, claveNombre, comboImposible } from '@/lib/opcionesAgotadas';
@@ -119,6 +120,9 @@ export async function GET() {
       toppingsConCosto,
       // A qué horas puede pasar hoy por su pedido
       horariosRecoleccion: horariosDisponibles(horario),
+      // Para qué días se puede pedir: hoy (si queda horario) y el
+      // siguiente día que se abra, para dejar encargado de noche
+      diasEntrega: diasDeEntrega(horario),
     });
   } catch (error) {
     console.error('Error en /api/productos:', error);

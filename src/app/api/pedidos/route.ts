@@ -20,7 +20,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/authOptions';
 import { appendRow, ensureColumn, findRow, getSheetData, updateCell } from '@/lib/googleSheets';
 import { actualizarLealtad, beneficioVigente, descuentoPorBeneficio } from '@/lib/lealtad';
-import { parsearFechaHora } from '@/lib/pedidoFecha';
+import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 import { baseUrlDesdeRequest, crearPreferencia, mpConfigurado } from '@/lib/mercadoPago';
 import { METODO_PAGO_EN_LINEA } from '@/lib/negocio';
 import { enviarTelegram } from '@/lib/telegram';
@@ -30,6 +30,7 @@ import { puedePedir } from '@/lib/topePedidos';
 import { leerAjustes } from '@/lib/ajustes';
 import { estadoTienda } from '@/lib/horario';
 import { horaBonita, horaValida } from '@/lib/recoleccion';
+import { entregaValida, textoProgramado } from '@/lib/programados';
 import { validarItems } from '@/lib/preciosServidor';
 
 /**
@@ -99,7 +100,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Debes iniciar sesión' }, { status: 401 });
   }
 
-  const { items, notas, horaRecoleccion, beneficioCanjeado, pagoEnLinea, metodoPago } = await req.json();
+  const { items, notas, horaRecoleccion, beneficioCanjeado, pagoEnLinea, metodoPago, fechaRecoleccion } =
+    await req.json();
   // Desde la tienda el cliente solo puede elegir Transferencia (Efectivo/
   // Terminal son del punto de venta en mostrador).
   const esTransferencia = metodoPago === 'Transferencia';
@@ -112,21 +114,37 @@ export async function POST(req: NextRequest) {
   // pero eso vive en el celular del cliente: quien deje la página abierta
   // desde antes de cerrar, o llame a la API por su cuenta, se frena aquí.
   const { horario } = await leerAjustes();
-  const estado = estadoTienda(horario);
-  if (!estado.abierta) {
-    return NextResponse.json(
-      { error: `Ahorita no estamos recibiendo pedidos. ${estado.mensaje}`.trim(), cerrado: true },
-      { status: 409 }
-    );
-  }
-
-  // La hora de recolección se revisa contra el horario real: quien deje la
-  // pantalla abierta un rato tendría opciones que ya pasaron.
-  if (!horaValida(horario, horaRecoleccion ?? '')) {
-    return NextResponse.json(
-      { error: 'Esa hora ya no está disponible. Vuelve a elegir una.' },
-      { status: 400 }
-    );
+  /*
+    Con fecha elegida, el pedido puede entrar aunque ahorita esté cerrado:
+    es un encargo para la siguiente jornada (o para hoy más tarde, si
+    todavía no se abre). Sin fecha es un pedido de los de siempre, para
+    ya, y sí necesita la tienda abierta.
+  */
+  const fechaEntrega = (fechaRecoleccion ?? '').toString().trim();
+  const programado = !!fechaEntrega && fechaEntrega !== fechaHoyMTY();
+  if (fechaEntrega) {
+    if (!entregaValida(horario, fechaEntrega, horaRecoleccion ?? '')) {
+      return NextResponse.json(
+        { error: 'Ese día u hora ya no está disponible. Vuelve a elegir para cuándo.' },
+        { status: 400 }
+      );
+    }
+  } else {
+    const estado = estadoTienda(horario);
+    if (!estado.abierta) {
+      return NextResponse.json(
+        { error: `Ahorita no estamos recibiendo pedidos. ${estado.mensaje}`.trim(), cerrado: true },
+        { status: 409 }
+      );
+    }
+    // La hora de recolección se revisa contra el horario real: quien deje
+    // la pantalla abierta un rato tendría opciones que ya pasaron.
+    if (!horaValida(horario, horaRecoleccion ?? '')) {
+      return NextResponse.json(
+        { error: 'Esa hora ya no está disponible. Vuelve a elegir una.' },
+        { status: 400 }
+      );
+    }
   }
 
   const usuario = session.user as any;
@@ -218,6 +236,15 @@ export async function POST(req: NextRequest) {
     '',
   ]);
 
+  // 1.5 Para qué día es. Columna aparte y solo cuando NO es hoy: así los
+  // pedidos de siempre quedan igual y el cierre de la noche sabe cuáles
+  // todavía no toca entregar. El apóstrofo lo guarda como texto; sin él
+  // Sheets lo convierte en número de serie.
+  if (programado) {
+    const colFecha = await ensureColumn('PEDIDOS', 'Fecha_Recoleccion');
+    await updateCell('PEDIDOS', filaPedido, colFecha, `'${fechaEntrega}`);
+  }
+
   // 2. Filas en DT PEDIDOS
   const dtExistentes = await getSheetData('DT PEDIDOS');
   for (let i = 0; i < itemsValidados.length; i++) {
@@ -254,8 +281,9 @@ export async function POST(req: NextRequest) {
   await moverStockDePedido(idPedido, 'apartar');
 
   // Un pedido de la app también inaugura el día: si el primero llega por
-  // ahí, la caja igual tiene que quedar abierta para poder cortarla.
-  await abrirCajaSiHaceFalta();
+  // ahí, la caja igual tiene que quedar abierta para poder cortarla. Un
+  // encargo para mañana no: de noche abriría una caja que ya se cortó.
+  if (!programado) await abrirCajaSiHaceFalta();
 
   // 4. Aviso a Telegram (si está configurado). Se hace await para que el
   // envío alcance a completarse antes de que termine la función en Vercel,
@@ -308,7 +336,11 @@ export async function POST(req: NextRequest) {
         `🛒 ${numArticulos} artículo${numArticulos === 1 ? '' : 's'} — <b>$${totalFinal.toFixed(2)}</b>\n` +
         `${formaPagoTexto}\n` +
         // Lo primero que necesita saber quien prepara: para cuándo es
-        (cuando ? `⏰ <b>Para las ${cuando}</b>\n` : '') +
+        (programado
+          ? `<b>${textoProgramado(fechaEntrega, horaRecoleccion ?? '')}</b> (encargo)\n`
+          : cuando
+          ? `⏰ <b>Para las ${cuando}</b>\n`
+          : '') +
         `\n` +
         `${listaItems}` +
         (notas?.trim() ? `\n\n📝 ${notas.trim()}` : '')

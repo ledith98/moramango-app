@@ -13,7 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSheetData, findRow, updateCell, ensureColumn } from '@/lib/googleSheets';
-import { fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
+import { fechaDeCelda, fechaHoyMTY, parsearFechaHora } from '@/lib/pedidoFecha';
 import { METODO_PAGO_EN_LINEA, normalizarMetodoPago } from '@/lib/negocio';
 import { anotar } from '@/lib/bitacora';
 import { cerrarPedidosPendientes, MINUTOS_PARA_CERRAR_SOLO } from '@/lib/cierreDia';
@@ -121,8 +121,21 @@ export async function GET(req: NextRequest) {
   }
 
   const delDia = pedidos
-    .map((p) => ({ pedido: p, info: parsearFechaHora(p.Fecha_Hora) }))
-    .filter(({ info }) => info && info.fechaISO >= desde && info.fechaISO <= hasta)
+    .map((p) => ({
+      pedido: p,
+      info: parsearFechaHora(p.Fecha_Hora),
+      entrega: /^\d{4}-\d{2}-\d{2}$/.test(fechaDeCelda(p.Fecha_Recoleccion))
+        ? fechaDeCelda(p.Fecha_Recoleccion)
+        : '',
+    }))
+    // Un encargo sale el día que se levantó Y el día que se entrega: el
+    // primero para saber que entró, el segundo para prepararlo.
+    .filter(
+      ({ info, entrega }) =>
+        info &&
+        ((info.fechaISO >= desde && info.fechaISO <= hasta) ||
+          (entrega && entrega >= desde && entrega <= hasta))
+    )
     .filter(({ pedido }) => !estado || pedido.Estado === estado)
     .filter(({ pedido }) => {
       if (!metodo) return true;
@@ -130,8 +143,9 @@ export async function GET(req: NextRequest) {
       return metodo === 'Sin registrar' ? !m : m === metodo;
     })
     .sort((a, b) => (b.info!.timestamp - a.info!.timestamp))
-    .map(({ pedido, info }) => ({
+    .map(({ pedido, info, entrega }) => ({
       ...pedido,
+      Fecha_Recoleccion: entrega,
       // Ventas locales no tienen usuario: cae al teléfono capturado en mostrador
       Telefono: telefonoPorUsuario.get(pedido.ID_Usuario) || pedido.Telefono_Cliente || '',
       HoraLegible: info!.horaLegible,

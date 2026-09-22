@@ -22,6 +22,8 @@ import { abrirCajaSiHaceFalta } from '@/lib/caja';
 import { moverStockDePedido } from '@/lib/stock';
 import { enviarTelegram } from '@/lib/telegram';
 import { validarItems } from '@/lib/preciosServidor';
+import { entregaValida, textoProgramado } from '@/lib/programados';
+import { fechaHoyMTY } from '@/lib/pedidoFecha';
 
 const ESTADOS_VALIDOS = [
   'Recibido',
@@ -66,7 +68,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
-  const { nombre, telefono, metodoPago, estado, notas, items, estadoPago, idUsuario, beneficioCanjeado, efectivoRecibido, cambio, articuloGratisId, descuentoManual, motivoDescuento, yaPago } =
+  const { nombre, telefono, metodoPago, estado, notas, items, estadoPago, idUsuario, beneficioCanjeado, efectivoRecibido, cambio, articuloGratisId, descuentoManual, motivoDescuento, yaPago, fechaRecoleccion, horaRecoleccion } =
     await req.json();
 
   if (!nombre || typeof nombre !== 'string' || !nombre.trim()) {
@@ -92,7 +94,24 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
-  const estadoInicial = estado || 'Recibido';
+  /*
+    Encargo para otro día: se levanta hoy y se entrega en la fecha
+    elegida. Nace en "Recibido" aunque la pantalla diga otra cosa: marcar
+    entregado algo que todavía no se hace es justo lo que no debe pasar.
+  */
+  const fechaEntrega = (fechaRecoleccion ?? '').toString().trim();
+  const horaEntrega = (horaRecoleccion ?? '').toString().trim();
+  const programado = !!fechaEntrega && fechaEntrega !== fechaHoyMTY();
+  if (programado) {
+    const { horario } = await leerAjustes();
+    if (!entregaValida(horario, fechaEntrega, horaEntrega)) {
+      return NextResponse.json(
+        { error: 'Ese día u hora no está disponible para el encargo. Vuelve a elegir.' },
+        { status: 400 }
+      );
+    }
+  }
+  const estadoInicial = programado ? 'Recibido' : estado || 'Recibido';
   if (!ESTADOS_VALIDOS.includes(estadoInicial)) {
     return NextResponse.json({ error: 'Estado inválido' }, { status: 400 });
   }
@@ -245,7 +264,7 @@ export async function POST(req: NextRequest) {
     nombre.trim(),                            // Nombre_Cliente_Snap
     fechaStr,
     estadoInicial,
-    '',                                       // Hora_Recoleccion
+    programado ? horaEntrega : '',            // Hora_Recoleccion
     totalBruto,                               // Total_Bruto
     canjea,                                   // Beneficio_Canjeado
     descuento,                                // Descuento_Monto
@@ -264,6 +283,19 @@ export async function POST(req: NextRequest) {
   ]);
 
   // Columnas extra (se crean solas la primera vez)
+  if (programado) {
+    // Con apóstrofo para que Sheets lo guarde como texto y no como número
+    const colFecha = await ensureColumn('PEDIDOS', 'Fecha_Recoleccion');
+    await updateCell('PEDIDOS', filaPedido, colFecha, `'${fechaEntrega}`);
+    try {
+      await enviarTelegram(
+        `📝 <b>Encargo ${idPedido}</b> (mostrador)\n👤 ${nombre.trim() || 'Cliente'}\n` +
+          `<b>${textoProgramado(fechaEntrega, horaEntrega)}</b>\n💲 $${total.toFixed(2)}`
+      );
+    } catch (error) {
+      console.error('Error avisando del encargo:', error);
+    }
+  }
   const colMetodo = await ensureColumn('PEDIDOS', 'Metodo_Pago');
   await updateCell('PEDIDOS', filaPedido, colMetodo, metodoPago);
 

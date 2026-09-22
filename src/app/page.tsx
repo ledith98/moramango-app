@@ -34,6 +34,7 @@ const parsearTelefono = (telefonoCompleto: string): { lada: string; numero: stri
 };
 
 import { claveLinea, precioDeTamano, precioDesde, type Tamano } from '@/lib/tamanos';
+import type { DiaDeEntrega } from '@/lib/programados';
 import {
   claveEleccion,
   type Eleccion,
@@ -247,6 +248,10 @@ export default function Home() {
   });
   /** Hora a la que el cliente pasará por su pedido. Vacío = lo antes posible. */
   const [horaRecoger, setHoraRecoger] = useState('');
+  /** Días en que se puede pedir; hoy y el siguiente que se abra */
+  const [diasEntrega, setDiasEntrega] = useState<DiaDeEntrega[]>([]);
+  /** Día elegido para recoger; vacío = el primero de la lista */
+  const [fechaEntrega, setFechaEntrega] = useState('');
   /** Dónde recoger. Vacío mientras no se capture en Ajustes. */
   const [local, setLocal] = useState<{ direccion: string; mapa: string }>({
     direccion: '',
@@ -265,6 +270,7 @@ export default function Home() {
         if (data.tienda) setTienda(data.tienda);
         if (data.local) setLocal(data.local);
         if (data.horariosRecoleccion) setHorariosRecoleccion(data.horariosRecoleccion);
+        if (Array.isArray(data.diasEntrega)) setDiasEntrega(data.diasEntrega);
         setCargando(false);
       })
       .catch(() => setCargando(false));
@@ -489,6 +495,20 @@ export default function Home() {
     }
     return [...prev, nuevo()];
   };
+
+  /**
+   * El día para el que se está pidiendo. Con la tienda abierta arranca en
+   * hoy; cerrada, en el primer día posible (hoy más tarde o mañana).
+   */
+  const diaElegido: DiaDeEntrega | undefined =
+    diasEntrega.find((d) => d.fecha === fechaEntrega) ??
+    (tienda.abierta ? diasEntrega.find((d) => d.esHoy) : undefined) ??
+    diasEntrega[0];
+  /** Cerrado, pero se puede dejar encargado */
+  const puedeEncargar = !tienda.abierta && diasEntrega.length > 0;
+  const sePuedePedir = tienda.abierta || puedeEncargar;
+  /** Hoy con la tienda abierta: se prepara en cuanto entra */
+  const esParaYa = !!diaElegido?.esHoy && tienda.abierta;
 
   /** Qué toppings trae cada bebida, para preguntarlo dentro del combo */
   const menuToppings: ToppingsDeProducto[] = productos.map((p: any) => ({
@@ -971,7 +991,7 @@ export default function Home() {
   };
 
   const confirmarOrden = async () => {
-    if (carrito.length === 0 || !tienda.abierta) return;
+    if (carrito.length === 0 || !sePuedePedir) return;
 
     if (!session) {
       sessionStorage.setItem('moramango_login_redirect', 'confirmar');
@@ -996,6 +1016,7 @@ export default function Home() {
           })),
           notas: notas.trim(),
           horaRecoleccion: horaRecoger,
+          fechaRecoleccion: diaElegido?.fecha ?? '',
           beneficioCanjeado: beneficioCanjeadoStr,
           pagoEnLinea: formaPago === 'linea',
           metodoPago: formaPago === 'transferencia' ? 'Transferencia' : '',
@@ -1213,7 +1234,10 @@ export default function Home() {
                 <div>
                   <p className="font-bold text-amber-900 text-sm">Ahorita estamos cerrados</p>
                   <p className="text-xs text-amber-900 mt-0.5 leading-relaxed">
-                    {tienda.mensaje} Puedes ver el menú y dejar listo tu carrito.
+                    {tienda.mensaje}{' '}
+                    {puedeEncargar
+                      ? 'Puedes dejar tu pedido encargado desde ahora.'
+                      : 'Puedes ver el menú y dejar listo tu carrito.'}
                   </p>
                 </div>
               </div>
@@ -1560,8 +1584,41 @@ export default function Home() {
 
               {/* ¿A qué hora pasa por él? Descarga la hora pico: se prepara
                   con tiempo en vez de tener a todos esperando parados. */}
-              {horariosRecoleccion.length > 0 && (
+              {diaElegido && (
                 <div className="bg-white rounded-2xl p-4 border border-neutral-100 shadow-sm">
+                  {/* ¿Para cuándo? Hoy, o dejarlo encargado para el
+                      siguiente día que abrimos (de noche, ya cerrado). */}
+                  {(diasEntrega.length > 1 || !diaElegido.esHoy) && (
+                    <>
+                      <label className="text-sm font-semibold text-neutral-700 block mb-2">
+                        ¿Para cuándo?
+                      </label>
+                      <div className="grid grid-cols-2 gap-2 mb-3">
+                        {diasEntrega.map((d) => {
+                          const activo = d.fecha === diaElegido.fecha;
+                          return (
+                            <button
+                              key={d.fecha}
+                              onClick={() => {
+                                setFechaEntrega(d.fecha);
+                                setHoraRecoger('');
+                              }}
+                              className={`px-3 py-2.5 rounded-xl border-2 text-left transition-colors ${
+                                activo
+                                  ? 'border-marron bg-marron/10 text-neutral-900'
+                                  : 'border-neutral-200 bg-white text-neutral-800'
+                              }`}
+                            >
+                              <span className="block text-sm font-bold">{d.etiqueta}</span>
+                              <span className="block text-xs font-medium text-neutral-700">
+                                {d.detalle}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
                   <label className="text-sm font-semibold text-neutral-700 block mb-2">
                     ¿A qué hora pasas por él?
                   </label>
@@ -1574,9 +1631,13 @@ export default function Home() {
                           : 'border-neutral-200 bg-white text-neutral-800'
                       }`}
                     >
-                      Lo antes posible
+                      {esParaYa ? 'Lo antes posible' : `Al abrir (${diaElegido.apertura})`}
                     </button>
-                    {horariosRecoleccion.map((h) => (
+                    {(esParaYa
+                      ? horariosRecoleccion
+                      : // "Al abrir" ya es la primera hora: no se repite
+                        diaElegido.horarios.filter((h) => h.etiqueta !== diaElegido.apertura)
+                    ).map((h) => (
                       <button
                         key={h.valor}
                         onClick={() => setHoraRecoger(h.valor)}
@@ -1591,9 +1652,14 @@ export default function Home() {
                     ))}
                   </div>
                   <p className="text-xs text-neutral-700 mt-2">
+                    {!diaElegido.esHoy
+                      ? `Queda encargado para ${diaElegido.etiqueta.toLowerCase()} ${diaElegido.detalle}.`
+                      : ''}
                     {horaRecoger
-                      ? 'Lo tendremos listo a esa hora.'
-                      : 'Lo preparamos en cuanto entre tu pedido.'}
+                      ? ' Lo tendremos listo a esa hora.'
+                      : esParaYa
+                      ? 'Lo preparamos en cuanto entre tu pedido.'
+                      : ' Lo tendremos listo en cuanto abramos.'}
                   </p>
                 </div>
               )}
@@ -1715,23 +1781,27 @@ export default function Home() {
                 <div className="mb-3 bg-amber-50 p-3 rounded-xl border border-amber-300 flex gap-2.5 items-start">
                   <span className="text-base leading-none mt-0.5">🕐</span>
                   <p className="text-xs text-amber-900 font-semibold leading-relaxed">
-                    Ahorita estamos cerrados. {tienda.mensaje} Tu carrito se guarda para cuando
-                    abramos.
+                    Ahorita estamos cerrados. {tienda.mensaje}{' '}
+                    {puedeEncargar
+                      ? `Tu pedido queda encargado para ${diaElegido?.etiqueta.toLowerCase()} ${diaElegido?.detalle}.`
+                      : 'Tu carrito se guarda para cuando abramos.'}
                   </p>
                 </div>
               )}
 
               <button
                 onClick={confirmarOrden}
-                disabled={enviando || !tienda.abierta}
+                disabled={enviando || !sePuedePedir}
                 className="w-full bg-marron text-white font-bold text-base py-3.5 rounded-2xl active:scale-95 transition-transform shadow-md flex items-center justify-center gap-2 disabled:opacity-60 disabled:scale-100"
               >
-                {!tienda.abierta
+                {!sePuedePedir
                   ? 'Cerrado por ahora'
                   : enviando
                     ? 'Enviando...'
                     : session
-                      ? 'Confirmar Orden'
+                      ? diaElegido && !diaElegido.esHoy
+                        ? `Encargar para ${diaElegido.etiqueta.toLowerCase()}`
+                        : 'Confirmar Orden'
                       : 'Iniciar sesión para pedir'}
               </button>
             </div>

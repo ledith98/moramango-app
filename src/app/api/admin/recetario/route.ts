@@ -288,6 +288,9 @@ export async function GET() {
       isrPct: ajustes.isrPct,
       objetivoInsumoPct: ajustes.objetivoInsumoPct,
     },
+    // El mismo orden de grupos que la tienda, para que el recetario no
+    // lleve los productos en otro orden que el menú
+    ordenCategorias: ajustes.ordenCategorias,
   });
 }
 

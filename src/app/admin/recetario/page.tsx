@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { precioLegible } from '@/lib/precioInsumo';
+import { claveCategoria, posicionCategoria } from '@/lib/categorias';
 import {
   desglosar,
   ISR_DEFAULT,
@@ -94,6 +95,10 @@ export default function RecetarioPage() {
   });
   /** Las recetas que ya no se preparan, guardadas aparte */
   const [verOcultas, setVerOcultas] = useState(false);
+  /** El orden de los grupos, el mismo de la tienda */
+  const [ordenCategorias, setOrdenCategorias] = useState<string[]>([]);
+  /** Grupos recogidos, para poder ver solo el que se está trabajando */
+  const [gruposCerrados, setGruposCerrados] = useState<string[]>([]);
 
   // Alta de un insumo dentro de una receta
   const [nuevoInsumo, setNuevoInsumo] = useState('');
@@ -113,6 +118,7 @@ export default function RecetarioPage() {
     setItems(data.items ?? []);
     setInsumos(data.insumos ?? []);
     if (data.impuestos) setImpuestos(data.impuestos);
+    if (Array.isArray(data.ordenCategorias)) setOrdenCategorias(data.ordenCategorias);
     setCargando(false);
   }, []);
 
@@ -204,6 +210,31 @@ export default function RecetarioPage() {
     await llamar('PATCH', { id: l.id, cantidad: cant });
   }
 
+  /**
+   * Cambia de grupo un producto.
+   *
+   * Es la MISMA categoría del menú, no una aparte: mantener dos
+   * clasificaciones para lo mismo termina con una al día y la otra
+   * mintiendo. Se guarda por el endpoint de productos, que es su dueño.
+   */
+  async function cambiarCategoria(p: ProductoReceta, categoria: string) {
+    const limpia = categoria.trim();
+    if (!limpia || limpia === p.categoria) return;
+    setOcupado(true);
+    setError('');
+    const res = await fetch('/api/admin/productos', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idProducto: p.id, categoria: limpia }),
+    });
+    setOcupado(false);
+    if (!res.ok) {
+      setError('No se pudo cambiar el grupo');
+      return;
+    }
+    await cargar();
+  }
+
   /** Guarda la receta pero la saca de la lista: ese producto ya no se hace. */
   async function ocultarReceta(p: ProductoReceta, oculta: boolean) {
     if (oculta && !confirm(`¿"${p.nombre}" ya no se prepara? Su receta se guarda por si regresa.`))
@@ -250,6 +281,33 @@ export default function RecetarioPage() {
         p.nombre.toLowerCase().includes(q) ||
         p.lineas.some((l) => l.insumo.toLowerCase().includes(q))
     );
+
+  /*
+    Los productos agrupados, en el orden del menú. Con 40 recetas en una
+    sola lista, encontrar "el jugo de piña" era ir leyendo de arriba
+    abajo; por grupos se va directo.
+  */
+  const gruposVisibles = (() => {
+    const mapa = new Map<string, ProductoReceta[]>();
+    for (const p of visibles) {
+      const cat = (p.categoria || '').trim() || 'Sin grupo';
+      if (!mapa.has(cat)) mapa.set(cat, []);
+      mapa.get(cat)!.push(p);
+    }
+    return [...mapa.entries()]
+      .map(([nombre, lista]) => ({ nombre, lista }))
+      .sort(
+        (a, b) =>
+          posicionCategoria(a.nombre, ordenCategorias) -
+            posicionCategoria(b.nombre, ordenCategorias) ||
+          a.nombre.localeCompare(b.nombre, 'es')
+      );
+  })();
+
+  /** Todos los grupos que existen hoy, para poder mover un producto */
+  const categoriasConocidas = [
+    ...new Set(items.map((p) => (p.categoria || '').trim()).filter(Boolean)),
+  ].sort((a, b) => a.localeCompare(b, 'es'));
 
   const sinReceta = items.filter((p) => !p.oculta && p.lineas.length === 0).length;
   const porRevisar = items.reduce((n, p) => n + p.lineas.filter((l) => l.nota).length, 0);
@@ -302,8 +360,36 @@ export default function RecetarioPage() {
         className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-marron text-neutral-900"
       />
 
-      <div className="space-y-3 text-neutral-900">
-        {visibles.map((p) => {
+      <div className="space-y-4 text-neutral-900">
+        {gruposVisibles.map((g) => {
+          const cerrado = gruposCerrados.includes(g.nombre);
+          const faltan = g.lista.filter((x) => x.lineas.length === 0).length;
+          return (
+            <section key={g.nombre} className="space-y-2">
+              {/* El grupo se recoge para poder trabajar uno a la vez */}
+              <button
+                onClick={() =>
+                  setGruposCerrados((prev) =>
+                    prev.includes(g.nombre)
+                      ? prev.filter((x) => x !== g.nombre)
+                      : [...prev, g.nombre]
+                  )
+                }
+                className="w-full flex items-center gap-2 px-1 py-1 text-left"
+              >
+                <span className="text-sm font-bold text-neutral-900 uppercase tracking-wide">
+                  {g.nombre}
+                </span>
+                <span className="text-xs font-semibold text-neutral-700">
+                  {g.lista.length}
+                  {faltan > 0 && <span className="text-amber-800"> · {faltan} sin receta</span>}
+                </span>
+                <span className="flex-1 border-t border-neutral-200" />
+                <span className="text-neutral-700 text-xs">{cerrado ? '▾' : '▴'}</span>
+              </button>
+
+              {!cerrado &&
+                g.lista.map((p) => {
           const activo = abierto === p.id;
           // Lo que de verdad queda: el precio del menú trae el IVA adentro
           const d =
@@ -330,7 +416,7 @@ export default function RecetarioPage() {
               >
                 <span className="text-2xl shrink-0">{p.emoji || '🍽️'}</span>
                 <div className="flex-1 min-w-0">
-                  <p className="font-bold text-neutral-900 truncate">{p.nombre}</p>
+                  <p className="font-bold text-neutral-900 line-clamp-2">{p.nombre}</p>
                   <p className="text-xs text-neutral-600">
                     {p.lineas.length === 0 ? (
                       <span className="text-amber-700 font-semibold">Sin receta</span>
@@ -347,8 +433,7 @@ export default function RecetarioPage() {
                             .join(' + ');
                         })()
                     )}
-                    {' · '}
-                    {p.categoria}
+                    {/* La categoría no se repite: ya la dice el grupo */}
                   </p>
                 </div>
                 <div className="text-right shrink-0">
@@ -795,6 +880,36 @@ export default function RecetarioPage() {
 
                   {/* Guardar la receta sin que estorbe: el producto dejó
                       de prepararse pero puede volver. */}
+                  <div className="flex items-center gap-2 flex-wrap pt-1">
+                    <label className="text-xs font-semibold text-neutral-700">Grupo</label>
+                    <select
+                      value={p.categoria}
+                      onChange={(e) => {
+                        if (e.target.value === '__nueva__') {
+                          const nueva = prompt('Nombre del grupo nuevo:');
+                          if (nueva?.trim()) cambiarCategoria(p, nueva.trim());
+                          return;
+                        }
+                        cambiarCategoria(p, e.target.value);
+                      }}
+                      disabled={ocupado}
+                      className="text-xs font-semibold text-neutral-900 bg-neutral-100 border border-neutral-300 rounded-lg px-2 py-1 disabled:opacity-50"
+                    >
+                      {!categoriasConocidas.some(
+                        (c) => claveCategoria(c) === claveCategoria(p.categoria)
+                      ) && <option value={p.categoria}>{p.categoria || 'Sin grupo'}</option>}
+                      {categoriasConocidas.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                      <option value="__nueva__">➕ Grupo nuevo…</option>
+                    </select>
+                    <span className="text-[11px] text-neutral-700">
+                      Es el mismo grupo del menú de la tienda.
+                    </span>
+                  </div>
+
                   <button
                     onClick={() => ocultarReceta(p, !p.oculta)}
                     disabled={ocupado}
@@ -805,6 +920,9 @@ export default function RecetarioPage() {
                 </div>
               )}
             </div>
+          );
+                })}
+            </section>
           );
         })}
 

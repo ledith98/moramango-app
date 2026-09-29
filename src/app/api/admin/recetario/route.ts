@@ -12,10 +12,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { appendRow, ensureColumn, getSheetData, updateCell, updateCells } from '@/lib/googleSheets';
+import { appendRow, ensureColumn, getSheetData, updateCeldas, updateCell, updateCells } from '@/lib/googleSheets';
 import { factorMerma } from '@/lib/insumos';
 import {
+  estaEnUso,
   factorCrudo,
+  HOJA_ACTIVOS,
   HOJA_BIBLIOTECA,
   prepararInventario,
   redondear,
@@ -40,13 +42,17 @@ export async function GET() {
   }
   await Promise.all([prepararInventario(), prepararRecetario()]);
 
-  const [recetario, biblioteca, productos, presentaciones, ajustes] = await Promise.all([
+  const [recetario, biblioteca, productos, presentaciones, ajustes, activos] = await Promise.all([
     getSheetData(HOJA_RECETARIO, { crudo: true }),
     getSheetData(HOJA_BIBLIOTECA, { crudo: true }),
     getSheetData('Productos', { crudo: true }),
     leerPresentaciones(),
     leerAjustes(),
+    getSheetData(HOJA_ACTIVOS, { crudo: true }),
   ]);
+  // Qué insumos están en la operación de hoy: los guardados no estorban
+  // en la lista para elegir, pero siguen existiendo.
+  const enUsoPorBib = new Map(activos.map((a) => [a.ID_Biblioteca, estaEnUso(a.En_Uso)]));
 
   const bibPorId = new Map(vivos(biblioteca).map((b) => [b.ID_Biblioteca, b]));
 
@@ -80,6 +86,21 @@ export async function GET() {
     if (!r.ID_Producto) continue;
     if (!lineasPorProducto.has(r.ID_Producto)) lineasPorProducto.set(r.ID_Producto, []);
     lineasPorProducto.get(r.ID_Producto)!.push(r);
+  }
+  /*
+    El orden que se haya puesto a mano manda; lo que nunca se ordenó se
+    queda como se capturó. Sin el respaldo por posición, una receta a
+    medio ordenar saltaría de lugar cada vez que se abre.
+  */
+  for (const lista of lineasPorProducto.values()) {
+    lista.sort((a, b) => {
+      const oa = parseFloat(a.Orden ?? '');
+      const ob = parseFloat(b.Orden ?? '');
+      if (isNaN(oa) && isNaN(ob)) return 0;
+      if (isNaN(oa)) return 1;
+      if (isNaN(ob)) return -1;
+      return oa - ob;
+    });
   }
 
   /**
@@ -242,13 +263,20 @@ export async function GET() {
       };
     });
 
-  const insumos = vivos(biblioteca).map((b) => ({
-    id: b.ID_Biblioteca,
-    nombre: b.Nombre || '',
-    unidad: b.Unidad_Receta || '',
-    categoria: b.Categoria || '',
-    tienePrecio: (parseFloat(b.Ultimo_Precio_Compra) || 0) > 0,
-  }));
+  const insumos = vivos(biblioteca)
+    // Un renglón sin nombre no se puede elegir de una lista
+    .filter((b) => (b.Nombre || '').trim())
+    .map((b) => ({
+      id: b.ID_Biblioteca,
+      nombre: (b.Nombre || '').trim(),
+      unidad: b.Unidad_Receta || '',
+      categoria: b.Categoria || '',
+      tienePrecio:
+        (parseFloat(b.Ultimo_Precio_Compra) || 0) > 0 ||
+        presentaciones.some((x) => x.idBiblioteca === b.ID_Biblioteca && x.ultimoPrecio > 0),
+      /** false = guardado para después; no se ofrece salvo que se pidan */
+      enUso: enUsoPorBib.get(b.ID_Biblioteca) ?? true,
+    }));
 
   // Las tasas viajan con el recetario para que la pantalla pueda enseñar
   // el margen con y sin impuestos sin pedir los ajustes por separado.
@@ -357,7 +385,30 @@ export async function PATCH(req: NextRequest) {
   }
   await prepararRecetario();
 
-  const { id, cantidad, merma, idProducto, oculta } = await req.json();
+  const { id, cantidad, merma, idProducto, oculta, orden } = await req.json();
+
+  /*
+    Reordenar los renglones de una receta. Llega la lista completa de
+    ID_Linea en el orden nuevo y se numera 1, 2, 3…: mandar solo el
+    renglón que se movió obligaría a adivinar dónde cae entre los demás.
+  */
+  if (Array.isArray(orden) && orden.length > 0) {
+    await ensureColumn(HOJA_RECETARIO, 'Orden');
+    const filas = await getSheetData(HOJA_RECETARIO, { crudo: true });
+    const cambios = orden
+      .map((idLinea: string, i: number) => {
+        const idx = filas.findIndex((r) => r.ID_Linea === idLinea);
+        return idx === -1
+          ? null
+          : { fila: idx + 2, col: COL_REC.orden as number, valor: i + 1 };
+      })
+      .filter((x): x is { fila: number; col: number; valor: number } => x !== null);
+    if (cambios.length === 0) {
+      return NextResponse.json({ error: 'No encontré esos renglones' }, { status: 404 });
+    }
+    await updateCeldas(HOJA_RECETARIO, cambios);
+    return NextResponse.json({ success: true });
+  }
 
   /*
     Esconder del recetario un producto que ya no se prepara.

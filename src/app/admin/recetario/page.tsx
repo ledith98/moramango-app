@@ -67,7 +67,16 @@ interface InsumoOpcion {
   unidad: string;
   categoria: string;
   tienePrecio: boolean;
+  /** false = guardado para después; no aparece salvo que se pidan */
+  enUso?: boolean;
 }
+
+/** Sin acentos y en minúsculas, para que "platano" encuentre "Plátano". */
+const clave = (t: string) =>
+  (t ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
 
 export default function RecetarioPage() {
   const [items, setItems] = useState<ProductoReceta[]>([]);
@@ -88,6 +97,10 @@ export default function RecetarioPage() {
 
   // Alta de un insumo dentro de una receta
   const [nuevoInsumo, setNuevoInsumo] = useState('');
+  /** Lo que se teclea para encontrar el insumo, en vez de buscarlo en la lista */
+  const [buscaInsumo, setBuscaInsumo] = useState('');
+  /** true = también se ofrecen los insumos guardados */
+  const [verGuardados, setVerGuardados] = useState(false);
   /** Un renglon puede ser un insumo o, en los combos, otro producto */
   const [modoAgregar, setModoAgregar] = useState<'insumo' | 'producto'>('insumo');
   const [nuevoComponente, setNuevoComponente] = useState('');
@@ -177,6 +190,7 @@ export default function RecetarioPage() {
     });
     if (ok) {
       setNuevoInsumo('');
+      setBuscaInsumo('');
       setNuevoComponente('');
       setNuevaCantidad('');
     }
@@ -195,6 +209,29 @@ export default function RecetarioPage() {
     if (oculta && !confirm(`¿"${p.nombre}" ya no se prepara? Su receta se guarda por si regresa.`))
       return;
     await llamar('PATCH', { idProducto: p.id, oculta });
+  }
+
+  /**
+   * Sube o baja un renglón dentro de la receta.
+   *
+   * Se manda la lista completa en el orden nuevo: mandar solo el que se
+   * movió obligaría al servidor a adivinar dónde queda entre los demás.
+   */
+  async function mover(p: ProductoReceta, indice: number, hacia: -1 | 1) {
+    const destino = indice + hacia;
+    if (destino < 0 || destino >= p.lineas.length) return;
+    const orden = p.lineas.map((l) => l.id);
+    [orden[indice], orden[destino]] = [orden[destino], orden[indice]];
+    // Se pinta ya movido y se guarda después: esperar a Google para ver
+    // el cambio hace que se toque dos veces la flecha.
+    setItems((prev) =>
+      prev.map((x) =>
+        x.id === p.id
+          ? { ...x, lineas: orden.map((id) => x.lineas.find((l) => l.id === id)!) }
+          : x
+      )
+    );
+    await llamar('PATCH', { orden });
   }
 
   async function quitar(l: LineaReceta) {
@@ -285,6 +322,7 @@ export default function RecetarioPage() {
                 onClick={() => {
                   setAbierto(activo ? null : p.id);
                   setNuevoInsumo('');
+                  setBuscaInsumo('');
                   setNuevaCantidad('');
                   setError('');
                 }}
@@ -407,11 +445,34 @@ export default function RecetarioPage() {
                     </p>
                   )}
 
-                  {p.lineas.map((l) => (
+                  {p.lineas.map((l, i) => (
                     <div
                       key={l.id}
                       className="flex items-center gap-2 py-1.5 border-b border-neutral-50 last:border-0"
                     >
+                      {/* Subir y bajar: la receta se sigue de arriba abajo
+                          mientras se prepara, y el orden en que se
+                          capturó no es el orden en que se usa. */}
+                      {p.lineas.length > 1 && (
+                        <div className="flex flex-col shrink-0">
+                          <button
+                            onClick={() => mover(p, i, -1)}
+                            disabled={ocupado || i === 0}
+                            aria-label="Subir"
+                            className="text-[10px] leading-none text-neutral-800 px-1 py-0.5 rounded hover:bg-neutral-100 disabled:opacity-25"
+                          >
+                            ▲
+                          </button>
+                          <button
+                            onClick={() => mover(p, i, 1)}
+                            disabled={ocupado || i === p.lineas.length - 1}
+                            aria-label="Bajar"
+                            className="text-[10px] leading-none text-neutral-800 px-1 py-0.5 rounded hover:bg-neutral-100 disabled:opacity-25"
+                          >
+                            ▼
+                          </button>
+                        </div>
+                      )}
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-neutral-900">
                           {l.tipo === 'producto' && (
@@ -579,20 +640,112 @@ export default function RecetarioPage() {
 
                     <div className="flex flex-wrap gap-2">
                       {modoAgregar === 'insumo' ? (
-                        <select
-                          value={nuevoInsumo}
-                          onChange={(e) => setNuevoInsumo(e.target.value)}
-                          className="flex-1 min-w-[160px] bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-marron"
-                        >
-                          <option value="">Elige el ingrediente…</option>
-                          {insumos
-                            .filter((i) => !p.lineas.some((l) => l.idBiblioteca === i.id))
-                            .map((i) => (
-                              <option key={i.id} value={i.id}>
-                                {i.nombre} ({i.unidad}){i.tienePrecio ? '' : ' — sin precio'}
-                              </option>
-                            ))}
-                        </select>
+                        (() => {
+                          /*
+                            Se escribe el nombre en vez de buscarlo en una
+                            lista de noventa: con el catálogo completo,
+                            encontrar la lechuga costaba más que capturar
+                            la receta entera.
+                          */
+                          const yaEstan = (i: InsumoOpcion) =>
+                            !p.lineas.some((l) => l.idBiblioteca === i.id);
+                          const q = clave(buscaInsumo.trim());
+                          const candidatos = insumos
+                            .filter(yaEstan)
+                            .filter((i) => verGuardados || i.enUso !== false)
+                            .filter((i) => !q || clave(i.nombre).includes(q) || clave(i.categoria).includes(q));
+                          // Los que empiezan con lo tecleado van primero
+                          const ordenados = [...candidatos].sort((a, b) => {
+                            const pa = clave(a.nombre).startsWith(q) ? 0 : 1;
+                            const pb = clave(b.nombre).startsWith(q) ? 0 : 1;
+                            return pa - pb || a.nombre.localeCompare(b.nombre, 'es');
+                          });
+                          const elegido = insumos.find((i) => i.id === nuevoInsumo);
+                          const guardadosFuera = insumos.filter(
+                            (i) => yaEstan(i) && i.enUso === false
+                          ).length;
+
+                          if (elegido) {
+                            return (
+                              <button
+                                onClick={() => {
+                                  setNuevoInsumo('');
+                                  setBuscaInsumo('');
+                                }}
+                                className="flex-1 min-w-[160px] flex items-center justify-between gap-2 bg-neutral-100 border-2 border-black rounded-xl px-3 py-2 text-sm text-left"
+                              >
+                                <span className="font-semibold text-neutral-900 truncate">
+                                  ✓ {elegido.nombre}{' '}
+                                  <span className="font-normal text-neutral-700">
+                                    ({elegido.unidad})
+                                  </span>
+                                </span>
+                                <span className="text-xs font-bold text-neutral-700 shrink-0">
+                                  Cambiar
+                                </span>
+                              </button>
+                            );
+                          }
+
+                          return (
+                            <div className="flex-1 min-w-[200px]">
+                              <input
+                                value={buscaInsumo}
+                                onChange={(e) => setBuscaInsumo(e.target.value)}
+                                placeholder="Escribe el ingrediente… (ej. lechu)"
+                                className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 placeholder-neutral-600 focus:outline-none focus:border-marron"
+                              />
+                              {buscaInsumo.trim() && (
+                                <div className="mt-1 max-h-52 overflow-y-auto border border-neutral-200 rounded-xl divide-y divide-neutral-100 bg-white">
+                                  {ordenados.slice(0, 20).map((i) => (
+                                    <button
+                                      key={i.id}
+                                      onClick={() => {
+                                        setNuevoInsumo(i.id);
+                                        setBuscaInsumo('');
+                                      }}
+                                      className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
+                                    >
+                                      <span className="text-neutral-900">{i.nombre}</span>{' '}
+                                      <span className="text-neutral-700">({i.unidad})</span>
+                                      {i.categoria && (
+                                        <span className="text-[11px] text-neutral-700">
+                                          {' '}
+                                          · {i.categoria}
+                                        </span>
+                                      )}
+                                      {!i.tienePrecio && (
+                                        <span className="text-[11px] font-semibold text-amber-800">
+                                          {' '}
+                                          · sin precio
+                                        </span>
+                                      )}
+                                      {i.enUso === false && (
+                                        <span className="text-[11px] text-neutral-700"> · guardado</span>
+                                      )}
+                                    </button>
+                                  ))}
+                                  {ordenados.length === 0 && (
+                                    <p className="px-3 py-2 text-sm text-neutral-800">
+                                      Ninguno se llama así.
+                                      {!verGuardados && guardadosFuera > 0 && (
+                                        <>
+                                          {' '}
+                                          <button
+                                            onClick={() => setVerGuardados(true)}
+                                            className="font-semibold underline"
+                                          >
+                                            Buscar también entre los {guardadosFuera} guardados
+                                          </button>
+                                        </>
+                                      )}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()
                       ) : (
                         <select
                           value={nuevoComponente}

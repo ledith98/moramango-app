@@ -43,6 +43,10 @@ export const COLS_RECETARIO = [
   // extra. Así la avena del licuado se descuenta nada más cuando se pide
   // con avena, en vez de irse en todos.
   'Extra_Requerido',
+  // En qué orden se leen los ingredientes. Una receta se sigue de arriba
+  // abajo mientras se prepara, y el orden en que se capturaron no es el
+  // orden en que se usan. Vacío = como se capturó.
+  'Orden',
 ];
 
 // Columnas 1-based para updateCell
@@ -54,6 +58,7 @@ export const COL_REC = {
   notas: 6,
   idComponente: 7,
   extraRequerido: 8,
+  orden: 9,
 } as const;
 
 export async function prepararRecetario(): Promise<void> {
@@ -64,6 +69,7 @@ export async function prepararRecetario(): Promise<void> {
   // quedaban vacios. Los componentes no funcionaron hasta este arreglo.
   await ensureColumn(HOJA_RECETARIO, 'ID_Componente');
   await ensureColumn(HOJA_RECETARIO, 'Extra_Requerido');
+  await ensureColumn(HOJA_RECETARIO, 'Orden');
 }
 
 /**

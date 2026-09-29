@@ -230,6 +230,8 @@ export async function GET(req: NextRequest) {
         ultimoPrecioCompra: redondear(ultimoPrecio, 2),
         categoria: bib.Categoria || '',
         proveedor: bib.Proveedor || '',
+        /** Nota libre: dónde se surte, qué marca sirve, cómo se pide */
+        notas: bib.Notas || '',
         stockActual: redondear(stock, 3),
         consumoPorDia: redondear(consumoPorDia, 3),
         alcanzaParaDias: alcanzaParaDias !== null ? redondear(alcanzaParaDias, 1) : null,

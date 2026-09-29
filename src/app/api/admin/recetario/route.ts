@@ -6,12 +6,13 @@
  * GET    → productos con su receta ya resuelta (nombre, unidad y costo
  *          salen del insumo, no se guardan) + insumos disponibles
  * POST   → agrega un insumo a la receta de un producto
- * PATCH  → cambia la cantidad o la merma de un renglón
+ * PATCH  → cambia la cantidad o la merma de un renglón, o esconde del
+ *          recetario un producto que ya no se prepara
  * DELETE → quita un renglón de la receta
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { appendRow, getSheetData, updateCells } from '@/lib/googleSheets';
+import { appendRow, ensureColumn, getSheetData, updateCell, updateCells } from '@/lib/googleSheets';
 import { factorMerma } from '@/lib/insumos';
 import {
   factorCrudo,
@@ -25,6 +26,7 @@ import { COL_REC, HOJA_RECETARIO, prepararRecetario } from '@/lib/recetario';
 import { siguienteId } from '@/lib/ids';
 import { anotar } from '@/lib/bitacora';
 import { getAdminSession } from '@/lib/roles';
+import { leerAjustes } from '@/lib/ajustes';
 
 const vivos = (filas: Record<string, string>[]) =>
   filas.filter((b) => (b.Eliminado || '').toLowerCase() !== 'si');
@@ -38,11 +40,12 @@ export async function GET() {
   }
   await Promise.all([prepararInventario(), prepararRecetario()]);
 
-  const [recetario, biblioteca, productos, presentaciones] = await Promise.all([
+  const [recetario, biblioteca, productos, presentaciones, ajustes] = await Promise.all([
     getSheetData(HOJA_RECETARIO, { crudo: true }),
     getSheetData(HOJA_BIBLIOTECA, { crudo: true }),
     getSheetData('Productos', { crudo: true }),
     leerPresentaciones(),
+    leerAjustes(),
   ]);
 
   const bibPorId = new Map(vivos(biblioteca).map((b) => [b.ID_Biblioteca, b]));
@@ -234,6 +237,8 @@ export async function GET() {
         emoji: (p.Emoji || '').trim(),
         lineas,
         costoTotal: costoDeProducto(p.ID_Producto),
+        /** 'si' = ya no se prepara; se guarda su receta pero no estorba */
+        oculta: (p.Receta_Oculta || '').toString().trim().toLowerCase() === 'si',
       };
     });
 
@@ -245,7 +250,17 @@ export async function GET() {
     tienePrecio: (parseFloat(b.Ultimo_Precio_Compra) || 0) > 0,
   }));
 
-  return NextResponse.json({ items, insumos });
+  // Las tasas viajan con el recetario para que la pantalla pueda enseñar
+  // el margen con y sin impuestos sin pedir los ajustes por separado.
+  return NextResponse.json({
+    items,
+    insumos,
+    impuestos: {
+      ivaPct: ajustes.ivaPct,
+      isrPct: ajustes.isrPct,
+      objetivoInsumoPct: ajustes.objetivoInsumoPct,
+    },
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -342,7 +357,33 @@ export async function PATCH(req: NextRequest) {
   }
   await prepararRecetario();
 
-  const { id, cantidad, merma } = await req.json();
+  const { id, cantidad, merma, idProducto, oculta } = await req.json();
+
+  /*
+    Esconder del recetario un producto que ya no se prepara.
+
+    Va en su propia columna y NO en el 'Oculto' del menú: hay productos
+    que se siguen vendiendo mientras se acaba la existencia y cuya receta
+    ya no se toca, y al revés. Nada se borra: la receta queda guardada por
+    si el producto regresa.
+  */
+  if (idProducto !== undefined) {
+    const col = await ensureColumn('Productos', 'Receta_Oculta');
+    const productos = await getSheetData('Productos', { crudo: true });
+    const fila = productos.findIndex((x) => x.ID_Producto === idProducto);
+    if (fila === -1) {
+      return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 });
+    }
+    await updateCell('Productos', fila + 2, col, oculta ? 'si' : '');
+    await anotar(
+      quienDe(sesionEdit),
+      'Recetario',
+      oculta ? 'Escondió una receta que ya no se prepara' : 'Volvió a mostrar una receta',
+      `${productos[fila].Nombre || idProducto}`
+    );
+    return NextResponse.json({ success: true });
+  }
+
   if (!id) return NextResponse.json({ error: 'Falta el renglón' }, { status: 400 });
 
   const recetario = await getSheetData(HOJA_RECETARIO, { crudo: true });

@@ -9,7 +9,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   CLAVE_DIRECCION,
+  CLAVE_ISR,
+  CLAVE_IVA,
   CLAVE_MAPA,
+  CLAVE_OBJETIVO_INSUMO,
   CLAVE_TOPE_ARTICULO,
   guardarAjuste,
   guardarHorario,
@@ -37,8 +40,17 @@ export async function POST(req: NextRequest) {
   // Cómo estaban antes, para que la bitácora diga "de X a Y"
   const previos = await leerAjustes();
 
-  const { topeArticuloGratis, ordenCategorias, horario, direccion, mapa, toppingsConCosto } =
-    await req.json();
+  const {
+    topeArticuloGratis,
+    ordenCategorias,
+    horario,
+    direccion,
+    mapa,
+    toppingsConCosto,
+    ivaPct,
+    isrPct,
+    objetivoInsumoPct,
+  } = await req.json();
 
   if (topeArticuloGratis !== undefined) {
     const tope = parseFloat(topeArticuloGratis);
@@ -119,6 +131,22 @@ export async function POST(req: NextRequest) {
     await guardarToppingsConCosto(toppingsConCosto);
   }
 
+  // Impuestos y margen objetivo. Van juntos porque juntos se leen y
+  // juntos se revisan con el contador.
+  const porcentajes: [string, unknown, string][] = [
+    [CLAVE_IVA, ivaPct, 'IVA que trae el precio del menu adentro'],
+    [CLAVE_ISR, isrPct, 'ISR estimado sobre la utilidad, para ver el margen real'],
+    [CLAVE_OBJETIVO_INSUMO, objetivoInsumoPct, 'Cuanto del precio sin IVA puede irse en insumos'],
+  ];
+  for (const [clave, valor, nota] of porcentajes) {
+    if (valor === undefined) continue;
+    const n = parseFloat(String(valor).replace(',', '.'));
+    if (isNaN(n) || n < 0 || n > 99) {
+      return NextResponse.json({ error: 'Los porcentajes van de 0 a 99' }, { status: 400 });
+    }
+    await guardarAjuste(clave, Math.round(n * 100) / 100, nota);
+  }
+
   const ahora = await leerAjustes();
   const detalle = [
     topeArticuloGratis !== undefined && previos.topeArticuloGratis !== ahora.topeArticuloGratis
@@ -130,6 +158,15 @@ export async function POST(req: NextRequest) {
       ? `Dirección: ${ahora.direccion}`
       : '',
     mapa !== undefined && previos.mapa !== ahora.mapa ? 'Cambió el enlace del mapa' : '',
+    ivaPct !== undefined && previos.ivaPct !== ahora.ivaPct
+      ? `IVA: ${previos.ivaPct}% -> ${ahora.ivaPct}%`
+      : '',
+    isrPct !== undefined && previos.isrPct !== ahora.isrPct
+      ? `ISR estimado: ${previos.isrPct}% -> ${ahora.isrPct}%`
+      : '',
+    objetivoInsumoPct !== undefined && previos.objetivoInsumoPct !== ahora.objetivoInsumoPct
+      ? `Objetivo de insumo: ${previos.objetivoInsumoPct}% -> ${ahora.objetivoInsumoPct}%`
+      : '',
     toppingsConCosto !== undefined
       ? `Toppings que siempre se cobran: ${ahora.toppingsConCosto.join(', ') || 'ninguno'} (antes: ${previos.toppingsConCosto.join(', ') || 'ninguno'})`
       : '',

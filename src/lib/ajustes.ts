@@ -12,6 +12,7 @@
 import { appendRow, ensureSheet, getSheetData, updateCell } from './googleSheets';
 import { HORARIO_DEFAULT, Horario, parsearHorario, serializarHorario } from './horario';
 import { TOPPINGS_CON_COSTO_DEFAULT } from './toppingIncluido';
+import { ISR_DEFAULT, IVA_DEFAULT, OBJETIVO_INSUMO_DEFAULT } from './impuestos';
 
 const HOJA = 'Ajustes_Tienda';
 const COLS = ['Clave', 'Valor', 'Nota', 'Fecha'];
@@ -54,6 +55,14 @@ export const CLAVE_MAPA = 'MapaLocal';
  */
 export const CLAVE_TOPPINGS_CON_COSTO = 'ToppingsConCosto';
 
+/**
+ * Impuestos y margen objetivo. Viven en Ajustes y no en el codigo porque
+ * las tasas cambian, y porque el ISR que aplica lo dice el contador.
+ */
+export const CLAVE_IVA = 'IvaPct';
+export const CLAVE_ISR = 'IsrPct';
+export const CLAVE_OBJETIVO_INSUMO = 'ObjetivoInsumoPct';
+
 export interface Ajustes {
   topeArticuloGratis: number;
   ordenCategorias: string[];
@@ -62,6 +71,12 @@ export interface Ajustes {
   direccion: string;
   mapa: string;
   toppingsConCosto: string[];
+  /** IVA que trae el precio del menu adentro */
+  ivaPct: number;
+  /** ISR estimado sobre la utilidad, para ver el margen real */
+  isrPct: number;
+  /** Cuanto del precio sin IVA puede irse en insumos */
+  objetivoInsumoPct: number;
 }
 
 // Viven en su propio archivo para que la tienda y el panel las puedan usar
@@ -106,6 +121,11 @@ export async function leerAjustes(): Promise<Ajustes> {
     const horarioCrudo = (filas.find((f) => f.Clave === CLAVE_HORARIO)?.Valor ?? '').toString();
     const texto = (clave: string) =>
       (filas.find((f) => f.Clave === clave)?.Valor ?? '').toString().trim();
+    /** Un porcentaje guardado, o el de siempre si no hay nada valido. */
+    const porcentaje = (clave: string, omision: number) => {
+      const n = parseFloat(texto(clave).replace(',', '.').replace('%', ''));
+      return isNaN(n) || n < 0 || n > 99 ? omision : n;
+    };
 
     const ajustes: Ajustes = {
       topeArticuloGratis: !isNaN(tope) && tope > 0 ? tope : TOPE_ARTICULO_DEFAULT,
@@ -113,6 +133,9 @@ export async function leerAjustes(): Promise<Ajustes> {
       horario: parsearHorario(horarioCrudo),
       direccion: texto(CLAVE_DIRECCION),
       mapa: texto(CLAVE_MAPA),
+      ivaPct: porcentaje(CLAVE_IVA, IVA_DEFAULT),
+      isrPct: porcentaje(CLAVE_ISR, ISR_DEFAULT),
+      objetivoInsumoPct: porcentaje(CLAVE_OBJETIVO_INSUMO, OBJETIVO_INSUMO_DEFAULT),
       toppingsConCosto: filas.some((f) => f.Clave === CLAVE_TOPPINGS_CON_COSTO)
         ? texto(CLAVE_TOPPINGS_CON_COSTO)
             .split(SEPARADOR)
@@ -134,6 +157,9 @@ export async function leerAjustes(): Promise<Ajustes> {
       direccion: '',
       mapa: '',
       toppingsConCosto: TOPPINGS_CON_COSTO_DEFAULT,
+      ivaPct: IVA_DEFAULT,
+      isrPct: ISR_DEFAULT,
+      objetivoInsumoPct: OBJETIVO_INSUMO_DEFAULT,
     };
   }
 }

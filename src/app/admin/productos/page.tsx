@@ -5,6 +5,7 @@ import { comprimirImagen, enMegas } from '@/lib/comprimirImagen';
 import { esEnlaceDeVisorDrive } from '@/lib/imagenes';
 import { parsearTamanos, TAMANOS_SUGERIDOS, type Tamano } from '@/lib/tamanos';
 import { type GrupoOpcion, parsearOpciones } from '@/lib/opciones';
+import { desglosar, IVA_DEFAULT } from '@/lib/impuestos';
 import { catalogoExtras, claveExtra, type Extra, parsearExtras } from '@/lib/extras';
 import { claveCategoria, posicionCategoria } from '@/lib/categorias';
 
@@ -85,6 +86,8 @@ export default function ProductosPage() {
   const [productos, setProductos] = useState<Producto[]>([]);
   /** Orden de los grupos, el mismo que ve el cliente (Panel → Ajustes) */
   const [ordenCategorias, setOrdenCategorias] = useState<string[]>([]);
+  /** IVA con el que se reparte el precio; se edita en Ajustes */
+  const [ivaPct, setIvaPct] = useState(IVA_DEFAULT);
   const [acomodando, setAcomodando] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [editando, setEditando] = useState<Producto | null>(null);
@@ -124,6 +127,7 @@ export default function ProductosPage() {
       .then(([prod, ajustes]) => {
         setProductos(prod.productos || []);
         setOrdenCategorias(ajustes?.ordenCategorias || []);
+        if (typeof ajustes?.ivaPct === 'number') setIvaPct(ajustes.ivaPct);
       })
       .finally(() => setCargando(false));
 
@@ -823,6 +827,22 @@ export default function ProductosPage() {
                 className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-black"
                 required
               />
+              {/*
+                El precio del menú trae el IVA adentro y eso no se ve por
+                ningún lado: quien lo pone cree que se queda con los $55.
+              */}
+              {(() => {
+                const precio = parseFloat(form.precio);
+                if (!(precio > 0)) return null;
+                const d = desglosar(precio, 0, { ivaPct, isrPct: 0 });
+                return (
+                  <p className="text-xs text-neutral-800">
+                    De ${d.precio.toFixed(2)}: <b>${d.sinIva.toFixed(2)} son del negocio</b> y $
+                    {d.iva.toFixed(2)} es IVA ({ivaPct}%). Lo que deja después del costo lo ves en
+                    Recetario.
+                  </p>
+                );
+              })()}
             </div>
 
             <div className="space-y-1.5 text-neutral-900">

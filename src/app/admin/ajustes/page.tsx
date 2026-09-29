@@ -9,6 +9,7 @@ import { DIAS_NOMBRE, estadoTienda, HORARIO_DEFAULT, type Horario } from '@/lib/
 import { catalogoExtras, claveExtra, type ExtraConocido } from '@/lib/extras';
 import { parsearOpciones } from '@/lib/opciones';
 import { productoDeOpcion, toppingsDeHoja } from '@/lib/toppingIncluido';
+import { desglosar, precioSugerido } from '@/lib/impuestos';
 
 interface Producto {
   nombre: string;
@@ -68,6 +69,14 @@ export default function AjustesPage() {
   const [guardandoCosto, setGuardandoCosto] = useState(false);
   const [okCosto, setOkCosto] = useState(false);
   const [errorCosto, setErrorCosto] = useState('');
+  /** Impuestos y margen objetivo */
+  const [iva, setIva] = useState('16');
+  const [isr, setIsr] = useState('6.4');
+  const [objetivo, setObjetivo] = useState('33');
+  const [impGuardado, setImpGuardado] = useState({ iva: '16', isr: '6.4', objetivo: '33' });
+  const [guardandoImp, setGuardandoImp] = useState(false);
+  const [okImp, setOkImp] = useState(false);
+  const [errorImp, setErrorImp] = useState('');
   /** Los respaldos guardados de la información del negocio */
   const [respaldos, setRespaldos] = useState<
     { nombre: string; fecha: string; url: string; bytes: number }[]
@@ -161,6 +170,16 @@ export default function AjustesPage() {
       }
     }
     setToppingsCombo(catalogoExtras([...deBebidas]));
+    const imp = {
+      iva: String(a?.ivaPct ?? 16),
+      isr: String(a?.isrPct ?? 6.4),
+      objetivo: String(a?.objetivoInsumoPct ?? 33),
+    };
+    setIva(imp.iva);
+    setIsr(imp.isr);
+    setObjetivo(imp.objetivo);
+    setImpGuardado(imp);
+
     const guardadosCosto: string[] = a?.toppingsConCosto ?? [];
     setConCosto(guardadosCosto);
     setConCostoGuardado(guardadosCosto);
@@ -232,6 +251,25 @@ export default function AjustesPage() {
     setTopeGuardado(data.ajustes?.topeArticuloGratis ?? n);
     setOk(true);
     setTimeout(() => setOk(false), 2500);
+  }
+
+  async function guardarImpuestos() {
+    setGuardandoImp(true);
+    setErrorImp('');
+    const res = await fetch('/api/admin/ajustes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ivaPct: iva, isrPct: isr, objetivoInsumoPct: objetivo }),
+    });
+    const data = await res.json();
+    setGuardandoImp(false);
+    if (!res.ok) {
+      setErrorImp(data.error || 'No se pudo guardar');
+      return;
+    }
+    setImpGuardado({ iva, isr, objetivo });
+    setOkImp(true);
+    setTimeout(() => setOkImp(false), 2500);
   }
 
   async function guardarConCosto() {
@@ -655,6 +693,96 @@ export default function AjustesPage() {
               ))}
             </ul>
           )}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5 space-y-4">
+        <div>
+          <h2 className="font-bold text-neutral-900">🧾 Impuestos y margen</h2>
+          <p className="text-sm text-neutral-700 mt-1">
+            Con esto el recetario y el catálogo enseñan cuánto de cada precio es tuyo y cuánto es
+            del SAT. El precio del menú trae el IVA adentro.
+          </p>
+        </div>
+
+        <div className="grid sm:grid-cols-3 gap-3">
+          {[
+            {
+              etiqueta: 'IVA',
+              valor: iva,
+              set: setIva,
+              ayuda: 'Alimentos preparados: 16%',
+            },
+            {
+              etiqueta: 'ISR estimado',
+              valor: isr,
+              set: setIsr,
+              ayuda: 'Sobre la ganancia. Pregúntale a tu contador',
+            },
+            {
+              etiqueta: 'Insumos, máximo',
+              valor: objetivo,
+              set: setObjetivo,
+              ayuda: 'Del precio sin IVA. 33% es lo normal',
+            },
+          ].map((c) => (
+            <div key={c.etiqueta} className="space-y-1">
+              <label className="text-sm font-semibold text-neutral-700 block">{c.etiqueta}</label>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  max="99"
+                  step="0.1"
+                  value={c.valor}
+                  onChange={(e) => c.set(e.target.value)}
+                  className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 focus:outline-none focus:border-marron"
+                />
+                <span className="text-lg font-bold text-neutral-700">%</span>
+              </div>
+              <p className="text-xs text-neutral-700">{c.ayuda}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Un ejemplo con números, que es como se entiende */}
+        {(() => {
+          const d = desglosar(100, 33, {
+            ivaPct: parseFloat(iva) || 0,
+            isrPct: parseFloat(isr) || 0,
+          });
+          const sug = precioSugerido(33, parseFloat(objetivo) || 33, parseFloat(iva) || 0);
+          return (
+            <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-sm text-neutral-800">
+              <p className="font-semibold text-neutral-900 mb-1">Así quedaría un producto de $100</p>
+              <p>
+                que te cuesta $33 de insumos: se van ${d.iva.toFixed(2)} de IVA y $
+                {d.isr.toFixed(2)} de ISR, y <b>te quedan ${d.margenNeto.toFixed(2)}</b> (
+                {d.margenNetoPct}%). Antes se veía como ${d.margenBruto.toFixed(2)}.
+              </p>
+              {sug !== null && (
+                <p className="mt-1">
+                  Con ese objetivo, un producto de $33 de insumos debería venderse en{' '}
+                  <b>${sug}</b>.
+                </p>
+              )}
+            </div>
+          );
+        })()}
+
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={guardarImpuestos}
+            disabled={
+              guardandoImp ||
+              (iva === impGuardado.iva && isr === impGuardado.isr && objetivo === impGuardado.objetivo)
+            }
+            className="bg-marron text-white font-semibold px-5 py-3 rounded-xl active:scale-95 disabled:opacity-50"
+          >
+            {guardandoImp ? 'Guardando…' : okImp ? '✅ Guardado' : 'Guardar'}
+          </button>
+          {errorImp && <p className="text-sm text-red-600">{errorImp}</p>}
         </div>
       </div>
 

@@ -21,6 +21,7 @@ import {
   columnaEnUso,
   columnaIngredientes,
   columnaPrecioBase,
+  columnaNotas,
   columnaRendimiento,
   factorCrudo,
   escribirIngredientes,
@@ -192,6 +193,8 @@ export async function GET(req: NextRequest) {
       precioIdPresentacion: precio.idPresentacion,
       /** Cuánto queda de 100 al cocinar; '' para los que no cambian de peso */
       rendimientoPct,
+      /** Lo que hay que recordar de este insumo (dónde se surte, marca…) */
+      notas: (b.Notas ?? '').toString(),
       /** Lo que cuesta la unidad que llega al plato, ya con la conversión */
       costoPorUnidadServida:
         precio.costoUnidad === null
@@ -228,6 +231,7 @@ export async function POST(req: NextRequest) {
     proveedor,
     contacto,
     rendimientoPct,
+    notas,
   } = await req.json();
 
   if (!nombre || !nombre.toString().trim()) {
@@ -288,6 +292,13 @@ export async function POST(req: NextRequest) {
   if (rendimiento.pct !== null) {
     const fila = biblioteca.length + 2; // +1 encabezado, +1 la que se acaba de agregar
     await updateCell(HOJA_BIBLIOTECA, fila, await columnaRendimiento(), rendimiento.pct);
+  }
+  // La nota va igual que el rendimiento: por nombre de columna, porque es
+  // más nueva que el arreglo fijo de arriba.
+  const notaNueva = (notas ?? '').toString().trim().slice(0, 500);
+  if (notaNueva) {
+    const fila = biblioteca.length + 2;
+    await updateCell(HOJA_BIBLIOTECA, fila, await columnaNotas(), notaNueva);
   }
 
   await anotar(
@@ -447,6 +458,11 @@ export async function PATCH(req: NextRequest) {
     celdas[COL_BIB.ultimoPrecio] = precio;
   }
 
+  // La nota se escribe por nombre de columna (es posterior a COL_BIB)
+  if (datos?.notas !== undefined) {
+    celdas[await columnaNotas()] = (datos.notas || '').toString().trim().slice(0, 500);
+  }
+
   await updateCells(HOJA_BIBLIOTECA, fila, celdas);
 
   /*
@@ -473,6 +489,7 @@ export async function PATCH(req: NextRequest) {
       Categoría: celdas[COL_BIB.categoria],
       Proveedor: celdas[COL_BIB.proveedor],
       Contacto: celdas[COL_BIB.contacto],
+      Nota: datos?.notas !== undefined ? (datos.notas || '').toString().trim() : undefined,
       'Último precio': celdas[COL_BIB.ultimoPrecio] ?? actual.Ultimo_Precio_Compra,
     }
   );

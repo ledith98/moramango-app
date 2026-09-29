@@ -11,6 +11,13 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { precioLegible } from '@/lib/precioInsumo';
+import {
+  desglosar,
+  ISR_DEFAULT,
+  IVA_DEFAULT,
+  OBJETIVO_INSUMO_DEFAULT,
+  precioSugerido,
+} from '@/lib/impuestos';
 
 interface LineaReceta {
   id: string;
@@ -50,6 +57,8 @@ interface ProductoReceta {
   emoji: string;
   lineas: LineaReceta[];
   costoTotal: number | null;
+  /** true = ya no se prepara; se guarda la receta pero no estorba */
+  oculta?: boolean;
 }
 
 interface InsumoOpcion {
@@ -68,6 +77,14 @@ export default function RecetarioPage() {
   const [busqueda, setBusqueda] = useState('');
   const [abierto, setAbierto] = useState<string | null>(null);
   const [soloSinReceta, setSoloSinReceta] = useState(false);
+  /** Tasas para enseñar el margen con y sin impuestos (se editan en Ajustes) */
+  const [impuestos, setImpuestos] = useState({
+    ivaPct: IVA_DEFAULT,
+    isrPct: ISR_DEFAULT,
+    objetivoInsumoPct: OBJETIVO_INSUMO_DEFAULT,
+  });
+  /** Las recetas que ya no se preparan, guardadas aparte */
+  const [verOcultas, setVerOcultas] = useState(false);
 
   // Alta de un insumo dentro de una receta
   const [nuevoInsumo, setNuevoInsumo] = useState('');
@@ -82,6 +99,7 @@ export default function RecetarioPage() {
     const data = await res.json();
     setItems(data.items ?? []);
     setInsumos(data.insumos ?? []);
+    if (data.impuestos) setImpuestos(data.impuestos);
     setCargando(false);
   }, []);
 
@@ -172,13 +190,22 @@ export default function RecetarioPage() {
     await llamar('PATCH', { id: l.id, cantidad: cant });
   }
 
+  /** Guarda la receta pero la saca de la lista: ese producto ya no se hace. */
+  async function ocultarReceta(p: ProductoReceta, oculta: boolean) {
+    if (oculta && !confirm(`¿"${p.nombre}" ya no se prepara? Su receta se guarda por si regresa.`))
+      return;
+    await llamar('PATCH', { idProducto: p.id, oculta });
+  }
+
   async function quitar(l: LineaReceta) {
     if (!confirm(`¿Quitar ${l.insumo} de esta receta?`)) return;
     await llamar('DELETE', undefined, `?id=${encodeURIComponent(l.id)}`);
   }
 
   const q = busqueda.trim().toLowerCase();
+  const ocultas = items.filter((p) => p.oculta);
   const visibles = items
+    .filter((p) => (verOcultas ? p.oculta : !p.oculta))
     .filter((p) => (soloSinReceta ? p.lineas.length === 0 : true))
     .filter(
       (p) =>
@@ -187,7 +214,7 @@ export default function RecetarioPage() {
         p.lineas.some((l) => l.insumo.toLowerCase().includes(q))
     );
 
-  const sinReceta = items.filter((p) => p.lineas.length === 0).length;
+  const sinReceta = items.filter((p) => !p.oculta && p.lineas.length === 0).length;
   const porRevisar = items.reduce((n, p) => n + p.lineas.filter((l) => l.nota).length, 0);
 
   if (cargando) return <p className="text-neutral-700 animate-pulse">Cargando recetario…</p>;
@@ -201,7 +228,7 @@ export default function RecetarioPage() {
         </p>
       </div>
 
-      {(sinReceta > 0 || porRevisar > 0) && (
+      {(sinReceta > 0 || porRevisar > 0 || ocultas.length > 0) && (
         <div className="flex flex-wrap gap-2">
           {sinReceta > 0 && (
             <button
@@ -214,9 +241,19 @@ export default function RecetarioPage() {
             </button>
           )}
           {porRevisar > 0 && (
-            <span className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-neutral-100 text-neutral-600">
+            <span className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-neutral-100 text-neutral-800">
               📝 {porRevisar} renglones marcados para revisar
             </span>
+          )}
+          {ocultas.length > 0 && (
+            <button
+              onClick={() => setVerOcultas((v) => !v)}
+              className={`text-xs font-semibold px-3 py-1.5 rounded-lg ${
+                verOcultas ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-neutral-800'
+              }`}
+            >
+              {verOcultas ? '← Volver a las de siempre' : `📦 ${ocultas.length} que ya no se preparan`}
+            </button>
           )}
         </div>
       )}
@@ -231,9 +268,16 @@ export default function RecetarioPage() {
       <div className="space-y-3 text-neutral-900">
         {visibles.map((p) => {
           const activo = abierto === p.id;
-          const margen = p.costoTotal !== null && p.precio > 0
-            ? Math.round(((p.precio - p.costoTotal) / p.precio) * 100)
-            : null;
+          // Lo que de verdad queda: el precio del menú trae el IVA adentro
+          const d =
+            p.costoTotal !== null && p.precio > 0
+              ? desglosar(p.precio, p.costoTotal, impuestos)
+              : null;
+          const margen = d ? Math.round(d.margenNetoPct) : null;
+          const sugerido =
+            p.costoTotal !== null
+              ? precioSugerido(p.costoTotal, impuestos.objetivoInsumoPct, impuestos.ivaPct)
+              : null;
 
           return (
             <div key={p.id} className="bg-white rounded-2xl shadow-sm border border-neutral-100">
@@ -275,8 +319,8 @@ export default function RecetarioPage() {
                     <p className="text-[11px] text-neutral-700">
                       cuesta ${p.costoTotal.toFixed(2)}
                       {margen !== null && (
-                        <span className={margen < 30 ? 'text-red-600 font-semibold' : 'text-green-700'}>
-                          {' '}· {margen}%
+                        <span className={margen < 25 ? 'text-red-700 font-semibold' : 'text-green-800'}>
+                          {' '}· te quedan {margen}%
                         </span>
                       )}
                     </p>
@@ -289,6 +333,73 @@ export default function RecetarioPage() {
 
               {activo && (
                 <div className="border-t border-neutral-100 p-4 space-y-2">
+                  {/*
+                    Con y sin impuestos, lado a lado.
+
+                    La columna de la izquierda es la cuenta de siempre
+                    (precio menos costo) y engaña: el precio del menú trae
+                    el IVA adentro, que no es tuyo. La de la derecha es lo
+                    que de verdad queda.
+                  */}
+                  {d && (
+                    <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-3 mb-2">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <p className="text-[11px] font-bold text-neutral-700 uppercase tracking-wide">
+                            Sin impuestos
+                          </p>
+                          <p className="text-lg font-bold text-neutral-900">
+                            ${d.margenBruto.toFixed(2)}
+                          </p>
+                          <p className="text-[11px] text-neutral-800">
+                            {d.margenBrutoPct}% de ${d.precio.toFixed(2)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-bold text-neutral-700 uppercase tracking-wide">
+                            Con IVA e ISR
+                          </p>
+                          <p
+                            className={`text-lg font-bold ${
+                              d.margenNeto <= 0 ? 'text-red-700' : 'text-green-800'
+                            }`}
+                          >
+                            ${d.margenNeto.toFixed(2)}
+                          </p>
+                          <p className="text-[11px] text-neutral-800">
+                            {d.margenNetoPct}% de ${d.precio.toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-2 pt-2 border-t border-neutral-200 text-[11px] text-neutral-800 space-y-0.5">
+                        <p>
+                          De ${d.precio.toFixed(2)}: ${d.iva.toFixed(2)} son IVA ({impuestos.ivaPct}
+                          %), ${d.costo.toFixed(2)} de insumos y ${d.isr.toFixed(2)} de ISR estimado
+                          ({impuestos.isrPct}%).
+                        </p>
+                        <p>
+                          Los insumos son el{' '}
+                          <b
+                            className={
+                              d.insumoPct > impuestos.objetivoInsumoPct
+                                ? 'text-red-700'
+                                : 'text-neutral-900'
+                            }
+                          >
+                            {d.insumoPct}%
+                          </b>{' '}
+                          del precio sin IVA (objetivo: {impuestos.objetivoInsumoPct}%).
+                          {sugerido !== null && sugerido !== p.precio && (
+                            <>
+                              {' '}
+                              Para cumplirlo, el precio tendría que ser <b>${sugerido}</b>.
+                            </>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                   {p.lineas.length === 0 && (
                     <p className="text-sm text-neutral-600">
                       Todavía no tiene receta. Si es un combo, agrégale los productos que lo
@@ -528,6 +639,16 @@ export default function RecetarioPage() {
                     </div>
                   </div>
                   {error && <p className="text-sm text-red-600">{error}</p>}
+
+                  {/* Guardar la receta sin que estorbe: el producto dejó
+                      de prepararse pero puede volver. */}
+                  <button
+                    onClick={() => ocultarReceta(p, !p.oculta)}
+                    disabled={ocupado}
+                    className="text-xs font-semibold text-neutral-800 underline underline-offset-2 disabled:opacity-50"
+                  >
+                    {p.oculta ? '↩️ Volver a prepararlo' : '📦 Ya no se prepara'}
+                  </button>
                 </div>
               )}
             </div>
@@ -535,7 +656,9 @@ export default function RecetarioPage() {
         })}
 
         {visibles.length === 0 && (
-          <p className="text-center text-neutral-600 py-8">Ningún producto coincide.</p>
+          <p className="text-center text-neutral-800 py-8">
+            {verOcultas ? 'No hay recetas guardadas aquí.' : 'Ningún producto coincide.'}
+          </p>
         )}
       </div>
     </div>

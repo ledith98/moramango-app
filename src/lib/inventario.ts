@@ -56,6 +56,10 @@ export const COLS_BIBLIOTECA = [
   // ID_Presentacion con cuyo precio se costean las recetas. Vacío = la
   // más barata de las que se compran hoy. Ver precioInsumo.ts.
   'Precio_Base',
+  // Lo que hay que recordar de este insumo y no cabe en ningún otro
+  // lado: dónde se surte más barato, qué marca sí sirve, que se pide con
+  // dos días de anticipación.
+  'Notas',
 ];
 
 export const COLS_ACTIVOS = [
@@ -145,6 +149,8 @@ export async function prepararInventario(): Promise<void> {
     // De qué presentación sale el costo. Vacía = la más barata que se
     // compre hoy, que es lo que casi siempre se quiere.
     ensureColumn(HOJA_BIBLIOTECA, 'Precio_Base'),
+    // Nota libre del insumo: dónde se surte, qué marca, cómo se pide
+    ensureColumn(HOJA_BIBLIOTECA, 'Notas'),
     ensureColumn(HOJA_COMPRAS, 'Donde'),
     ensureColumn(HOJA_COMPRAS, 'Quien'),
     ensureColumn(HOJA_COMPRAS, 'ID_Proveedor'),
@@ -254,6 +260,8 @@ export const columnaRendimiento = () => ensureColumn(HOJA_BIBLIOTECA, 'Rendimien
 
 /** Igual que la anterior, y por lo mismo. */
 export const columnaPrecioBase = () => ensureColumn(HOJA_BIBLIOTECA, 'Precio_Base');
+
+export const columnaNotas = () => ensureColumn(HOJA_BIBLIOTECA, 'Notas');
 
 /** Convierte una cantidad comprada a unidades de receta. */
 export function aUnidadesReceta(cantidadCompra: number, equivalencia: number): number {

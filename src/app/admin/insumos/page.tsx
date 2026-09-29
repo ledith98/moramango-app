@@ -31,6 +31,8 @@ interface ItemBiblioteca {
   categoria: string;
   proveedor: string;
   contacto: string;
+  /** Lo que hay que recordar de este insumo: dónde se surte, qué marca… */
+  notas: string;
   recetas: string[];
   ingredientes: string[];
   /** true = se une por nombre idéntico, sin vínculo declarado a mano */
@@ -168,6 +170,7 @@ const FORM_VACIO = {
   contacto: '',
   ultimoPrecioCompra: '',
   rendimientoPct: '',
+  notas: '',
 };
 
 /**
@@ -474,6 +477,7 @@ El stock quedará igual a lo que contaste.`)) return;
       contacto: b.contacto,
       ultimoPrecioCompra: b.ultimoPrecioCompra ? String(b.ultimoPrecioCompra) : '',
       rendimientoPct: b.rendimientoPct,
+      notas: b.notas || '',
     });
     setEditandoId(b.id);
     setError('');
@@ -1556,7 +1560,13 @@ El stock quedará igual a lo que contaste.`)) return;
               {(b.proveedor || b.contacto) && (
                 <p className="text-xs text-neutral-700">
                   🏪 {b.proveedor}
-                  {b.contacto && <span className="text-neutral-600"> · {b.contacto}</span>}
+                  {b.contacto && <span className="text-neutral-700"> · {b.contacto}</span>}
+                </p>
+              )}
+
+              {b.notas && (
+                <p className="text-xs text-neutral-900 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 whitespace-pre-line">
+                  📝 {b.notas}
                 </p>
               )}
 
@@ -1892,6 +1902,25 @@ El stock quedará igual a lo que contaste.`)) return;
             )}
             <option value={NUEVA_CATEGORIA}>➕ Nueva categoría…</option>
           </select>
+
+          {/*
+            La nota del insumo. Es donde viven las cosas que hoy solo
+            están en la cabeza de quien compra: en qué pasillo está, qué
+            marca sí sirve, que los martes no hay.
+          */}
+          <label className="block text-xs font-semibold text-neutral-700 mb-1 mt-3">
+            Nota <span className="font-normal text-neutral-700">(opcional)</span>
+          </label>
+          <textarea
+            value={form.notas}
+            onChange={(e) => setForm({ ...form, notas: e.target.value.slice(0, 500) })}
+            rows={2}
+            placeholder="Ej. En Bodega 142 sale más barato · La marca del empaque verde no cuaja"
+            className={`${inputCls} resize-none`}
+          />
+          <p className="text-xs text-neutral-700 mt-1">
+            Lo que haya que recordar al comprarlo. Se ve en su tarjeta.
+          </p>
 
           <div className="grid grid-cols-2 gap-3 mt-3">
             <div>

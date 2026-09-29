@@ -99,6 +99,11 @@ export default function RecetarioPage() {
   const [ordenCategorias, setOrdenCategorias] = useState<string[]>([]);
   /** Grupos recogidos, para poder ver solo el que se está trabajando */
   const [gruposCerrados, setGruposCerrados] = useState<string[]>([]);
+  /** Todos los grupos que existen, incluidos los que están vacíos */
+  const [categorias, setCategorias] = useState<string[]>([]);
+  /** true = está abierto el panel para editar los grupos */
+  const [editarGrupos, setEditarGrupos] = useState(false);
+  const [grupoNuevo, setGrupoNuevo] = useState('');
 
   // Alta de un insumo dentro de una receta
   const [nuevoInsumo, setNuevoInsumo] = useState('');
@@ -119,6 +124,7 @@ export default function RecetarioPage() {
     setInsumos(data.insumos ?? []);
     if (data.impuestos) setImpuestos(data.impuestos);
     if (Array.isArray(data.ordenCategorias)) setOrdenCategorias(data.ordenCategorias);
+    if (Array.isArray(data.categorias)) setCategorias(data.categorias);
     setCargando(false);
   }, []);
 
@@ -210,6 +216,11 @@ export default function RecetarioPage() {
     await llamar('PATCH', { id: l.id, cantidad: cant });
   }
 
+  /** Crea, renombra o borra un grupo. Vacío en `a` = borrar; en `de` = crear. */
+  async function guardarGrupo(de: string, a: string) {
+    return llamar('PATCH', { categoriaDe: de, categoriaA: a });
+  }
+
   /**
    * Cambia de grupo un producto.
    *
@@ -289,6 +300,11 @@ export default function RecetarioPage() {
   */
   const gruposVisibles = (() => {
     const mapa = new Map<string, ProductoReceta[]>();
+    // Los grupos recién creados salen aunque estén vacíos; al buscar no,
+    // porque entonces estorban.
+    if (!busqueda.trim() && !verOcultas && !soloSinReceta) {
+      for (const c of categorias) if (c.trim()) mapa.set(c.trim(), []);
+    }
     for (const p of visibles) {
       const cat = (p.categoria || '').trim() || 'Sin grupo';
       if (!mapa.has(cat)) mapa.set(cat, []);
@@ -306,8 +322,12 @@ export default function RecetarioPage() {
 
   /** Todos los grupos que existen hoy, para poder mover un producto */
   const categoriasConocidas = [
-    ...new Set(items.map((p) => (p.categoria || '').trim()).filter(Boolean)),
+    ...new Set([...categorias, ...items.map((p) => p.categoria)].map((c) => (c || '').trim()).filter(Boolean)),
   ].sort((a, b) => a.localeCompare(b, 'es'));
+
+  /** Cuántos productos vivos hay en cada grupo, para el panel de grupos */
+  const cuantosEn = (cat: string) =>
+    items.filter((p) => claveCategoria(p.categoria || '') === claveCategoria(cat)).length;
 
   const sinReceta = items.filter((p) => !p.oculta && p.lineas.length === 0).length;
   const porRevisar = items.reduce((n, p) => n + p.lineas.filter((l) => l.nota).length, 0);
@@ -350,6 +370,100 @@ export default function RecetarioPage() {
               {verOcultas ? '← Volver a las de siempre' : `📦 ${ocultas.length} que ya no se preparan`}
             </button>
           )}
+        </div>
+      )}
+
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setEditarGrupos((v) => !v)}
+          className={`text-xs font-semibold px-3 py-1.5 rounded-lg ${
+            editarGrupos ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-neutral-800'
+          }`}
+        >
+          📂 {editarGrupos ? 'Listo' : 'Editar grupos'}
+        </button>
+      </div>
+
+      {editarGrupos && (
+        <div className="bg-white rounded-2xl border border-neutral-200 p-4 space-y-3">
+          <p className="text-sm text-neutral-800">
+            Los grupos son los mismos del menú de la tienda: si renombras uno, se renombra en los
+            dos lados y en todos sus productos.
+          </p>
+
+          <div className="space-y-2">
+            {categoriasConocidas.map((c) => {
+              const cuantos = cuantosEn(c);
+              return (
+                <div key={c} className="flex items-center gap-2">
+                  <input
+                    defaultValue={c}
+                    onBlur={(e) => {
+                      const nuevo = e.target.value.trim();
+                      if (!nuevo || nuevo === c) {
+                        e.target.value = c;
+                        return;
+                      }
+                      if (
+                        !confirm(
+                          `¿Renombrar "${c}" a "${nuevo}"? Cambia en sus ${cuantos} producto(s) y en el menú de la tienda.`
+                        )
+                      ) {
+                        e.target.value = c;
+                        return;
+                      }
+                      guardarGrupo(c, nuevo);
+                    }}
+                    disabled={ocupado}
+                    className="flex-1 min-w-0 bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-marron disabled:opacity-50"
+                  />
+                  <span className="text-xs text-neutral-800 w-20 shrink-0">
+                    {cuantos} producto{cuantos === 1 ? '' : 's'}
+                  </span>
+                  <button
+                    onClick={() => {
+                      if (cuantos > 0) {
+                        setError(
+                          `"${c}" todavía tiene ${cuantos} producto(s). Muévelos a otro grupo antes de borrarlo.`
+                        );
+                        return;
+                      }
+                      if (confirm(`¿Borrar el grupo vacío "${c}"?`)) guardarGrupo(c, '');
+                    }}
+                    disabled={ocupado}
+                    className="text-xs font-semibold text-red-700 bg-red-50 px-2 py-2 rounded-lg active:scale-95 disabled:opacity-50 shrink-0"
+                    title={cuantos > 0 ? 'Primero mueve sus productos' : 'Borrar el grupo'}
+                  >
+                    🗑️
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center gap-2 border-t border-neutral-100 pt-3">
+            <input
+              value={grupoNuevo}
+              onChange={(e) => setGrupoNuevo(e.target.value)}
+              placeholder="Nombre del grupo nuevo"
+              className="flex-1 min-w-0 bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 placeholder-neutral-600 focus:outline-none focus:border-marron"
+            />
+            <button
+              onClick={async () => {
+                if (!grupoNuevo.trim()) return;
+                if (await guardarGrupo('', grupoNuevo.trim())) setGrupoNuevo('');
+              }}
+              disabled={ocupado || !grupoNuevo.trim()}
+              className="bg-marron text-white text-sm font-semibold px-4 py-2 rounded-xl active:scale-95 disabled:opacity-50 shrink-0"
+            >
+              Crear
+            </button>
+          </div>
+
+          <p className="text-xs text-neutral-700">
+            El orden en que se ven los grupos se cambia en Ajustes → Orden del menú.
+          </p>
+          {error && <p className="text-sm text-red-700 font-semibold">{error}</p>}
         </div>
       )}
 

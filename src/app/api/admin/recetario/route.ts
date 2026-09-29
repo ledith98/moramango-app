@@ -6,8 +6,9 @@
  * GET    → productos con su receta ya resuelta (nombre, unidad y costo
  *          salen del insumo, no se guardan) + insumos disponibles
  * POST   → agrega un insumo a la receta de un producto
- * PATCH  → cambia la cantidad o la merma de un renglón, o esconde del
- *          recetario un producto que ya no se prepara
+ * PATCH  → cambia la cantidad o la merma de un renglón, reordena los
+ *          renglones, esconde del recetario un producto que ya no se
+ *          prepara, o crea, renombra y borra un grupo de productos
  * DELETE → quita un renglón de la receta
  */
 
@@ -28,7 +29,8 @@ import { COL_REC, HOJA_RECETARIO, prepararRecetario } from '@/lib/recetario';
 import { siguienteId } from '@/lib/ids';
 import { anotar } from '@/lib/bitacora';
 import { getAdminSession } from '@/lib/roles';
-import { leerAjustes } from '@/lib/ajustes';
+import { guardarOrdenCategorias, leerAjustes } from '@/lib/ajustes';
+import { claveCategoria } from '@/lib/categorias';
 
 const vivos = (filas: Record<string, string>[]) =>
   filas.filter((b) => (b.Eliminado || '').toLowerCase() !== 'si');
@@ -291,6 +293,20 @@ export async function GET() {
     // El mismo orden de grupos que la tienda, para que el recetario no
     // lleve los productos en otro orden que el menú
     ordenCategorias: ajustes.ordenCategorias,
+    /*
+      Todos los grupos que existen: los que usa algún producto y los que
+      se crearon y todavía están vacíos. Sin los vacíos, un grupo recién
+      creado desaparecería hasta meterle algo.
+    */
+    categorias: [
+      ...new Set([
+        ...ajustes.ordenCategorias,
+        ...productos
+          .filter((x) => (x.Eliminado || '').toUpperCase() !== 'TRUE')
+          .map((x) => (x['Categoría'] || x.Categoria || '').toString().trim())
+          .filter(Boolean),
+      ]),
+    ],
   });
 }
 
@@ -388,7 +404,83 @@ export async function PATCH(req: NextRequest) {
   }
   await prepararRecetario();
 
-  const { id, cantidad, merma, idProducto, oculta, orden } = await req.json();
+  const { id, cantidad, merma, idProducto, oculta, orden, categoriaDe, categoriaA } =
+    await req.json();
+
+  /*
+    Los grupos: crear uno (solo `categoriaA`), renombrarlo (los dos) o
+    borrarlo (solo `categoriaDe`).
+
+    Renombrar toca TODOS los productos de ese grupo y además el orden
+    guardado en Ajustes; si solo se cambiara el orden, el grupo aparecería
+    duplicado —el nombre viejo vacío y el nuevo al final.
+  */
+  if (categoriaDe !== undefined || categoriaA !== undefined) {
+    const de = (categoriaDe ?? '').toString().trim();
+    const a = (categoriaA ?? '').toString().trim().slice(0, 40);
+    const { ordenCategorias } = await leerAjustes();
+    const productos = await getSheetData('Productos', { crudo: true });
+    const vivosProd = productos
+      .map((x, i) => ({ x, fila: i + 2 }))
+      .filter(({ x }) => x.ID_Producto && (x.Eliminado || '').toUpperCase() !== 'TRUE');
+    const suyos = de
+      ? vivosProd.filter(
+          ({ x }) => claveCategoria((x['Categoría'] || x.Categoria || '').toString()) === claveCategoria(de)
+        )
+      : [];
+
+    if (!de && !a) {
+      return NextResponse.json({ error: 'Falta el nombre del grupo' }, { status: 400 });
+    }
+    // Crear: basta con dejarlo en el orden; nace vacío y esperando
+    if (!de) {
+      if (ordenCategorias.some((c) => claveCategoria(c) === claveCategoria(a))) {
+        return NextResponse.json({ error: `"${a}" ya existe` }, { status: 400 });
+      }
+      await guardarOrdenCategorias([...ordenCategorias, a]);
+      await anotar(quienDe(sesionEdit), 'Productos', `Creó el grupo "${a}"`, '');
+      return NextResponse.json({ success: true });
+    }
+    // Borrar: solo si ya no le queda nada adentro
+    if (!a) {
+      if (suyos.length > 0) {
+        return NextResponse.json(
+          { error: `"${de}" todavía tiene ${suyos.length} producto(s). Muévelos antes de borrarlo.` },
+          { status: 400 }
+        );
+      }
+      await guardarOrdenCategorias(
+        ordenCategorias.filter((c) => claveCategoria(c) !== claveCategoria(de))
+      );
+      await anotar(quienDe(sesionEdit), 'Productos', `Borró el grupo vacío "${de}"`, '');
+      return NextResponse.json({ success: true });
+    }
+    // Renombrar
+    if (
+      claveCategoria(de) !== claveCategoria(a) &&
+      ordenCategorias.some((c) => claveCategoria(c) === claveCategoria(a))
+    ) {
+      return NextResponse.json({ error: `"${a}" ya existe` }, { status: 400 });
+    }
+    if (suyos.length > 0) {
+      await updateCeldas(
+        'Productos',
+        suyos.map(({ fila }) => ({ fila, col: 3, valor: a }))
+      );
+    }
+    await guardarOrdenCategorias(
+      ordenCategorias.some((c) => claveCategoria(c) === claveCategoria(de))
+        ? ordenCategorias.map((c) => (claveCategoria(c) === claveCategoria(de) ? a : c))
+        : [...ordenCategorias, a]
+    );
+    await anotar(
+      quienDe(sesionEdit),
+      'Productos',
+      `Renombró el grupo "${de}" a "${a}"`,
+      `${suyos.length} producto(s)`
+    );
+    return NextResponse.json({ success: true });
+  }
 
   /*
     Reordenar los renglones de una receta. Llega la lista completa de

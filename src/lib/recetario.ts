@@ -95,6 +95,8 @@ function insumosDe(
   factor: number,
   porProducto: Map<string, Record<string, string>[]>,
   visitados: Set<string>,
+  /** Cuánto rinde la receta de cada producto; 0 = se usa por pieza */
+  rindePorProducto: Map<string, number>,
   nivel = 0
 ): { idBiblioteca: string; cantidad: number; merma: string; extra: string }[] {
   if (nivel >= PROFUNDIDAD_MAX || visitados.has(idProducto)) return [];
@@ -107,8 +109,18 @@ function insumosDe(
     if (cantidad <= 0) continue;
 
     if (r.ID_Componente) {
+      /*
+        Una preparación de la casa —el jarabe de jamaica— se hace por
+        tandas: la receta da 1,500 ml y la bebida ocupa 60. Entonces la
+        cantidad no son piezas sino mililitros de esa tanda, y lo que se
+        gasta es la fracción que le toca: 60 de 1,500 de todo lo que
+        lleva. Sin rendimiento se sigue contando por pieza, como el
+        sándwich dentro del combo.
+      */
+      const rinde = rindePorProducto.get(r.ID_Componente) ?? 0;
+      const parte = rinde > 0 ? cantidad / rinde : cantidad;
       salida.push(
-        ...insumosDe(r.ID_Componente, cantidad, porProducto, propios, nivel + 1)
+        ...insumosDe(r.ID_Componente, parte, porProducto, propios, rindePorProducto, nivel + 1)
       );
     } else if (r.ID_Biblioteca) {
       salida.push({
@@ -132,11 +144,17 @@ function insumosDe(
  */
 export function recetarioComoCatalogo(
   recetario: Record<string, string>[],
-  biblioteca: Record<string, string>[]
+  biblioteca: Record<string, string>[],
+  /** Los productos, para saber cuánto rinde la receta de cada uno */
+  productos: Record<string, string>[] = []
 ): Record<string, string>[] {
   const nombrePorId = new Map(biblioteca.map((b) => [b.ID_Biblioteca, b.Nombre || '']));
   const rendimientoPorId = new Map(
     biblioteca.map((b) => [b.ID_Biblioteca, b.Rendimiento_Pct ?? ''])
+  );
+
+  const rindePorProducto = new Map(
+    productos.map((p) => [p.ID_Producto, parseFloat((p.Rinde_Cantidad ?? '').toString()) || 0])
   );
 
   const porProducto = new Map<string, Record<string, string>[]>();
@@ -148,7 +166,7 @@ export function recetarioComoCatalogo(
 
   const salida: Record<string, string>[] = [];
   for (const idProducto of porProducto.keys()) {
-    for (const l of insumosDe(idProducto, 1, porProducto, new Set())) {
+    for (const l of insumosDe(idProducto, 1, porProducto, new Set(), rindePorProducto)) {
       // El vínculo real es por ID; el nombre se resuelve al leer, así que
       // renombrar un insumo nunca rompe una receta.
       const nombre = nombrePorId.get(l.idBiblioteca) ?? '';
@@ -183,11 +201,12 @@ export function recetarioComoCatalogo(
  */
 export async function leerRecetas(): Promise<Record<string, string>[]> {
   try {
-    const [recetario, biblioteca] = await Promise.all([
+    const [recetario, biblioteca, productos] = await Promise.all([
       getSheetData(HOJA_RECETARIO, { crudo: true }),
       getSheetData(HOJA_BIBLIOTECA, { crudo: true }),
+      getSheetData('Productos', { crudo: true }),
     ]);
-    const recetas = recetarioComoCatalogo(recetario, biblioteca);
+    const recetas = recetarioComoCatalogo(recetario, biblioteca, productos);
     if (recetas.length > 0) return recetas;
   } catch {
     // hoja aún sin crear

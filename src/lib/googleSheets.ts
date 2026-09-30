@@ -48,6 +48,25 @@ function getAuthClient() {
  * hoja con números decimales usa `{ crudo: true }`: devuelve el valor real
  * (number) sin pasar por el formato regional.
  */
+/**
+ * La letra de una columna: 1 = A, 26 = Z, 27 = AA.
+ *
+ * Se hacía con String.fromCharCode(64 + n), que a partir de la 27 devuelve
+ * "[" y Google contesta "Unable to parse range". La hoja Productos ya
+ * llegó a la Z, así que la siguiente columna que naciera rompía el
+ * guardado sin decir por qué.
+ */
+export function letraColumna(indice: number): string {
+  let n = Math.max(1, Math.floor(indice));
+  let letra = '';
+  while (n > 0) {
+    const resto = (n - 1) % 26;
+    letra = String.fromCharCode(65 + resto) + letra;
+    n = Math.floor((n - 1) / 26);
+  }
+  return letra;
+}
+
 export async function getSheetData(tabName: string, opciones?: { crudo?: boolean }) {
   const auth = getAuthClient();
   const sheets = google.sheets({ version: 'v4', auth });
@@ -105,7 +124,7 @@ export async function appendRow(tabName: string, values: (string | number | bool
   if (numCols > 26) {
     throw new Error(`appendRow solo soporta hasta 26 columnas, recibió ${numCols}`);
   }
-  const endCol = String.fromCharCode(64 + numCols);
+  const endCol = letraColumna(numCols);
 
   // 3. Escribir con rango explícito — sin depender de detección automática
   await conReintento(() =>
@@ -129,7 +148,7 @@ export async function updateCell(
   const auth = getAuthClient();
   const sheets = google.sheets({ version: 'v4', auth });
 
-  const colLetter = String.fromCharCode(64 + colIndex);
+  const colLetter = letraColumna(colIndex);
   await conReintento(() =>
     sheets.spreadsheets.values.update({
       spreadsheetId: process.env.GOOGLE_SHEETS_ID,
@@ -160,7 +179,7 @@ export async function updateCells(
   const sheets = google.sheets({ version: 'v4', auth });
 
   const data = entradas.map(([col, value]) => {
-    const colLetter = String.fromCharCode(64 + Number(col));
+    const colLetter = letraColumna(Number(col));
     return {
       range: `${tabName}!${colLetter}${rowIndex}`,
       values: [[value]],
@@ -192,7 +211,7 @@ export async function updateCeldas(
   const sheets = google.sheets({ version: 'v4', auth });
 
   const data = cambios.map(({ fila, col, valor }) => ({
-    range: `${tabName}!${String.fromCharCode(64 + col)}${fila}`,
+    range: `${tabName}!${letraColumna(col)}${fila}`,
     values: [[valor]],
   }));
 
@@ -291,7 +310,7 @@ export async function ensureSheet(tabName: string, headers: string[]): Promise<v
     })
   );
 
-  const endCol = String.fromCharCode(64 + headers.length);
+  const endCol = letraColumna(headers.length);
   await conReintento(() =>
     sheets.spreadsheets.values.update({
       spreadsheetId: process.env.GOOGLE_SHEETS_ID,
@@ -312,10 +331,34 @@ export async function ensureSheet(tabName: string, headers: string[]): Promise<v
  * Útil para agregar campos nuevos (ej. "Eliminado") sin tener que editar
  * el Sheet a mano ni migrar filas existentes.
  */
+/*
+  Una columna por hoja a la vez.
+
+  Dos ensureColumn de la misma pestaña lanzados juntos leían el mismo
+  encabezado, calculaban el mismo lugar libre y escribían encima: la
+  segunda columna se quedaba sin nacer y su dato caía en la primera. Pasó
+  con Rinde_Cantidad y Rinde_Unidad. Esta fila hace que se formen.
+*/
+const filaPorHoja = new Map<string, Promise<unknown>>();
+
 export async function ensureColumn(tabName: string, columnName: string): Promise<number> {
   const llave = `${tabName}!${columnName}`;
   const vista = columnasVistas.get(llave);
   if (vista && Date.now() < vista.hasta) return vista.indice;
+
+  const anterior = filaPorHoja.get(tabName) ?? Promise.resolve();
+  const mia = anterior.catch(() => {}).then(() => crearColumna(tabName, columnName));
+  filaPorHoja.set(
+    tabName,
+    mia.catch(() => {})
+  );
+  return mia;
+}
+
+async function crearColumna(tabName: string, columnName: string): Promise<number> {
+  // Puede haberla creado quien iba delante en la fila
+  const yaEsta = columnasVistas.get(`${tabName}!${columnName}`);
+  if (yaEsta && Date.now() < yaEsta.hasta) return yaEsta.indice;
 
   const auth = getAuthClient();
   const sheets = google.sheets({ version: 'v4', auth });
@@ -339,7 +382,7 @@ export async function ensureColumn(tabName: string, columnName: string): Promise
   if (existente !== -1) return existente + 1;
 
   const nuevoIndice = headers.length + 1;
-  const colLetter = String.fromCharCode(64 + nuevoIndice);
+  const colLetter = letraColumna(nuevoIndice);
   await conReintento(() =>
     sheets.spreadsheets.values.update({
       spreadsheetId: process.env.GOOGLE_SHEETS_ID,
@@ -349,6 +392,9 @@ export async function ensureColumn(tabName: string, columnName: string): Promise
     })
   );
 
-  columnasVistas.set(llave, { indice: nuevoIndice, hasta: Date.now() + VIDA_ESTRUCTURA_MS });
+  columnasVistas.set(`${tabName}!${columnName}`, {
+    indice: nuevoIndice,
+    hasta: Date.now() + VIDA_ESTRUCTURA_MS,
+  });
   return nuevoIndice;
 }

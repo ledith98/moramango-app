@@ -61,6 +61,8 @@ interface ProductoReceta {
   costoTotal: number | null;
   /** true = ya no se prepara; se guarda la receta pero no estorba */
   oculta?: boolean;
+  /** Cuánto sale de esta receta (1500 ml de jarabe); 0 = se usa por pieza */
+  rinde?: { cantidad: number; unidad: string };
 }
 
 interface InsumoOpcion {
@@ -112,6 +114,10 @@ export default function RecetarioPage() {
   const [gruposCerrados, setGruposCerrados] = useState<string[]>([]);
   /** Todos los grupos que existen, incluidos los que están vacíos */
   const [categorias, setCategorias] = useState<string[]>([]);
+  /** El producto al que se le está capturando cuánto rinde */
+  const [rindeForm, setRindeForm] = useState<{ id: string; cantidad: string; unidad: string } | null>(
+    null
+  );
   /** El grupo al que se le está agregando una receta nueva */
   const [recetaNuevaEn, setRecetaNuevaEn] = useState<string | null>(null);
   const [recetaNueva, setRecetaNueva] = useState({ nombre: '', precio: '', preparacion: true });
@@ -365,6 +371,16 @@ export default function RecetarioPage() {
       return;
     }
     await cargar();
+  }
+
+  /** Anota cuánto sale de una receta, para poder usarla por ml o por g. */
+  async function guardarRinde(idProducto: string, cantidad: string, unidad: string) {
+    const ok = await llamar('PATCH', {
+      idProducto,
+      rindeCantidad: cantidad.trim() === '' ? '' : cantidad.trim(),
+      rindeUnidad: unidad.trim(),
+    });
+    if (ok) setRindeForm(null);
   }
 
   /** Guarda la receta pero la saca de la lista: ese producto ya no se hace. */
@@ -1194,7 +1210,9 @@ export default function RecetarioPage() {
                         ) : (
                           <p className="text-xs text-neutral-700">
                             Para combos: elige de qué productos se compone y el costo se saca solo
-                            sumando lo que cuesta cada uno.
+                            sumando lo que cuesta cada uno. Si es una preparación de la casa con
+                            rendimiento (el jarabe), la cantidad va en su unidad —60 ml— y se cobra
+                            la parte que le toca de la tanda.
                           </p>
                         );
                       })()}
@@ -1323,6 +1341,9 @@ export default function RecetarioPage() {
                             .map((o) => (
                               <option key={o.id} value={o.id}>
                                 {o.nombre}
+                                {o.rinde?.cantidad
+                                  ? ` (rinde ${o.rinde.cantidad} ${o.rinde.unidad})`
+                                  : ''}
                                 {o.costoTotal !== null
                                   ? ` — cuesta $${o.costoTotal.toFixed(2)}`
                                   : ' — sin receta todavía'}
@@ -1340,7 +1361,7 @@ export default function RecetarioPage() {
                       />
                       <span className="self-center text-sm text-neutral-900">
                         {modoAgregar === 'producto'
-                          ? 'piezas'
+                          ? items.find((o) => o.id === nuevoComponente)?.rinde?.unidad || 'piezas'
                           : insumos.find((i) => i.id === nuevoInsumo)?.unidad || ''}
                       </span>
                       <button
@@ -1356,6 +1377,72 @@ export default function RecetarioPage() {
 
                   {/* Guardar la receta sin que estorbe: el producto dejó
                       de prepararse pero puede volver. */}
+                  {/*
+                    Cuánto sale de la receta. Es lo que permite meterla en
+                    otra por mililitros: sin esto, el jarabe solo se podía
+                    usar "por pieza", o sea la tanda entera en cada vaso.
+                  */}
+                  <div className="pt-1">
+                    {rindeForm?.id === p.id ? (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-semibold text-neutral-700">
+                          Esta receta rinde
+                        </span>
+                        <input
+                          value={rindeForm.cantidad}
+                          onChange={(e) => setRindeForm({ ...rindeForm, cantidad: e.target.value })}
+                          inputMode="decimal"
+                          placeholder="1500"
+                          className="w-24 bg-neutral-50 border border-neutral-200 rounded-lg px-2 py-1 text-sm text-neutral-900 placeholder-neutral-600"
+                        />
+                        <input
+                          value={rindeForm.unidad}
+                          onChange={(e) => setRindeForm({ ...rindeForm, unidad: e.target.value })}
+                          placeholder="ml"
+                          className="w-20 bg-neutral-50 border border-neutral-200 rounded-lg px-2 py-1 text-sm text-neutral-900 placeholder-neutral-600"
+                        />
+                        <button
+                          onClick={() => guardarRinde(p.id, rindeForm.cantidad, rindeForm.unidad)}
+                          disabled={ocupado}
+                          className="text-xs font-bold bg-black text-white px-3 py-1.5 rounded-lg active:scale-95 disabled:opacity-50"
+                        >
+                          Guardar
+                        </button>
+                        <button
+                          onClick={() => setRindeForm(null)}
+                          className="text-xs font-semibold text-neutral-800 underline"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() =>
+                          setRindeForm({
+                            id: p.id,
+                            cantidad: p.rinde?.cantidad ? String(p.rinde.cantidad) : '',
+                            unidad: p.rinde?.unidad ?? '',
+                          })
+                        }
+                        className="text-xs text-neutral-800 text-left"
+                      >
+                        {p.rinde?.cantidad ? (
+                          <>
+                            🧪 Esta receta rinde{' '}
+                            <b>
+                              {p.rinde.cantidad} {p.rinde.unidad}
+                            </b>{' '}
+                            <span className="underline">cambiar</span>
+                          </>
+                        ) : (
+                          <span className="underline">
+                            🧪 ¿Cuánto sale de esta receta? (para usarla dentro de otra)
+                          </span>
+                        )}
+                      </button>
+                    )}
+                  </div>
+
                   <div className="flex items-center gap-2 flex-wrap pt-1">
                     <label className="text-xs font-semibold text-neutral-700">Grupo</label>
                     <select

@@ -105,6 +105,15 @@ export async function GET() {
     );
   }
   const prodPorId = new Map(productos.map((p) => [p.ID_Producto, p]));
+  /**
+   * Cuánto rinde la receta de cada producto.
+   *
+   * El jarabe de jamaica se hace por tandas de 1,500 ml y la bebida ocupa
+   * 60: sin este dato, meterlo en otra receta solo se podía "por pieza",
+   * o sea toda la tanda en cada vaso.
+   */
+  const rindeDe = (id: string) => parseFloat((prodPorId.get(id)?.Rinde_Cantidad ?? '').toString()) || 0;
+  const unidadRindeDe = (id: string) => (prodPorId.get(id)?.Rinde_Unidad ?? '').toString().trim();
 
   const lineasPorProducto = new Map<string, Record<string, string>[]>();
   for (const r of recetario) {
@@ -172,7 +181,10 @@ export async function GET() {
       if (r.ID_Componente) {
         const costoComp = costoDeProducto(r.ID_Componente, propios);
         if (costoComp === null) return null;
-        total += cantidad * costoComp;
+        // Con rendimiento, la cantidad está en su unidad (ml, g) y cuesta
+        // la fracción que le toca de la tanda entera.
+        const rinde = rindeDe(r.ID_Componente);
+        total += (rinde > 0 ? cantidad / rinde : cantidad) * costoComp;
       } else {
         const unitario = costoDeInsumo(r.ID_Biblioteca);
         if (unitario === null) return null;
@@ -192,17 +204,22 @@ export async function GET() {
         if (r.ID_Componente) {
           const comp = prodPorId.get(r.ID_Componente);
           const costoComp = costoDeProducto(r.ID_Componente, new Set([p.ID_Producto]));
+          const rinde = rindeDe(r.ID_Componente);
+          const unidadComp = rinde > 0 ? unidadRindeDe(r.ID_Componente) : '';
           return {
             id: r.ID_Linea,
             tipo: 'producto' as const,
             idBiblioteca: '',
             idComponente: r.ID_Componente,
             insumo: comp?.Nombre ?? '(producto eliminado)',
-            unidad: cantidad === 1 ? 'pieza' : 'piezas',
+            unidad: unidadComp || (cantidad === 1 ? 'pieza' : 'piezas'),
             cantidad,
             merma: '',
             nota: r.Notas || '',
-            costo: costoComp !== null ? redondear(cantidad * costoComp, 2) : null,
+            costo:
+              costoComp !== null
+                ? redondear((rinde > 0 ? cantidad / rinde : cantidad) * costoComp, 2)
+                : null,
             huerfano: !comp,
           };
         }
@@ -283,6 +300,11 @@ export async function GET() {
         emoji: (p.Emoji || '').trim(),
         lineas,
         costoTotal: costoDeProducto(p.ID_Producto),
+        /** Cuánto sale de esta receta, para poder usarla por ml o g */
+        rinde: {
+          cantidad: rindeDe(p.ID_Producto),
+          unidad: unidadRindeDe(p.ID_Producto),
+        },
         /** 'si' = ya no se prepara; se guarda su receta pero no estorba */
         oculta: (p.Receta_Oculta || '').toString().trim().toLowerCase() === 'si',
       };
@@ -436,8 +458,18 @@ export async function PATCH(req: NextRequest) {
   }
   await prepararRecetario();
 
-  const { id, cantidad, merma, idProducto, oculta, orden, categoriaDe, categoriaA } =
-    await req.json();
+  const {
+    id,
+    cantidad,
+    merma,
+    idProducto,
+    oculta,
+    orden,
+    categoriaDe,
+    categoriaA,
+    rindeCantidad,
+    rindeUnidad,
+  } = await req.json();
 
   /*
     Los grupos: crear uno (solo `categoriaA`), renombrarlo (los dos) o
@@ -545,6 +577,41 @@ export async function PATCH(req: NextRequest) {
     ya no se toca, y al revés. Nada se borra: la receta queda guardada por
     si el producto regresa.
   */
+  /*
+    Cuánto rinde la receta. Va en el producto y no en el insumo porque es
+    una propiedad de la RECETA: el mismo jarabe hecho en tanda chica o
+    grande lleva lo mismo por mililitro, y lo que cambia es cuánto sale.
+  */
+  if (idProducto !== undefined && (rindeCantidad !== undefined || rindeUnidad !== undefined)) {
+    const cant = parseFloat(String(rindeCantidad ?? '').replace(',', '.'));
+    if (rindeCantidad !== undefined && rindeCantidad !== '' && (isNaN(cant) || cant <= 0)) {
+      return NextResponse.json({ error: 'El rendimiento debe ser mayor a 0' }, { status: 400 });
+    }
+    const [colCant, colUnidad, filas] = await Promise.all([
+      ensureColumn('Productos', 'Rinde_Cantidad'),
+      ensureColumn('Productos', 'Rinde_Unidad'),
+      getSheetData('Productos', { crudo: true }),
+    ]);
+    const idx = filas.findIndex((x) => x.ID_Producto === idProducto);
+    if (idx === -1) {
+      return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 });
+    }
+    const vacio = rindeCantidad === '' || rindeCantidad === null;
+    await updateCells('Productos', idx + 2, {
+      [colCant]: vacio ? '' : cant,
+      [colUnidad]: vacio ? '' : (rindeUnidad ?? '').toString().trim().slice(0, 20),
+    });
+    await anotar(
+      quienDe(sesionEdit),
+      'Recetario',
+      vacio
+        ? `Quitó el rendimiento de "${filas[idx].Nombre || idProducto}"`
+        : `La receta de "${filas[idx].Nombre || idProducto}" rinde ${cant} ${(rindeUnidad ?? '').toString().trim()}`,
+      ''
+    );
+    return NextResponse.json({ success: true });
+  }
+
   if (idProducto !== undefined) {
     const col = await ensureColumn('Productos', 'Receta_Oculta');
     const productos = await getSheetData('Productos', { crudo: true });

@@ -294,6 +294,34 @@ export default function RecetarioPage() {
     setAbierto(data.idProducto);
   }
 
+  /**
+   * Mueve un grupo de lugar.
+   *
+   * Se guarda el orden COMPLETO, no solo el que se movió: es el mismo
+   * ajuste que usa la tienda para armar el menú, y una lista a medias
+   * dejaría fuera a los grupos que nunca se tocaron.
+   */
+  async function moverGrupo(nombre: string, hacia: -1 | 1) {
+    const lista = [...gruposOrdenados];
+    const i = lista.indexOf(nombre);
+    const destino = i + hacia;
+    if (i === -1 || destino < 0 || destino >= lista.length) return;
+    [lista[i], lista[destino]] = [lista[destino], lista[i]];
+    // Se pinta ya movido: esperar a Google hace que se toque dos veces
+    setOrdenCategorias(lista);
+    setOcupado(true);
+    const res = await fetch('/api/admin/ajustes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ordenCategorias: lista }),
+    });
+    setOcupado(false);
+    if (!res.ok) {
+      setError('No se pudo guardar el orden');
+      await cargar();
+    }
+  }
+
   /** Deja la ganancia que se está probando como la de siempre. */
   async function guardarGanancia(pct: number) {
     setGuardandoGanancia(true);
@@ -418,6 +446,17 @@ export default function RecetarioPage() {
     ...new Set([...categorias, ...items.map((p) => p.categoria)].map((c) => (c || '').trim()).filter(Boolean)),
   ].sort((a, b) => a.localeCompare(b, 'es'));
 
+  /**
+   * Los mismos grupos, pero en el orden en que se ven: el guardado
+   * manda y lo que nunca se acomodó va al final, en alfabético. Es la
+   * lista con la que se trabaja al moverlos de lugar.
+   */
+  const gruposOrdenados = [...categoriasConocidas].sort(
+    (a, b) =>
+      posicionCategoria(a, ordenCategorias) - posicionCategoria(b, ordenCategorias) ||
+      a.localeCompare(b, 'es')
+  );
+
   /** Cuántos productos vivos hay en cada grupo, para el panel de grupos */
   const cuantosEn = (cat: string) =>
     items.filter((p) => claveCategoria(p.categoria || '') === claveCategoria(cat)).length;
@@ -493,10 +532,30 @@ export default function RecetarioPage() {
           </p>
 
           <div className="space-y-2">
-            {categoriasConocidas.map((c) => {
+            {gruposOrdenados.map((c, i) => {
               const cuantos = cuantosEn(c);
               return (
                 <div key={c} className="flex items-center gap-2">
+                  {/* El orden es el mismo del menú de la tienda: lo que
+                      se acomoda aquí se acomoda allá. */}
+                  <div className="flex flex-col shrink-0">
+                    <button
+                      onClick={() => moverGrupo(c, -1)}
+                      disabled={ocupado || i === 0}
+                      aria-label={`Subir ${c}`}
+                      className="text-[10px] leading-none text-neutral-800 px-1 py-0.5 rounded hover:bg-neutral-100 disabled:opacity-25"
+                    >
+                      ▲
+                    </button>
+                    <button
+                      onClick={() => moverGrupo(c, 1)}
+                      disabled={ocupado || i === gruposOrdenados.length - 1}
+                      aria-label={`Bajar ${c}`}
+                      className="text-[10px] leading-none text-neutral-800 px-1 py-0.5 rounded hover:bg-neutral-100 disabled:opacity-25"
+                    >
+                      ▼
+                    </button>
+                  </div>
                   <input
                     defaultValue={c}
                     onBlur={(e) => {
@@ -562,7 +621,7 @@ export default function RecetarioPage() {
           </div>
 
           <p className="text-xs text-neutral-700">
-            El orden en que se ven los grupos se cambia en Ajustes → Orden del menú.
+            Con ▲▼ acomodas el orden en que se ven, aquí y en el menú de la tienda.
           </p>
           {error && <p className="text-sm text-red-700 font-semibold">{error}</p>}
         </div>

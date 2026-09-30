@@ -138,6 +138,15 @@ export function revisarEquivalencia(
  */
 const SE_CUENTAN = [
   'pieza',
+  'pza',
+  'pina',
+  'naranja',
+  'limon',
+  'aguacate',
+  'concha',
+  'galleta',
+  'croissant',
+  'pan',
   'rebanada',
   'hoja',
   'bolsa',
@@ -156,11 +165,34 @@ const SE_CUENTAN = [
 const DEMASIADAS = 500;
 
 /**
+ * A partir de cuántas piezas una RECETA deja de ser creíble.
+ *
+ * Es mucho más bajo que el de una presentación: un paquete trae mil
+ * servilletas, pero un vaso no lleva mil de nada. La Armonía decía "130
+ * piña" —eran mililitros— y el jugo salió costando $3,044 sin que nada
+ * se quejara.
+ */
+const DEMASIADAS_EN_RECETA = 20;
+
+/**
  * ¿Este contenido parece gramos metidos donde van piezas?
  *
  * Es un AVISO, no un error: un paquete de mil servilletas existe. Solo
  * pide una segunda mirada antes de guardar.
  */
+/**
+ * ¿Esta cantidad de receta parece gramos metidos donde van piezas?
+ *
+ * Aviso, no error: una receta de cien galletas para una tanda existe.
+ * Solo pide una segunda mirada antes de guardar.
+ */
+export function cantidadSospechosa(unidadReceta: string, cantidad: number): string {
+  const c = claveUnidad(unidadReceta);
+  if (!SE_CUENTAN.includes(c)) return '';
+  if (!(cantidad >= DEMASIADAS_EN_RECETA)) return '';
+  return `¿De verdad lleva ${cantidad} ${unidadReceta}? Es mucho para algo que se cuenta de una en una. Si anotaste gramos o mililitros, el número tiene que ir en ${unidadReceta}.`;
+}
+
 export function contenidoSospechoso(unidadReceta: string, contenido: number): string {
   const c = claveUnidad(unidadReceta);
   if (!SE_CUENTAN.includes(c)) return '';

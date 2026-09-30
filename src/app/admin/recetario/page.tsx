@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { precioLegible } from '@/lib/precioInsumo';
 import { claveCategoria, posicionCategoria } from '@/lib/categorias';
+import { cantidadSospechosa } from '@/lib/unidades';
 import {
   desglosar,
   GANANCIA_DEFAULT,
@@ -237,6 +238,11 @@ export default function RecetarioPage() {
     if (!esProducto && !nuevoInsumo) return setError('Elige el ingrediente');
     const cant = parseFloat(nuevaCantidad.replace(',', '.'));
     if (isNaN(cant) || cant <= 0) return setError('Escribe cuántos lleva');
+    const unidad = esProducto
+      ? items.find((o) => o.id === nuevoComponente)?.rinde?.unidad || 'pieza'
+      : insumos.find((i) => i.id === nuevoInsumo)?.unidad || '';
+    const duda = cantidadSospechosa(unidad, cant);
+    if (duda && !confirm(`${duda}\n\n¿Lo guardo así?`)) return;
     const ok = await llamar('POST', {
       idProducto,
       ...(esProducto ? { idComponente: nuevoComponente } : { idBiblioteca: nuevoInsumo }),
@@ -256,6 +262,9 @@ export default function RecetarioPage() {
     if (valor === null) return;
     const cant = parseFloat(valor.replace(',', '.'));
     if (isNaN(cant) || cant <= 0) return alert('Cantidad inválida');
+    // "130 piña" eran mililitros, y el costo salió en $3,044
+    const duda = cantidadSospechosa(l.unidad, cant);
+    if (duda && !confirm(`${duda}\n\n¿Lo guardo así?`)) return;
     await llamar('PATCH', { id: l.id, cantidad: cant });
   }
 

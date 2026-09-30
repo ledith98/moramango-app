@@ -94,6 +94,13 @@ export default function RecetarioPage() {
     isrPct: ISR_DEFAULT,
     gananciaPct: GANANCIA_DEFAULT,
   });
+  /** Renta y servicios del mes, repartidos entre lo que se vende */
+  const [fijos, setFijos] = useState({ alMes: 0, unidadesMes: 0, porProducto: 0 });
+  /**
+   * true = se ve el desglose del dinero. Se recuerda en este navegador:
+   * casi siempre se entra al recetario a ver ingredientes, no cuentas.
+   */
+  const [verDinero, setVerDinero] = useState(false);
   /** La ganancia con la que se está simulando; arranca en la de Ajustes */
   const [gananciaQuiero, setGananciaQuiero] = useState<number | null>(null);
   const [guardandoGanancia, setGuardandoGanancia] = useState(false);
@@ -130,6 +137,7 @@ export default function RecetarioPage() {
     setItems(data.items ?? []);
     setInsumos(data.insumos ?? []);
     if (data.impuestos) setImpuestos(data.impuestos);
+    if (data.fijos) setFijos(data.fijos);
     if (Array.isArray(data.ordenCategorias)) setOrdenCategorias(data.ordenCategorias);
     if (Array.isArray(data.categorias)) setCategorias(data.categorias);
     setCargando(false);
@@ -138,6 +146,25 @@ export default function RecetarioPage() {
   useEffect(() => {
     cargar();
   }, [cargar]);
+
+  useEffect(() => {
+    try {
+      setVerDinero(localStorage.getItem('recetario-ver-dinero') === 'si');
+    } catch {
+      // navegador sin almacenamiento: se queda oculto, que es lo normal
+    }
+  }, []);
+
+  function alternarDinero() {
+    setVerDinero((v) => {
+      try {
+        localStorage.setItem('recetario-ver-dinero', v ? 'no' : 'si');
+      } catch {
+        // no se pudo recordar; en esta visita igual funciona
+      }
+      return !v;
+    });
+  }
 
   async function llamar(metodo: string, cuerpo?: unknown, query = '') {
     setOcupado(true);
@@ -441,6 +468,14 @@ export default function RecetarioPage() {
 
       <div className="flex items-center gap-2">
         <button
+          onClick={alternarDinero}
+          className={`text-xs font-semibold px-3 py-1.5 rounded-lg ${
+            verDinero ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-neutral-800'
+          }`}
+        >
+          💰 {verDinero ? 'Ocultar el dinero' : 'Ver el dinero'}
+        </button>
+        <button
           onClick={() => setEditarGrupos((v) => !v)}
           className={`text-xs font-semibold px-3 py-1.5 rounded-lg ${
             editarGrupos ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-neutral-800'
@@ -642,13 +677,17 @@ export default function RecetarioPage() {
               : null;
           const margen = d ? Math.round(d.margenNetoPct) : null;
           const quiero = gananciaQuiero ?? impuestos.gananciaPct;
+          // El precio que se sugiere tiene que pagar también su parte de
+          // la renta; si no, la ganancia es de mentiras.
+          const costoConFijos =
+            p.costoTotal !== null ? p.costoTotal + fijos.porProducto : null;
           const sugerido =
-            p.costoTotal !== null ? precioParaGanancia(p.costoTotal, quiero, impuestos) : null;
+            costoConFijos !== null ? precioParaGanancia(costoConFijos, quiero, impuestos) : null;
           // Cómo quedaría el pedido con ese precio, para no enseñar un
           // número suelto sin el resto de la cuenta
           const conSugerido =
-            sugerido !== null && p.costoTotal !== null
-              ? desglosar(sugerido, p.costoTotal, impuestos)
+            sugerido !== null && costoConFijos !== null
+              ? desglosar(sugerido, costoConFijos, impuestos)
               : null;
 
           return (
@@ -713,7 +752,7 @@ export default function RecetarioPage() {
                     el IVA adentro, que no es tuyo. La de la derecha es lo
                     que de verdad queda.
                   */}
-                  {d && (
+                  {d && verDinero && (
                     <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-3 mb-2 space-y-3">
                       {/*
                         La cuenta completa, en el orden en que pasa: entra
@@ -755,22 +794,69 @@ export default function RecetarioPage() {
                                 −${d.isr.toFixed(2)}
                               </td>
                             </tr>
-                            <tr className="border-t border-neutral-300">
-                              <td className="pt-1 font-bold text-neutral-900">Te queda</td>
+                            <tr className={fijos.porProducto > 0 ? '' : 'border-t border-neutral-300'}>
                               <td
-                                className={`pt-1 text-right font-bold tabular-nums ${
-                                  d.margenNeto <= 0 ? 'text-red-700' : 'text-green-800'
+                                className={`pt-1 ${
+                                  fijos.porProducto > 0
+                                    ? 'text-neutral-800 font-normal'
+                                    : 'font-bold text-neutral-900'
+                                }`}
+                              >
+                                {fijos.porProducto > 0 ? 'Te queda de la venta' : 'Te queda'}
+                              </td>
+                              <td
+                                className={`pt-1 text-right tabular-nums ${
+                                  fijos.porProducto > 0
+                                    ? 'text-neutral-900'
+                                    : `font-bold ${d.margenNeto <= 0 ? 'text-red-700' : 'text-green-800'}`
                                 }`}
                               >
                                 ${d.margenNeto.toFixed(2)}{' '}
                                 <span className="font-semibold">({d.margenNetoPct}%)</span>
                               </td>
                             </tr>
+                            {/* La renta no la paga un producto: la pagan
+                                TODOS los que se vendieron ese mes, así
+                                que se reparte entre ellos. */}
+                            {fijos.porProducto > 0 && (
+                              <>
+                                <tr>
+                                  <td className="text-neutral-800 py-0.5">
+                                    − Renta, luz y agua
+                                  </td>
+                                  <td className="text-right text-neutral-900 tabular-nums">
+                                    −${fijos.porProducto.toFixed(2)}
+                                  </td>
+                                </tr>
+                                <tr className="border-t border-neutral-300">
+                                  <td className="pt-1 font-bold text-neutral-900">
+                                    Te queda de verdad
+                                  </td>
+                                  <td
+                                    className={`pt-1 text-right font-bold tabular-nums ${
+                                      d.margenNeto - fijos.porProducto <= 0
+                                        ? 'text-red-700'
+                                        : 'text-green-800'
+                                    }`}
+                                  >
+                                    ${(d.margenNeto - fijos.porProducto).toFixed(2)}
+                                  </td>
+                                </tr>
+                              </>
+                            )}
                           </tbody>
                         </table>
                         <p className="text-[11px] text-neutral-700 mt-1">
                           Sin contar impuestos parecía que te quedaban ${d.margenBruto.toFixed(2)}.
                           De eso, ${d.iva.toFixed(2)} no eran tuyos.
+                          {fijos.porProducto > 0 && (
+                            <>
+                              {' '}
+                              La renta se reparte entre los {fijos.unidadesMes} productos que vendes
+                              al mes: ${fijos.alMes.toLocaleString('es-MX')} ÷ {fijos.unidadesMes} = $
+                              {fijos.porProducto.toFixed(2)} a cada uno.
+                            </>
+                          )}
                         </p>
                       </div>
 
@@ -826,8 +912,11 @@ export default function RecetarioPage() {
                             </p>
                             <p className="text-[11px] text-neutral-800">
                               De esos ${conSugerido.precio.toFixed(2)}: ${conSugerido.iva.toFixed(2)}{' '}
-                              de IVA, ${conSugerido.costo.toFixed(2)} de insumos, $
-                              {conSugerido.isr.toFixed(2)} de ISR y{' '}
+                              de IVA, ${(p.costoTotal ?? 0).toFixed(2)} de insumos,{' '}
+                              {fijos.porProducto > 0 && (
+                                <>${fijos.porProducto.toFixed(2)} de renta, </>
+                              )}
+                              ${conSugerido.isr.toFixed(2)} de ISR y{' '}
                               <b className="text-green-800">
                                 ${conSugerido.margenNeto.toFixed(2)} para ti
                               </b>

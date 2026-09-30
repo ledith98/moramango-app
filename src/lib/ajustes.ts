@@ -62,6 +62,12 @@ export const CLAVE_TOPPINGS_CON_COSTO = 'ToppingsConCosto';
 export const CLAVE_IVA = 'IvaPct';
 export const CLAVE_ISR = 'IsrPct';
 export const CLAVE_GANANCIA = 'GananciaPct';
+/**
+ * Renta, luz, agua y todo lo que se paga cada mes aunque no se venda
+ * nada. Sirve para repartirlo entre los productos vendidos y ver qué
+ * queda DE VERDAD. Cero o vacío = no se reparte y no se enseña.
+ */
+export const CLAVE_GASTOS_FIJOS = 'GastosFijosMes';
 
 export interface Ajustes {
   topeArticuloGratis: number;
@@ -77,6 +83,8 @@ export interface Ajustes {
   isrPct: number;
   /** Cuanto se quiere que quede de cada venta, ya con impuestos */
   gananciaPct: number;
+  /** Renta, luz, agua y demas gastos del mes; 0 = no se reparten */
+  gastosFijosMes: number;
 }
 
 // Viven en su propio archivo para que la tienda y el panel las puedan usar
@@ -136,6 +144,10 @@ export async function leerAjustes(): Promise<Ajustes> {
       ivaPct: porcentaje(CLAVE_IVA, IVA_DEFAULT),
       isrPct: porcentaje(CLAVE_ISR, ISR_DEFAULT),
       gananciaPct: porcentaje(CLAVE_GANANCIA, GANANCIA_DEFAULT),
+      gastosFijosMes: Math.max(
+        0,
+        parseFloat(texto(CLAVE_GASTOS_FIJOS).replace(/[$,\s]/g, '')) || 0
+      ),
       toppingsConCosto: filas.some((f) => f.Clave === CLAVE_TOPPINGS_CON_COSTO)
         ? texto(CLAVE_TOPPINGS_CON_COSTO)
             .split(SEPARADOR)
@@ -160,6 +172,7 @@ export async function leerAjustes(): Promise<Ajustes> {
       ivaPct: IVA_DEFAULT,
       isrPct: ISR_DEFAULT,
       gananciaPct: GANANCIA_DEFAULT,
+      gastosFijosMes: 0,
     };
   }
 }

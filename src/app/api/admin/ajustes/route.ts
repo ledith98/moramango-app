@@ -13,6 +13,7 @@ import {
   CLAVE_IVA,
   CLAVE_MAPA,
   CLAVE_GANANCIA,
+  CLAVE_GASTOS_FIJOS,
   CLAVE_TOPE_ARTICULO,
   guardarAjuste,
   guardarHorario,
@@ -50,6 +51,7 @@ export async function POST(req: NextRequest) {
     ivaPct,
     isrPct,
     gananciaPct,
+    gastosFijosMes,
   } = await req.json();
 
   if (topeArticuloGratis !== undefined) {
@@ -147,6 +149,20 @@ export async function POST(req: NextRequest) {
     await guardarAjuste(clave, Math.round(n * 100) / 100, nota);
   }
 
+  // Renta, luz y agua del mes. Se reparten entre lo vendido para ver qué
+  // queda de verdad en cada producto.
+  if (gastosFijosMes !== undefined) {
+    const n = parseFloat(String(gastosFijosMes).replace(/[$,\s]/g, ''));
+    if (isNaN(n) || n < 0) {
+      return NextResponse.json({ error: 'Los gastos del mes no pueden ser negativos' }, { status: 400 });
+    }
+    await guardarAjuste(
+      CLAVE_GASTOS_FIJOS,
+      Math.round(n * 100) / 100,
+      'Renta, luz, agua y demas gastos fijos del mes'
+    );
+  }
+
   const ahora = await leerAjustes();
   const detalle = [
     topeArticuloGratis !== undefined && previos.topeArticuloGratis !== ahora.topeArticuloGratis
@@ -163,6 +179,9 @@ export async function POST(req: NextRequest) {
       : '',
     isrPct !== undefined && previos.isrPct !== ahora.isrPct
       ? `ISR estimado: ${previos.isrPct}% -> ${ahora.isrPct}%`
+      : '',
+    gastosFijosMes !== undefined && previos.gastosFijosMes !== ahora.gastosFijosMes
+      ? `Gastos fijos del mes: $${previos.gastosFijosMes} -> $${ahora.gastosFijosMes}`
       : '',
     gananciaPct !== undefined && previos.gananciaPct !== ahora.gananciaPct
       ? `Ganancia objetivo: ${previos.gananciaPct}% -> ${ahora.gananciaPct}%`

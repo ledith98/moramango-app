@@ -73,7 +73,8 @@ export default function AjustesPage() {
   const [iva, setIva] = useState('16');
   const [isr, setIsr] = useState('6.4');
   const [ganancia, setGanancia] = useState('40');
-  const [impGuardado, setImpGuardado] = useState({ iva: '16', isr: '6.4', ganancia: '40' });
+  const [fijos, setFijos] = useState('');
+  const [impGuardado, setImpGuardado] = useState({ iva: '16', isr: '6.4', ganancia: '40', fijos: '' });
   const [guardandoImp, setGuardandoImp] = useState(false);
   const [okImp, setOkImp] = useState(false);
   const [errorImp, setErrorImp] = useState('');
@@ -174,10 +175,12 @@ export default function AjustesPage() {
       iva: String(a?.ivaPct ?? 16),
       isr: String(a?.isrPct ?? 6.4),
       ganancia: String(a?.gananciaPct ?? 40),
+      fijos: a?.gastosFijosMes ? String(a.gastosFijosMes) : '',
     };
     setIva(imp.iva);
     setIsr(imp.isr);
     setGanancia(imp.ganancia);
+    setFijos(imp.fijos);
     setImpGuardado(imp);
 
     const guardadosCosto: string[] = a?.toppingsConCosto ?? [];
@@ -259,7 +262,12 @@ export default function AjustesPage() {
     const res = await fetch('/api/admin/ajustes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ivaPct: iva, isrPct: isr, gananciaPct: ganancia }),
+      body: JSON.stringify({
+        ivaPct: iva,
+        isrPct: isr,
+        gananciaPct: ganancia,
+        gastosFijosMes: fijos.trim() === '' ? 0 : fijos,
+      }),
     });
     const data = await res.json();
     setGuardandoImp(false);
@@ -267,7 +275,7 @@ export default function AjustesPage() {
       setErrorImp(data.error || 'No se pudo guardar');
       return;
     }
-    setImpGuardado({ iva, isr, ganancia });
+    setImpGuardado({ iva, isr, ganancia, fijos });
     setOkImp(true);
     setTimeout(() => setOkImp(false), 2500);
   }
@@ -746,6 +754,35 @@ export default function AjustesPage() {
           ))}
         </div>
 
+        {/*
+          Renta, luz y agua. No es un porcentaje: es lo que se paga cada
+          mes aunque no se venda nada, y el recetario lo reparte entre lo
+          vendido para enseñar qué queda de verdad en cada producto.
+        */}
+        <div className="space-y-1">
+          <label className="text-sm font-semibold text-neutral-700 block">
+            Renta, luz y agua al mes{' '}
+            <span className="font-normal text-neutral-700">(opcional)</span>
+          </label>
+          <div className="flex items-center gap-2">
+            <span className="text-lg font-bold text-neutral-700">$</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="100"
+              value={fijos}
+              onChange={(e) => setFijos(e.target.value)}
+              placeholder="8700"
+              className="flex-1 bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-neutral-900 placeholder-neutral-600 focus:outline-none focus:border-marron"
+            />
+          </div>
+          <p className="text-xs text-neutral-700">
+            Todo lo que pagas cada mes aunque no vendas. El recetario lo reparte entre los productos
+            que vendiste el último mes. Vacío = no se reparte.
+          </p>
+        </div>
+
         {/* Un ejemplo con números, que es como se entiende */}
         {(() => {
           const tasas = { ivaPct: parseFloat(iva) || 0, isrPct: parseFloat(isr) || 0 };
@@ -783,7 +820,10 @@ export default function AjustesPage() {
             onClick={guardarImpuestos}
             disabled={
               guardandoImp ||
-              (iva === impGuardado.iva && isr === impGuardado.isr && ganancia === impGuardado.ganancia)
+              (iva === impGuardado.iva &&
+                isr === impGuardado.isr &&
+                ganancia === impGuardado.ganancia &&
+                fijos === impGuardado.fijos)
             }
             className="bg-marron text-white font-semibold px-5 py-3 rounded-xl active:scale-95 disabled:opacity-50"
           >

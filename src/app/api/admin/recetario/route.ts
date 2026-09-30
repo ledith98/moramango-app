@@ -29,6 +29,7 @@ import { COL_REC, HOJA_RECETARIO, prepararRecetario } from '@/lib/recetario';
 import { siguienteId } from '@/lib/ids';
 import { anotar } from '@/lib/bitacora';
 import { getAdminSession } from '@/lib/roles';
+import { parsearFechaHora } from '@/lib/pedidoFecha';
 import { guardarOrdenCategorias, leerAjustes } from '@/lib/ajustes';
 import { claveCategoria } from '@/lib/categorias';
 
@@ -44,14 +45,36 @@ export async function GET() {
   }
   await Promise.all([prepararInventario(), prepararRecetario()]);
 
-  const [recetario, biblioteca, productos, presentaciones, ajustes, activos] = await Promise.all([
+  const [recetario, biblioteca, productos, presentaciones, ajustes, activos, pedidos, detalles] =
+    await Promise.all([
     getSheetData(HOJA_RECETARIO, { crudo: true }),
     getSheetData(HOJA_BIBLIOTECA, { crudo: true }),
     getSheetData('Productos', { crudo: true }),
     leerPresentaciones(),
     leerAjustes(),
     getSheetData(HOJA_ACTIVOS, { crudo: true }),
+    getSheetData('PEDIDOS'),
+    getSheetData('DT PEDIDOS'),
   ]);
+
+  /*
+    Cuántos productos se vendieron en los últimos 30 días con venta.
+
+    Es el divisor de la renta: $8,700 entre 298 productos son $29 que le
+    tocan a cada uno. Se cuentan días CON venta y no días de calendario,
+    porque un puente sin abrir no debería abaratar la renta.
+  */
+  const fechaDePedido = new Map(
+    pedidos
+      .filter((x) => x.Estado !== 'Cancelado' && x.ID_Pedido)
+      .map((x) => [x.ID_Pedido, parsearFechaHora(x.Fecha_Hora)?.fechaISO ?? ''])
+  );
+  const diasConVenta = [...new Set([...fechaDePedido.values()].filter(Boolean))].sort();
+  const desde = diasConVenta.slice(-30)[0] ?? '';
+  const unidadesMes = detalles.reduce((suma, d) => {
+    const f = fechaDePedido.get(d.ID_Pedido);
+    return f && f >= desde ? suma + (parseInt(d.Cantidad) || 0) : suma;
+  }, 0);
   // Qué insumos están en la operación de hoy: los guardados no estorban
   // en la lista para elegir, pero siguen existiendo.
   const enUsoPorBib = new Map(activos.map((a) => [a.ID_Biblioteca, estaEnUso(a.En_Uso)]));
@@ -289,6 +312,15 @@ export async function GET() {
       ivaPct: ajustes.ivaPct,
       isrPct: ajustes.isrPct,
       gananciaPct: ajustes.gananciaPct,
+    },
+    /** Renta y servicios del mes, y entre cuántos productos se reparten */
+    fijos: {
+      alMes: ajustes.gastosFijosMes,
+      unidadesMes,
+      porProducto:
+        ajustes.gastosFijosMes > 0 && unidadesMes > 0
+          ? redondear(ajustes.gastosFijosMes / unidadesMes, 2)
+          : 0,
     },
     // El mismo orden de grupos que la tienda, para que el recetario no
     // lleve los productos en otro orden que el menú

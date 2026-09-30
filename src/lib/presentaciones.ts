@@ -44,6 +44,11 @@ const COLS = [
   // se sabe si es de esta semana o de hace medio año, y comparar contra
   // uno viejo lleva a ir al lugar equivocado.
   'Fecha_Precio',
+  // Lo que hay que recordar de ESTA forma de comprarla y de ninguna otra:
+  // la liga donde se pide, el pasillo, "solo los martes", "pregunta por
+  // Beto". En el insumo no cabría: el insumo es uno y las formas de
+  // comprarlo son varias, cada una con su propia historia.
+  'Notas',
 ];
 
 /** Columnas 1-based, para updateCells */
@@ -56,6 +61,7 @@ export const COL_PRES = {
   idProveedor: 7,
   activa: 8,
   fechaPrecio: 9,
+  notas: 10,
 } as const;
 
 /** Para los insumos que no tienen marca (la fruta a granel, el hielo). */
@@ -74,6 +80,8 @@ export interface Presentacion {
   activa: boolean;
   /** Cuándo se anotó ese precio (YYYY-MM-DD); vacío si nunca */
   fechaPrecio: string;
+  /** Dónde pedirla o qué recordar de ella; puede traer una liga */
+  notas: string;
   /** Lo que cuesta la unidad de receta con esta presentación */
   porUnidad: number;
 }
@@ -90,6 +98,7 @@ export async function prepararPresentaciones(): Promise<void> {
   // ensureSheet solo escribe encabezados al CREAR la hoja
   await ensureColumn(HOJA_PRESENTACIONES, 'Activa');
   await ensureColumn(HOJA_PRESENTACIONES, 'Fecha_Precio');
+  await ensureColumn(HOJA_PRESENTACIONES, 'Notas');
 }
 
 export async function leerPresentaciones(): Promise<Presentacion[]> {
@@ -111,6 +120,7 @@ export async function leerPresentaciones(): Promise<Presentacion[]> {
           // Vacío se lee como activa, para las que se creen sin la columna
           activa: (f.Activa || '').toString().trim().toLowerCase() !== 'no',
           fechaPrecio: fechaDeCelda(f.Fecha_Precio),
+          notas: (f.Notas || '').toString().trim(),
           // Lo único comparable entre presentaciones y entre proveedores
           porUnidad: contenido > 0 && precio > 0 ? precio / contenido : 0,
         };
@@ -130,6 +140,7 @@ export interface DatosPresentacion {
   idProveedor?: string;
   activa?: boolean;
   fechaPrecio?: string;
+  notas?: string;
 }
 
 /**
@@ -162,6 +173,7 @@ export async function crearPresentacion(datos: DatosPresentacion): Promise<strin
     // Solo se fecha si viene precio: una presentación sin precio no tiene
     // qué fechar, y ponerle hoy haría creer que está al día.
     comoNumero(datos.ultimoPrecio) !== '' ? (datos.fechaPrecio ?? fechaHoyMTY()) : '',
+    (datos.notas ?? '').trim(),
   ]);
   return id;
 }
@@ -192,6 +204,7 @@ export async function guardarPresentacion(
   }
   if (datos.idProveedor !== undefined) cambios[COL_PRES.idProveedor] = datos.idProveedor.trim();
   if (datos.activa !== undefined) cambios[COL_PRES.activa] = datos.activa ? 'si' : 'no';
+  if (datos.notas !== undefined) cambios[COL_PRES.notas] = datos.notas.trim();
   // La fecha viaja pegada al precio: cambiar uno sin el otro dejaría un
   // precio nuevo con fecha vieja, que es peor que no tener fecha.
   if (datos.ultimoPrecio !== undefined) {

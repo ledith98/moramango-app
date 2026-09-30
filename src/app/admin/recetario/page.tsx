@@ -385,6 +385,40 @@ export default function RecetarioPage() {
     await cargar();
   }
 
+  /**
+   * Corrige el nombre de una receta.
+   *
+   * Es el MISMO nombre del menú, no uno interno: la receta y el producto
+   * son la misma cosa, y tener dos nombres para uno terminaría con el
+   * cliente pidiendo algo que en la cocina se llama de otra forma. Por eso
+   * el aviso dice de dónde más va a cambiar.
+   *
+   * Los pedidos ya hechos no se tocan: guardaron el nombre con el que se
+   * vendieron y ese es el que valía ese día.
+   */
+  async function renombrar(p: ProductoReceta) {
+    const nuevo = prompt(
+      `¿Cómo se debe llamar?\n\nEs el mismo nombre que ve el cliente en el menú. Los pedidos que ya se hicieron conservan el nombre viejo.`,
+      p.nombre
+    );
+    if (nuevo === null) return;
+    const limpio = nuevo.trim();
+    if (!limpio || limpio === p.nombre) return;
+    setOcupado(true);
+    setError('');
+    const res = await fetch('/api/admin/productos', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idProducto: p.id, nombre: limpio }),
+    });
+    setOcupado(false);
+    if (!res.ok) {
+      setError('No se pudo cambiar el nombre');
+      return;
+    }
+    await cargar();
+  }
+
   /** Anota cuánto sale de una receta, para poder usarla por ml o por g. */
   async function guardarRinde(idProducto: string, cantidad: string, unidad: string) {
     const ok = await llamar('PATCH', {
@@ -1563,13 +1597,22 @@ export default function RecetarioPage() {
                     </span>
                   </div>
 
-                  <button
-                    onClick={() => ocultarReceta(p, !p.oculta)}
-                    disabled={ocupado}
-                    className="text-xs font-semibold text-neutral-800 underline underline-offset-2 disabled:opacity-50"
-                  >
-                    {p.oculta ? '↩️ Volver a prepararlo' : '📦 Ya no se prepara'}
-                  </button>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <button
+                      onClick={() => renombrar(p)}
+                      disabled={ocupado}
+                      className="text-xs font-semibold text-neutral-800 underline underline-offset-2 disabled:opacity-50"
+                    >
+                      ✏️ Cambiar el nombre
+                    </button>
+                    <button
+                      onClick={() => ocultarReceta(p, !p.oculta)}
+                      disabled={ocupado}
+                      className="text-xs font-semibold text-neutral-800 underline underline-offset-2 disabled:opacity-50"
+                    >
+                      {p.oculta ? '↩️ Volver a prepararlo' : '📦 Ya no se prepara'}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

@@ -29,6 +29,10 @@ import { getAdminSession } from '@/lib/roles';
 const quienDe = (s: { user?: { name?: string | null; email?: string | null } } | null) =>
   s?.user?.name || s?.user?.email || '';
 
+/** La nota es un recordatorio, no un documento: cabe una liga y su porqué. */
+const LARGO_NOTA = 300;
+const limpiarNota = (v: unknown) => (v ?? '').toString().trim().slice(0, LARGO_NOTA);
+
 /** El contenido es lo que hace comparable una presentación con otra. */
 function revisarContenido(v: unknown): { ok: true; valor: number } | { ok: false; error: string } {
   const n = parseFloat((v ?? '').toString().replace(',', '.'));
@@ -57,6 +61,8 @@ export async function POST(req: NextRequest) {
     // Cuándo se VIO ese precio: si el sábado preguntaste y lo anotas el
     // lunes, el precio es del sábado, no de hoy
     fechaPrecio,
+    // Dónde pedirla: la liga de la tienda en línea, el pasillo, el día
+    notas,
   } = await req.json();
 
   const biblioteca = await getSheetData(HOJA_BIBLIOTECA, { crudo: true });
@@ -142,6 +148,7 @@ export async function POST(req: NextRequest) {
     ultimoPrecio: !isNaN(precio) && precio > 0 ? precio : undefined,
     idProveedor,
     fechaPrecio: (fechaPrecio ?? '').toString().trim() || undefined,
+    notas: limpiarNota(notas),
   });
 
   // Deja constancia del precio: sin esto, el próximo lo pisaría y no
@@ -171,8 +178,18 @@ export async function PATCH(req: NextRequest) {
   if (!sesion) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
-  const { id, marca, unidadCompra, contenido, proveedor, ultimoPrecio, activa, revisado, fechaPrecio } =
-    await req.json();
+  const {
+    id,
+    marca,
+    unidadCompra,
+    contenido,
+    proveedor,
+    ultimoPrecio,
+    activa,
+    revisado,
+    fechaPrecio,
+    notas,
+  } = await req.json();
   if (!id) return NextResponse.json({ error: 'Falta la presentación' }, { status: 400 });
 
   const todas = await leerPresentaciones();
@@ -240,6 +257,7 @@ export async function PATCH(req: NextRequest) {
       : '';
   }
   if (activa !== undefined) datos.activa = !!activa;
+  if (notas !== undefined) datos.notas = limpiarNota(notas);
 
   try {
     await guardarPresentacion(id, datos);
@@ -276,6 +294,7 @@ export async function PATCH(req: NextRequest) {
       Trae: actual.contenido,
       Precio: actual.ultimoPrecio,
       'Se compra hoy': actual.activa ? 'sí' : 'no',
+      Nota: actual.notas,
     },
     {
       Marca: datos.marca ?? actual.marca,
@@ -283,6 +302,7 @@ export async function PATCH(req: NextRequest) {
       Trae: datos.contenido ?? actual.contenido,
       Precio: datos.ultimoPrecio ?? actual.ultimoPrecio,
       'Se compra hoy': (datos.activa ?? actual.activa) ? 'sí' : 'no',
+      Nota: datos.notas ?? actual.notas,
     }
   );
   if (queCambio) {

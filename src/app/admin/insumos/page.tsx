@@ -15,6 +15,7 @@
 import { Fragment, useCallback, useEffect, useState, useRef } from 'react';
 import { CATEGORIAS_INSUMOS } from '@/lib/insumos';
 import { contenidoSospechoso, revisarEquivalencia } from '@/lib/unidades';
+import { partirEnlaces } from '@/lib/enlaces';
 
 interface ItemBiblioteca {
   id: string;
@@ -111,6 +112,8 @@ interface Presentacion {
   activa: boolean;
   /** Cuando se anoto ese precio; vacio si nunca */
   fechaPrecio: string;
+  /** Donde pedir ESTA presentacion; puede traer una liga */
+  notas: string;
   /** Lo que cuesta la unidad de receta con esta presentacion */
   porUnidad: number;
 }
@@ -280,7 +283,14 @@ export default function InsumosPage() {
   const [compraPres, setCompraPres] = useState('');
   /** Alta de presentacion: insumo al que se le agrega */
   const [presDe, setPresDe] = useState<{ id: string; nombre: string; unidadReceta: string } | null>(null);
-  const [presForm, setPresForm] = useState({ marca: '', unidadCompra: '', contenido: '', proveedor: '', ultimoPrecio: '' });
+  const [presForm, setPresForm] = useState({
+    marca: '',
+    unidadCompra: '',
+    contenido: '',
+    proveedor: '',
+    ultimoPrecio: '',
+    notas: '',
+  });
   const [presEditando, setPresEditando] = useState<Presentacion | null>(null);
   /**
    * Segunda pregunta al borrar una presentación con compras encima.
@@ -1565,8 +1575,23 @@ El stock quedará igual a lo que contaste.`)) return;
               )}
 
               {b.notas && (
-                <p className="text-xs text-neutral-900 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 whitespace-pre-line">
-                  📝 {b.notas}
+                <p className="text-xs text-neutral-900 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 whitespace-pre-line break-words">
+                  📝{' '}
+                  {partirEnlaces(b.notas).map((t, j) =>
+                    t.liga ? (
+                      <a
+                        key={j}
+                        href={t.liga}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-semibold text-marron underline break-all"
+                      >
+                        {t.texto}
+                      </a>
+                    ) : (
+                      <span key={j}>{t.texto}</span>
+                    )
+                  )}
                 </p>
               )}
 
@@ -1608,6 +1633,7 @@ El stock quedará igual a lo que contaste.`)) return;
                             contenido: '',
                             proveedor: b.proveedor,
                             ultimoPrecio: '',
+                            notas: '',
                           });
                         }}
                         className="text-[11px] font-bold text-marron underline"
@@ -1620,7 +1646,8 @@ El stock quedará igual a lo que contaste.`)) return;
                     ) : (
                       <ul className="space-y-1">
                         {suyas.map((x, i) => (
-                          <li key={x.id} className="flex items-center justify-between gap-2 text-xs">
+                          <li key={x.id} className="text-xs">
+                            <div className="flex items-center justify-between gap-2">
                             <button
                               onClick={() => {
                                 setPresDe({ id: b.id, nombre: b.nombre, unidadReceta: b.unidadReceta });
@@ -1631,6 +1658,7 @@ El stock quedará igual a lo que contaste.`)) return;
                                   contenido: String(x.contenido),
                                   proveedor: x.proveedor,
                                   ultimoPrecio: x.ultimoPrecio ? String(x.ultimoPrecio) : '',
+                                  notas: x.notas ?? '',
                                 });
                               }}
                               className={`min-w-0 truncate text-left underline decoration-neutral-300 ${
@@ -1665,6 +1693,27 @@ El stock quedará igual a lo que contaste.`)) return;
                                 <span className="text-neutral-500">sin precio</span>
                               )}
                             </span>
+                            </div>
+                            {x.notas && (
+                              <p className="mt-0.5 ml-0.5 text-[11px] text-neutral-800 whitespace-pre-line break-words">
+                                📝{' '}
+                                {partirEnlaces(x.notas).map((t, j) =>
+                                  t.liga ? (
+                                    <a
+                                      key={j}
+                                      href={t.liga}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="font-semibold text-marron underline break-all"
+                                    >
+                                      {t.texto}
+                                    </a>
+                                  ) : (
+                                    <span key={j}>{t.texto}</span>
+                                  )
+                                )}
+                              </p>
+                            )}
                           </li>
                         ))}
                       </ul>
@@ -2097,6 +2146,7 @@ El stock quedará igual a lo que contaste.`)) return;
                           contenido: '',
                           proveedor: compraDonde,
                           ultimoPrecio: '',
+                          notas: '',
                         });
                         return;
                       }
@@ -2523,6 +2573,29 @@ El stock quedará igual a lo que contaste.`)) return;
               placeholder="elige o escribe uno nuevo"
               className={inputCls}
             />
+
+            {/*
+              La nota es de ESTA presentación, no del insumo.
+
+              Es donde cabe la liga de la tienda en línea que vende justo
+              este paquete, o el "está en el pasillo 7" y el "solo los
+              martes". En el insumo no cabría: el insumo es uno y las
+              formas de comprarlo son varias, cada una en su lugar.
+            */}
+            <label className="block text-sm font-semibold text-neutral-800 mb-1 mt-3">
+              ¿Alguna nota o la liga donde se pide?{' '}
+              <span className="font-normal text-neutral-600">(opcional)</span>
+            </label>
+            <textarea
+              value={presForm.notas}
+              onChange={(e) => setPresForm({ ...presForm, notas: e.target.value.slice(0, 300) })}
+              rows={2}
+              placeholder="Ej. https://sams.com.mx/... · pasillo 7 · pedir con Beto"
+              className={`${inputCls} resize-y`}
+            />
+            <p className="text-[11px] text-neutral-600 mt-1">
+              Si pegas una dirección, en la tarjeta te queda como botón para abrirla.
+            </p>
 
             {/* Lo que hace comparable esta presentación con las demás */}
             {porUnidad > 0 && (

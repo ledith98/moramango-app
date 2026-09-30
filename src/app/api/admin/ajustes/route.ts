@@ -12,7 +12,7 @@ import {
   CLAVE_ISR,
   CLAVE_IVA,
   CLAVE_MAPA,
-  CLAVE_OBJETIVO_INSUMO,
+  CLAVE_GANANCIA,
   CLAVE_TOPE_ARTICULO,
   guardarAjuste,
   guardarHorario,
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     toppingsConCosto,
     ivaPct,
     isrPct,
-    objetivoInsumoPct,
+    gananciaPct,
   } = await req.json();
 
   if (topeArticuloGratis !== undefined) {
@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
   const porcentajes: [string, unknown, string][] = [
     [CLAVE_IVA, ivaPct, 'IVA que trae el precio del menu adentro'],
     [CLAVE_ISR, isrPct, 'ISR estimado sobre la utilidad, para ver el margen real'],
-    [CLAVE_OBJETIVO_INSUMO, objetivoInsumoPct, 'Cuanto del precio sin IVA puede irse en insumos'],
+    [CLAVE_GANANCIA, gananciaPct, 'Cuanto se quiere que quede de cada venta, ya con impuestos'],
   ];
   for (const [clave, valor, nota] of porcentajes) {
     if (valor === undefined) continue;
@@ -164,8 +164,8 @@ export async function POST(req: NextRequest) {
     isrPct !== undefined && previos.isrPct !== ahora.isrPct
       ? `ISR estimado: ${previos.isrPct}% -> ${ahora.isrPct}%`
       : '',
-    objetivoInsumoPct !== undefined && previos.objetivoInsumoPct !== ahora.objetivoInsumoPct
-      ? `Objetivo de insumo: ${previos.objetivoInsumoPct}% -> ${ahora.objetivoInsumoPct}%`
+    gananciaPct !== undefined && previos.gananciaPct !== ahora.gananciaPct
+      ? `Ganancia objetivo: ${previos.gananciaPct}% -> ${ahora.gananciaPct}%`
       : '',
     toppingsConCosto !== undefined
       ? `Toppings que siempre se cobran: ${ahora.toppingsConCosto.join(', ') || 'ninguno'} (antes: ${previos.toppingsConCosto.join(', ') || 'ninguno'})`

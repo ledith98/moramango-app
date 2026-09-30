@@ -12,7 +12,7 @@
 import { appendRow, ensureSheet, getSheetData, updateCell } from './googleSheets';
 import { HORARIO_DEFAULT, Horario, parsearHorario, serializarHorario } from './horario';
 import { TOPPINGS_CON_COSTO_DEFAULT } from './toppingIncluido';
-import { ISR_DEFAULT, IVA_DEFAULT, OBJETIVO_INSUMO_DEFAULT } from './impuestos';
+import { GANANCIA_DEFAULT, ISR_DEFAULT, IVA_DEFAULT } from './impuestos';
 
 const HOJA = 'Ajustes_Tienda';
 const COLS = ['Clave', 'Valor', 'Nota', 'Fecha'];
@@ -61,7 +61,7 @@ export const CLAVE_TOPPINGS_CON_COSTO = 'ToppingsConCosto';
  */
 export const CLAVE_IVA = 'IvaPct';
 export const CLAVE_ISR = 'IsrPct';
-export const CLAVE_OBJETIVO_INSUMO = 'ObjetivoInsumoPct';
+export const CLAVE_GANANCIA = 'GananciaPct';
 
 export interface Ajustes {
   topeArticuloGratis: number;
@@ -75,8 +75,8 @@ export interface Ajustes {
   ivaPct: number;
   /** ISR estimado sobre la utilidad, para ver el margen real */
   isrPct: number;
-  /** Cuanto del precio sin IVA puede irse en insumos */
-  objetivoInsumoPct: number;
+  /** Cuanto se quiere que quede de cada venta, ya con impuestos */
+  gananciaPct: number;
 }
 
 // Viven en su propio archivo para que la tienda y el panel las puedan usar
@@ -135,7 +135,7 @@ export async function leerAjustes(): Promise<Ajustes> {
       mapa: texto(CLAVE_MAPA),
       ivaPct: porcentaje(CLAVE_IVA, IVA_DEFAULT),
       isrPct: porcentaje(CLAVE_ISR, ISR_DEFAULT),
-      objetivoInsumoPct: porcentaje(CLAVE_OBJETIVO_INSUMO, OBJETIVO_INSUMO_DEFAULT),
+      gananciaPct: porcentaje(CLAVE_GANANCIA, GANANCIA_DEFAULT),
       toppingsConCosto: filas.some((f) => f.Clave === CLAVE_TOPPINGS_CON_COSTO)
         ? texto(CLAVE_TOPPINGS_CON_COSTO)
             .split(SEPARADOR)
@@ -159,7 +159,7 @@ export async function leerAjustes(): Promise<Ajustes> {
       toppingsConCosto: TOPPINGS_CON_COSTO_DEFAULT,
       ivaPct: IVA_DEFAULT,
       isrPct: ISR_DEFAULT,
-      objetivoInsumoPct: OBJETIVO_INSUMO_DEFAULT,
+      gananciaPct: GANANCIA_DEFAULT,
     };
   }
 }

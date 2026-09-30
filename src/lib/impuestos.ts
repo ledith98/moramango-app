@@ -27,10 +27,14 @@ export const IVA_DEFAULT = 16;
 export const ISR_DEFAULT = 6.4;
 
 /**
- * Cuánto del precio SIN IVA puede irse en insumos. 33% es lo que deja el
- * resto para renta, luz, agua y sueldo.
+ * Cuánto quieres que te quede de cada venta, ya pagando IVA, insumos e
+ * ISR. 40% es lo que sostiene renta, luz, agua y un sueldo.
+ *
+ * Se piensa en ganancia y no en "los insumos no deben pasar del 33%"
+ * porque es la pregunta que de verdad se hace: cuánto me queda y a cómo
+ * tengo que venderlo.
  */
-export const OBJETIVO_INSUMO_DEFAULT = 33;
+export const GANANCIA_DEFAULT = 40;
 
 export interface TasasImpuesto {
   ivaPct: number;
@@ -81,13 +85,33 @@ export function desglosar(precio: number, costo: number, tasas: TasasImpuesto): 
 }
 
 /**
- * Lo que debería costar en el menú para que los insumos no pasen del
- * objetivo. Se redondea hacia ARRIBA a los $5: la diferencia entre $48 y
+ * A cuánto hay que venderlo para que quede la ganancia que se pide.
+ *
+ * Se despeja de la misma cuenta del desglose: de lo que paga el cliente
+ * sale primero el IVA, luego los insumos y al final el ISR de lo que
+ * sobra. Se redondea hacia ARRIBA a los $5 — la diferencia entre $48 y
  * $50 no la nota nadie y al mes son cientos de pesos.
+ *
+ * Devuelve null cuando la ganancia pedida es imposible: con IVA del 16%
+ * no se puede quedar con el 90% de lo que cobras, por caro que lo pongas.
  */
-export function precioSugerido(costo: number, objetivoPct: number, ivaPct: number): number | null {
-  const objetivo = Math.max(1, Math.min(99, objetivoPct)) / 100;
+export function precioParaGanancia(
+  costo: number,
+  gananciaPct: number,
+  tasas: TasasImpuesto
+): number | null {
   if (!(costo > 0)) return null;
-  const conIva = (costo / objetivo) * (1 + Math.max(0, ivaPct) / 100);
-  return Math.ceil(conIva / 5) * 5;
+  const iva = Math.max(0, tasas.ivaPct) / 100;
+  const isr = Math.max(0, tasas.isrPct) / 100;
+  const m = Math.max(0, Math.min(99, gananciaPct)) / 100;
+  const denominador = (1 - isr) / (1 + iva) - m;
+  if (denominador <= 0.01) return null;
+  return Math.ceil(((costo * (1 - isr)) / denominador) / 5) * 5;
+}
+
+/** El techo de ganancia posible: lo que queda después del IVA y del ISR. */
+export function gananciaMaxima(tasas: TasasImpuesto): number {
+  const iva = Math.max(0, tasas.ivaPct) / 100;
+  const isr = Math.max(0, tasas.isrPct) / 100;
+  return Math.floor(((1 - isr) / (1 + iva)) * 100) - 1;
 }

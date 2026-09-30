@@ -288,7 +288,7 @@ export async function GET() {
     impuestos: {
       ivaPct: ajustes.ivaPct,
       isrPct: ajustes.isrPct,
-      objetivoInsumoPct: ajustes.objetivoInsumoPct,
+      gananciaPct: ajustes.gananciaPct,
     },
     // El mismo orden de grupos que la tienda, para que el recetario no
     // lleve los productos en otro orden que el menú

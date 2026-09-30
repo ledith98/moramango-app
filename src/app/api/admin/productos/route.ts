@@ -18,6 +18,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { appendRow, ensureColumn, findRow, getSheetData, updateCell } from '@/lib/googleSheets';
 import { normalizarUrlImagen } from '@/lib/imagenes';
 import { anotar, cambios } from '@/lib/bitacora';
+import { siguienteId } from '@/lib/ids';
 import { getAdminSession } from '@/lib/roles';
 
 /** Quién está haciendo el cambio; sale de la sesión, no se pregunta. */
@@ -174,7 +175,7 @@ export async function POST(req: NextRequest) {
   }
 
   const existentes = await getSheetData('Productos');
-  const nuevoId = `PROD-${String(existentes.length + 1).padStart(3, '0')}`;
+  const nuevoId = siguienteId(existentes, 'ID_Producto', 'PROD');
 
   // El producto nuevo entra al final de SU grupo, no al final del menú.
   // Antes se le daba un número más alto que todos, así que un jugo nuevo

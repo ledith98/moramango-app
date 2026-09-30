@@ -14,10 +14,11 @@ import { precioLegible } from '@/lib/precioInsumo';
 import { claveCategoria, posicionCategoria } from '@/lib/categorias';
 import {
   desglosar,
+  GANANCIA_DEFAULT,
+  gananciaMaxima,
   ISR_DEFAULT,
   IVA_DEFAULT,
-  OBJETIVO_INSUMO_DEFAULT,
-  precioSugerido,
+  precioParaGanancia,
 } from '@/lib/impuestos';
 
 interface LineaReceta {
@@ -91,8 +92,11 @@ export default function RecetarioPage() {
   const [impuestos, setImpuestos] = useState({
     ivaPct: IVA_DEFAULT,
     isrPct: ISR_DEFAULT,
-    objetivoInsumoPct: OBJETIVO_INSUMO_DEFAULT,
+    gananciaPct: GANANCIA_DEFAULT,
   });
+  /** La ganancia con la que se está simulando; arranca en la de Ajustes */
+  const [gananciaQuiero, setGananciaQuiero] = useState<number | null>(null);
+  const [guardandoGanancia, setGuardandoGanancia] = useState(false);
   /** Las recetas que ya no se preparan, guardadas aparte */
   const [verOcultas, setVerOcultas] = useState(false);
   /** El orden de los grupos, el mismo de la tienda */
@@ -101,6 +105,9 @@ export default function RecetarioPage() {
   const [gruposCerrados, setGruposCerrados] = useState<string[]>([]);
   /** Todos los grupos que existen, incluidos los que están vacíos */
   const [categorias, setCategorias] = useState<string[]>([]);
+  /** El grupo al que se le está agregando una receta nueva */
+  const [recetaNuevaEn, setRecetaNuevaEn] = useState<string | null>(null);
+  const [recetaNueva, setRecetaNueva] = useState({ nombre: '', precio: '', preparacion: true });
   /** true = está abierto el panel para editar los grupos */
   const [editarGrupos, setEditarGrupos] = useState(false);
   const [grupoNuevo, setGrupoNuevo] = useState('');
@@ -214,6 +221,65 @@ export default function RecetarioPage() {
     const cant = parseFloat(valor.replace(',', '.'));
     if (isNaN(cant) || cant <= 0) return alert('Cantidad inválida');
     await llamar('PATCH', { id: l.id, cantidad: cant });
+  }
+
+  /**
+   * Crea un producto nuevo dentro de un grupo, listo para ponerle receta.
+   *
+   * La mayoría de las veces no es algo que se venda solo, sino una
+   * preparación de la casa —el jarabe de jamaica, la ensalada de pollo—
+   * que después se usa como renglón de otra receta. Por eso nace oculta y
+   * sin precio: si naciera visible, aparecería en la tienda como si se
+   * vendiera, a $0.
+   */
+  async function crearReceta(grupo: string) {
+    const nombre = recetaNueva.nombre.trim();
+    if (!nombre) return setError('Ponle nombre');
+    const precio = recetaNueva.preparacion ? 0 : parseFloat(recetaNueva.precio.replace(',', '.'));
+    if (!recetaNueva.preparacion && (isNaN(precio) || precio <= 0)) {
+      return setError('Escribe a cuánto se vende, o márcalo como preparación');
+    }
+    setOcupado(true);
+    setError('');
+    const res = await fetch('/api/admin/productos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nombre, categoria: grupo, descripcion: '', precio }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.idProducto) {
+      setOcupado(false);
+      setError(data.error || 'No se pudo crear');
+      return;
+    }
+    if (recetaNueva.preparacion) {
+      await fetch('/api/admin/productos', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idProducto: data.idProducto, oculto: true, disponible: false }),
+      });
+    }
+    setOcupado(false);
+    setRecetaNuevaEn(null);
+    setRecetaNueva({ nombre: '', precio: '', preparacion: true });
+    await cargar();
+    // Se abre sola: lo siguiente siempre es ponerle sus ingredientes
+    setAbierto(data.idProducto);
+  }
+
+  /** Deja la ganancia que se está probando como la de siempre. */
+  async function guardarGanancia(pct: number) {
+    setGuardandoGanancia(true);
+    const res = await fetch('/api/admin/ajustes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gananciaPct: pct }),
+    });
+    setGuardandoGanancia(false);
+    if (res.ok) {
+      setImpuestos((prev) => ({ ...prev, gananciaPct: pct }));
+      setGananciaQuiero(null);
+    }
   }
 
   /** Crea, renombra o borra un grupo. Vacío en `a` = borrar; en `de` = crear. */
@@ -502,6 +568,70 @@ export default function RecetarioPage() {
                 <span className="text-neutral-700 text-xs">{cerrado ? '▾' : '▴'}</span>
               </button>
 
+              <div className="flex">
+                <button
+                  onClick={() => {
+                    setRecetaNuevaEn(recetaNuevaEn === g.nombre ? null : g.nombre);
+                    setRecetaNueva({ nombre: '', precio: '', preparacion: true });
+                    setError('');
+                  }}
+                  className="text-xs font-semibold text-neutral-800 underline underline-offset-2 px-1"
+                >
+                  {recetaNuevaEn === g.nombre ? 'Cancelar' : `＋ Receta nueva en ${g.nombre}`}
+                </button>
+              </div>
+
+              {recetaNuevaEn === g.nombre && (
+                <div className="bg-white border border-neutral-200 rounded-2xl p-3 space-y-2">
+                  <input
+                    value={recetaNueva.nombre}
+                    onChange={(e) => setRecetaNueva({ ...recetaNueva, nombre: e.target.value })}
+                    placeholder="Nombre (ej. Jarabe de jamaica)"
+                    className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 placeholder-neutral-600 focus:outline-none focus:border-marron"
+                  />
+                  <div className="flex gap-2">
+                    {[
+                      { v: true, t: 'Solo es preparación' },
+                      { v: false, t: 'Se vende en el menú' },
+                    ].map((o) => (
+                      <button
+                        key={o.t}
+                        onClick={() => setRecetaNueva({ ...recetaNueva, preparacion: o.v })}
+                        className={`flex-1 text-xs font-semibold py-2 rounded-xl ${
+                          recetaNueva.preparacion === o.v
+                            ? 'bg-black text-white'
+                            : 'bg-neutral-100 text-neutral-800'
+                        }`}
+                      >
+                        {o.t}
+                      </button>
+                    ))}
+                  </div>
+                  {!recetaNueva.preparacion && (
+                    <input
+                      value={recetaNueva.precio}
+                      onChange={(e) => setRecetaNueva({ ...recetaNueva, precio: e.target.value })}
+                      inputMode="decimal"
+                      placeholder="Precio de venta"
+                      className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 placeholder-neutral-600 focus:outline-none focus:border-marron"
+                    />
+                  )}
+                  <p className="text-[11px] text-neutral-700">
+                    {recetaNueva.preparacion
+                      ? 'Nace escondida de la tienda: es para usarla dentro de otras recetas, como "un producto del menú".'
+                      : 'Aparecerá en la tienda en cuanto la marques disponible desde Productos.'}
+                  </p>
+                  <button
+                    onClick={() => crearReceta(g.nombre)}
+                    disabled={ocupado}
+                    className="w-full bg-marron text-white text-sm font-semibold py-2.5 rounded-xl active:scale-95 disabled:opacity-50"
+                  >
+                    Crear y ponerle ingredientes
+                  </button>
+                  {error && <p className="text-sm text-red-700 font-semibold">{error}</p>}
+                </div>
+              )}
+
               {!cerrado &&
                 g.lista.map((p) => {
           const activo = abierto === p.id;
@@ -511,9 +641,14 @@ export default function RecetarioPage() {
               ? desglosar(p.precio, p.costoTotal, impuestos)
               : null;
           const margen = d ? Math.round(d.margenNetoPct) : null;
+          const quiero = gananciaQuiero ?? impuestos.gananciaPct;
           const sugerido =
-            p.costoTotal !== null
-              ? precioSugerido(p.costoTotal, impuestos.objetivoInsumoPct, impuestos.ivaPct)
+            p.costoTotal !== null ? precioParaGanancia(p.costoTotal, quiero, impuestos) : null;
+          // Cómo quedaría el pedido con ese precio, para no enseñar un
+          // número suelto sin el resto de la cuenta
+          const conSugerido =
+            sugerido !== null && p.costoTotal !== null
+              ? desglosar(sugerido, p.costoTotal, impuestos)
               : null;
 
           return (
@@ -579,60 +714,139 @@ export default function RecetarioPage() {
                     que de verdad queda.
                   */}
                   {d && (
-                    <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-3 mb-2">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <p className="text-[11px] font-bold text-neutral-700 uppercase tracking-wide">
-                            Sin impuestos
-                          </p>
-                          <p className="text-lg font-bold text-neutral-900">
-                            ${d.margenBruto.toFixed(2)}
-                          </p>
-                          <p className="text-[11px] text-neutral-800">
-                            {d.margenBrutoPct}% de ${d.precio.toFixed(2)}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-[11px] font-bold text-neutral-700 uppercase tracking-wide">
-                            Con IVA e ISR
-                          </p>
-                          <p
-                            className={`text-lg font-bold ${
-                              d.margenNeto <= 0 ? 'text-red-700' : 'text-green-800'
-                            }`}
-                          >
-                            ${d.margenNeto.toFixed(2)}
-                          </p>
-                          <p className="text-[11px] text-neutral-800">
-                            {d.margenNetoPct}% de ${d.precio.toFixed(2)}
-                          </p>
-                        </div>
+                    <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-3 mb-2 space-y-3">
+                      {/*
+                        La cuenta completa, en el orden en que pasa: entra
+                        lo que paga el cliente, sale el IVA (que no es
+                        tuyo), salen los insumos, sale el ISR de lo que
+                        sobra, y lo último es tuyo.
+                      */}
+                      <div>
+                        <p className="text-[11px] font-bold text-neutral-700 uppercase tracking-wide mb-1">
+                          Hoy lo vendes en ${d.precio.toFixed(2)}
+                        </p>
+                        <table className="w-full text-sm">
+                          <tbody>
+                            <tr>
+                              <td className="text-neutral-800 py-0.5">Paga el cliente</td>
+                              <td className="text-right font-semibold text-neutral-900 tabular-nums">
+                                ${d.precio.toFixed(2)}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td className="text-neutral-800 py-0.5">
+                                − IVA ({impuestos.ivaPct}%), es del SAT
+                              </td>
+                              <td className="text-right text-neutral-900 tabular-nums">
+                                −${d.iva.toFixed(2)}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td className="text-neutral-800 py-0.5">− Insumos</td>
+                              <td className="text-right text-neutral-900 tabular-nums">
+                                −${d.costo.toFixed(2)}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td className="text-neutral-800 py-0.5">
+                                − ISR ({impuestos.isrPct}%), estimado
+                              </td>
+                              <td className="text-right text-neutral-900 tabular-nums">
+                                −${d.isr.toFixed(2)}
+                              </td>
+                            </tr>
+                            <tr className="border-t border-neutral-300">
+                              <td className="pt-1 font-bold text-neutral-900">Te queda</td>
+                              <td
+                                className={`pt-1 text-right font-bold tabular-nums ${
+                                  d.margenNeto <= 0 ? 'text-red-700' : 'text-green-800'
+                                }`}
+                              >
+                                ${d.margenNeto.toFixed(2)}{' '}
+                                <span className="font-semibold">({d.margenNetoPct}%)</span>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                        <p className="text-[11px] text-neutral-700 mt-1">
+                          Sin contar impuestos parecía que te quedaban ${d.margenBruto.toFixed(2)}.
+                          De eso, ${d.iva.toFixed(2)} no eran tuyos.
+                        </p>
                       </div>
-                      <div className="mt-2 pt-2 border-t border-neutral-200 text-[11px] text-neutral-800 space-y-0.5">
-                        <p>
-                          De ${d.precio.toFixed(2)}: ${d.iva.toFixed(2)} son IVA ({impuestos.ivaPct}
-                          %), ${d.costo.toFixed(2)} de insumos y ${d.isr.toFixed(2)} de ISR estimado
-                          ({impuestos.isrPct}%).
-                        </p>
-                        <p>
-                          Los insumos son el{' '}
-                          <b
-                            className={
-                              d.insumoPct > impuestos.objetivoInsumoPct
-                                ? 'text-red-700'
-                                : 'text-neutral-900'
+
+                      {/* Y ahora al revés: cuánto quieres ganar y a cómo
+                          habría que venderlo para lograrlo. */}
+                      <div className="border-t border-neutral-200 pt-2">
+                        <div className="flex items-center gap-2 flex-wrap mb-2">
+                          <span className="text-[11px] font-bold text-neutral-700 uppercase tracking-wide">
+                            Si quieres que te quede
+                          </span>
+                          {[30, 40, 50, 60].map((n) => (
+                            <button
+                              key={n}
+                              onClick={() => setGananciaQuiero(n)}
+                              className={`text-xs font-bold px-2 py-1 rounded-lg ${
+                                quiero === n
+                                  ? 'bg-black text-white'
+                                  : 'bg-neutral-200 text-neutral-800'
+                              }`}
+                            >
+                              {n}%
+                            </button>
+                          ))}
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            min="1"
+                            max={gananciaMaxima(impuestos)}
+                            value={quiero}
+                            onChange={(e) =>
+                              setGananciaQuiero(
+                                Math.max(1, Math.min(gananciaMaxima(impuestos), parseFloat(e.target.value) || 0))
+                              )
                             }
+                            className="w-16 bg-white border border-neutral-300 rounded-lg px-2 py-1 text-xs font-bold text-neutral-900"
+                          />
+                          <span className="text-xs font-bold text-neutral-800">%</span>
+                        </div>
+
+                        {conSugerido === null ? (
+                          <p className="text-sm text-amber-800">
+                            Con IVA del {impuestos.ivaPct}% no se puede quedar tanto: el tope es{' '}
+                            {gananciaMaxima(impuestos)}%.
+                          </p>
+                        ) : (
+                          <>
+                            <p className="text-sm text-neutral-900">
+                              Véndelo en{' '}
+                              <b className="text-lg">${conSugerido.precio.toFixed(2)}</b>{' '}
+                              <span className="text-neutral-800">
+                                ({sugerido! > p.precio ? `+$${(sugerido! - p.precio).toFixed(2)}` : 'igual o menos que hoy'})
+                              </span>
+                            </p>
+                            <p className="text-[11px] text-neutral-800">
+                              De esos ${conSugerido.precio.toFixed(2)}: ${conSugerido.iva.toFixed(2)}{' '}
+                              de IVA, ${conSugerido.costo.toFixed(2)} de insumos, $
+                              {conSugerido.isr.toFixed(2)} de ISR y{' '}
+                              <b className="text-green-800">
+                                ${conSugerido.margenNeto.toFixed(2)} para ti
+                              </b>
+                              .
+                            </p>
+                          </>
+                        )}
+
+                        {quiero !== impuestos.gananciaPct && (
+                          <button
+                            onClick={() => guardarGanancia(quiero)}
+                            disabled={guardandoGanancia}
+                            className="mt-1 text-[11px] font-semibold text-neutral-900 underline underline-offset-2 disabled:opacity-50"
                           >
-                            {d.insumoPct}%
-                          </b>{' '}
-                          del precio sin IVA (objetivo: {impuestos.objetivoInsumoPct}%).
-                          {sugerido !== null && sugerido !== p.precio && (
-                            <>
-                              {' '}
-                              Para cumplirlo, el precio tendría que ser <b>${sugerido}</b>.
-                            </>
-                          )}
-                        </p>
+                            {guardandoGanancia
+                              ? 'Guardando…'
+                              : `Usar ${quiero}% para todos los productos`}
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}

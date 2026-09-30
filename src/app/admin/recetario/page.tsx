@@ -129,6 +129,8 @@ export default function RecetarioPage() {
   const [nuevoInsumo, setNuevoInsumo] = useState('');
   /** Lo que se teclea para encontrar el insumo, en vez de buscarlo en la lista */
   const [buscaInsumo, setBuscaInsumo] = useState('');
+  /** Lo mismo para los productos que se meten dentro de otro (combos) */
+  const [buscaComponente, setBuscaComponente] = useState('');
   /** true = también se ofrecen los insumos guardados */
   const [verGuardados, setVerGuardados] = useState(false);
   /** Un renglon puede ser un insumo o, en los combos, otro producto */
@@ -244,6 +246,7 @@ export default function RecetarioPage() {
       setNuevoInsumo('');
       setBuscaInsumo('');
       setNuevoComponente('');
+      setBuscaComponente('');
       setNuevaCantidad('');
     }
   }
@@ -772,6 +775,8 @@ export default function RecetarioPage() {
                   setAbierto(activo ? null : p.id);
                   setNuevoInsumo('');
                   setBuscaInsumo('');
+                  setNuevoComponente('');
+                  setBuscaComponente('');
                   setNuevaCantidad('');
                   setError('');
                 }}
@@ -1326,30 +1331,106 @@ export default function RecetarioPage() {
                           );
                         })()
                       ) : (
-                        <select
-                          value={nuevoComponente}
-                          onChange={(e) => setNuevoComponente(e.target.value)}
-                          className="flex-1 min-w-[160px] bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-marron"
-                        >
-                          <option value="">Elige el producto…</option>
-                          {items
+                        (() => {
+                          // El mismo buscador que para los ingredientes:
+                          // con 40 recetas, la lista larga cuesta más que
+                          // capturar el combo entero.
+                          const posibles = items.filter(
+                            (o) => o.id !== p.id && !p.lineas.some((l) => l.idComponente === o.id)
+                          );
+                          const q = clave(buscaComponente.trim());
+                          const ordenados = posibles
                             .filter(
                               (o) =>
-                                o.id !== p.id &&
-                                !p.lineas.some((l) => l.idComponente === o.id)
+                                !q ||
+                                clave(o.nombre).includes(q) ||
+                                clave(o.categoria).includes(q)
                             )
-                            .map((o) => (
-                              <option key={o.id} value={o.id}>
-                                {o.nombre}
-                                {o.rinde?.cantidad
-                                  ? ` (rinde ${o.rinde.cantidad} ${o.rinde.unidad})`
-                                  : ''}
-                                {o.costoTotal !== null
-                                  ? ` — cuesta $${o.costoTotal.toFixed(2)}`
-                                  : ' — sin receta todavía'}
-                              </option>
-                            ))}
-                        </select>
+                            .sort((a, b) => {
+                              const pa = clave(a.nombre).startsWith(q) ? 0 : 1;
+                              const pb = clave(b.nombre).startsWith(q) ? 0 : 1;
+                              return pa - pb || a.nombre.localeCompare(b.nombre, 'es');
+                            });
+                          const elegido = items.find((o) => o.id === nuevoComponente);
+
+                          if (elegido) {
+                            return (
+                              <button
+                                onClick={() => {
+                                  setNuevoComponente('');
+                                  setBuscaComponente('');
+                                }}
+                                className="flex-1 min-w-[160px] flex items-center justify-between gap-2 bg-neutral-100 border-2 border-black rounded-xl px-3 py-2 text-sm text-left"
+                              >
+                                <span className="font-semibold text-neutral-900 truncate">
+                                  ✓ {elegido.nombre}
+                                  {elegido.rinde?.cantidad ? (
+                                    <span className="font-normal text-neutral-700">
+                                      {' '}
+                                      (rinde {elegido.rinde.cantidad} {elegido.rinde.unidad})
+                                    </span>
+                                  ) : null}
+                                </span>
+                                <span className="text-xs font-bold text-neutral-700 shrink-0">
+                                  Cambiar
+                                </span>
+                              </button>
+                            );
+                          }
+
+                          return (
+                            <div className="flex-1 min-w-[200px]">
+                              <input
+                                value={buscaComponente}
+                                onChange={(e) => setBuscaComponente(e.target.value)}
+                                placeholder="Escribe el producto… (ej. jara)"
+                                className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 placeholder-neutral-600 focus:outline-none focus:border-marron"
+                              />
+                              {buscaComponente.trim() && (
+                                <div className="mt-1 max-h-52 overflow-y-auto border border-neutral-200 rounded-xl divide-y divide-neutral-100 bg-white">
+                                  {ordenados.slice(0, 20).map((o) => (
+                                    <button
+                                      key={o.id}
+                                      onClick={() => {
+                                        setNuevoComponente(o.id);
+                                        setBuscaComponente('');
+                                      }}
+                                      className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
+                                    >
+                                      <span className="text-neutral-900">{o.nombre}</span>
+                                      {o.rinde?.cantidad ? (
+                                        <span className="text-[11px] text-neutral-700">
+                                          {' '}
+                                          · rinde {o.rinde.cantidad} {o.rinde.unidad}
+                                        </span>
+                                      ) : null}
+                                      <span className="text-[11px] text-neutral-700">
+                                        {' '}
+                                        · {o.categoria}
+                                      </span>
+                                      {o.costoTotal !== null ? (
+                                        <span className="text-[11px] font-semibold text-neutral-800">
+                                          {' '}
+                                          · cuesta ${o.costoTotal.toFixed(2)}
+                                        </span>
+                                      ) : (
+                                        <span className="text-[11px] font-semibold text-amber-800">
+                                          {' '}
+                                          · sin receta todavía
+                                        </span>
+                                      )}
+                                    </button>
+                                  ))}
+                                  {ordenados.length === 0 && (
+                                    <p className="px-3 py-2 text-sm text-neutral-800">
+                                      Ninguno se llama así.
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()
                       )}
 
                       <input

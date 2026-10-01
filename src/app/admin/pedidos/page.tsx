@@ -72,7 +72,20 @@ const METODOS_FILTRO = [
   'Sin registrar',
 ];
 
-const ESTADOS_FILTRO = ['Todos', ...FLUJO, 'Cancelado'];
+/**
+ * No es un estado del pedido, es uno del dinero, y por eso va aparte.
+ *
+ * Un pedido sin pagar puede estar en cualquier punto del flujo —recibido,
+ * listo, hasta entregado— así que no cabe en la lista de arriba. Se pone
+ * en el mismo menú porque es donde se va a buscar, pero se filtra en la
+ * pantalla y no en el servidor, que solo entiende la columna Estado.
+ */
+const SIN_PAGAR = 'Sin pagar';
+
+/** Cuántos días atrás alcanzar al buscar cobros pendientes. */
+const DIAS_SIN_PAGAR = 90;
+
+const ESTADOS_FILTRO = ['Todos', ...FLUJO, 'Cancelado', SIN_PAGAR];
 
 /** YYYY-MM-DD de hoy en Monterrey, desplazado N días hacia atrás. */
 function fechaMTY(diasAtras = 0): string {
@@ -179,6 +192,8 @@ export default function PedidosPage() {
   const [desde, setDesde] = useState(fechaHoyMTY());
   const [hasta, setHasta] = useState(fechaHoyMTY());
   const [estadoFiltro, setEstadoFiltro] = useState('Todos');
+  /** La fecha que había antes de abrir el rango por "Sin pagar" */
+  const [desdeAntes, setDesdeAntes] = useState('');
   const [metodoFiltro, setMetodoFiltro] = useState('Todos');
   /** Filtrar por lo que se llevaron: '' = todo */
   const [productoFiltro, setProductoFiltro] = useState('');
@@ -211,10 +226,36 @@ export default function PedidosPage() {
   const [historial, setHistorial] = useState<Pedido[] | null>(null);
   const [historialDe, setHistorialDe] = useState('');
 
+  /*
+    Elegir "Sin pagar" abre el rango de fechas.
+
+    El filtro nace en "hoy", y un cobro que se quedó sin confirmar casi
+    nunca es de hoy: es justo el de hace dos semanas que nadie volvió a
+    ver. Buscarlo dentro de un solo día lo dejaría invisible, que es lo
+    contrario de para lo que se pide el filtro. Al salir se devuelve la
+    fecha que ella había puesto, para no dejársela movida sin aviso.
+  */
+  const cambiarEstadoFiltro = (valor: string) => {
+    if (valor === SIN_PAGAR && estadoFiltro !== SIN_PAGAR) {
+      const atras = fechaMTY(DIAS_SIN_PAGAR);
+      if (desde > atras) {
+        setDesdeAntes(desde);
+        setDesde(atras);
+      }
+    } else if (valor !== SIN_PAGAR && estadoFiltro === SIN_PAGAR && desdeAntes) {
+      setDesde(desdeAntes);
+      setDesdeAntes('');
+    }
+    setEstadoFiltro(valor);
+  };
+
   const cargarPedidos = useCallback(() => {
     setCargando(true);
     const params = new URLSearchParams({ desde, hasta });
-    if (estadoFiltro !== 'Todos') params.set('estado', estadoFiltro);
+    // "Sin pagar" no es un Estado: el servidor no lo conocería
+    if (estadoFiltro !== 'Todos' && estadoFiltro !== SIN_PAGAR) {
+      params.set('estado', estadoFiltro);
+    }
     if (metodoFiltro !== 'Todos') params.set('metodo', metodoFiltro);
     fetch(`/api/admin/pedidos?${params}`)
       .then((res) => res.json())
@@ -347,6 +388,12 @@ export default function PedidosPage() {
   })();
 
   const visibles = pedidos.filter((p) => {
+    // Un cobro cancelado ya no se va a cobrar: no es dinero por entrar
+    if (
+      estadoFiltro === SIN_PAGAR &&
+      !(p.Estado_Pago === 'Pendiente' && p.Estado !== 'Cancelado')
+    )
+      return false;
     if (productoFiltro && !(p.Productos ?? []).some((it) => it.id === productoFiltro)) return false;
     if (!q) return true;
     const enTexto = [p.Nombre_Cliente_Snap, p.ID_Pedido].some((c) =>
@@ -564,12 +611,16 @@ export default function PedidosPage() {
           <label className="text-sm font-semibold text-neutral-700 ml-2">Estado</label>
           <select
             value={estadoFiltro}
-            onChange={(e) => setEstadoFiltro(e.target.value)}
-            className="bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:border-black"
+            onChange={(e) => cambiarEstadoFiltro(e.target.value)}
+            className={`border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-black ${
+              estadoFiltro === SIN_PAGAR
+                ? 'bg-amber-50 border-amber-400 text-amber-900 font-bold'
+                : 'bg-neutral-50 border-neutral-200 text-neutral-900'
+            }`}
           >
             {ESTADOS_FILTRO.map((e) => (
               <option key={e} value={e}>
-                {e}
+                {e === SIN_PAGAR ? '💸 Sin pagar' : e}
               </option>
             ))}
           </select>
@@ -658,6 +709,15 @@ export default function PedidosPage() {
         </div>
       )}
 
+      {/* Con el filtro puesto, el rango de fechas se movió solo: hay que
+          decirlo o parece que los pedidos de hoy se perdieron. */}
+      {estadoFiltro === SIN_PAGAR && (
+        <p className="text-xs font-semibold text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+          Mostrando solo los cobros que siguen pendientes, desde el {desde}. Cámbiale las fechas
+          de arriba si quieres ir más atrás.
+        </p>
+      )}
+
       {/* Cobros que se iniciaron y nadie confirmó. Van arriba porque es
           dinero que puede quedarse sin cobrar sin que nadie lo note. */}
       {porConfirmar.length > 0 && (
@@ -673,12 +733,22 @@ export default function PedidosPage() {
               caído y márcalo como recibido.
             </p>
           </div>
-          <button
-            onClick={() => abrirDetalle(porConfirmar[0].ID_Pedido)}
-            className="shrink-0 bg-amber-500 text-white text-sm font-bold px-4 py-2 rounded-xl active:scale-95"
-          >
-            Revisar el primero
-          </button>
+          <div className="flex gap-2 shrink-0">
+            {porConfirmar.length > 1 && estadoFiltro !== SIN_PAGAR && (
+              <button
+                onClick={() => cambiarEstadoFiltro(SIN_PAGAR)}
+                className="bg-white border border-amber-400 text-amber-900 text-sm font-bold px-3 py-2 rounded-xl active:scale-95"
+              >
+                Verlos todos
+              </button>
+            )}
+            <button
+              onClick={() => abrirDetalle(porConfirmar[0].ID_Pedido)}
+              className="bg-amber-500 text-white text-sm font-bold px-4 py-2 rounded-xl active:scale-95"
+            >
+              Revisar el primero
+            </button>
+          </div>
         </div>
       )}
 
@@ -688,7 +758,9 @@ export default function PedidosPage() {
         <p className="text-neutral-700">
           {buscaCliente.trim()
             ? `Ningún pedido de "${buscaCliente.trim()}" en estas fechas.`
-            : 'No hay pedidos para este filtro.'}
+            : estadoFiltro === SIN_PAGAR
+              ? 'No te deben nada en estas fechas: todos los cobros están confirmados.'
+              : 'No hay pedidos para este filtro.'}
         </p>
       ) : (
         <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 divide-y divide-neutral-100 overflow-hidden">

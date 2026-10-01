@@ -127,16 +127,79 @@ export async function appendRow(tabName: string, values: (string | number | bool
   const endCol = letraColumna(numCols);
 
   // 3. Escribir con rango explícito — sin depender de detección automática
-  await conReintento(() =>
-    sheets.spreadsheets.values.update({
-      spreadsheetId: process.env.GOOGLE_SHEETS_ID,
-      range: `${tabName}!A${nextRow}:${endCol}${nextRow}`,
-      valueInputOption: 'USER_ENTERED',
-      requestBody: { values: [values] },
-    })
-  );
+  const escribir = () =>
+    conReintento(() =>
+      sheets.spreadsheets.values.update({
+        spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+        range: `${tabName}!A${nextRow}:${endCol}${nextRow}`,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: { values: [values] },
+      })
+    );
+
+  try {
+    await escribir();
+  } catch (error) {
+    /*
+      La pestaña se llenó.
+
+      Una hoja nueva nace con 1000 renglones de cuadrícula, y escribir por
+      rango exacto —que es lo que hacemos para no depender de la detección
+      automática— no la estira: a partir del renglón 1001 Google contesta
+      "exceeds grid limits" y el renglón se pierde.
+
+      Le pasó a la Bitácora, que es justo donde menos se nota: anotar()
+      se traga sus errores para que un fallo de registro nunca tumbe una
+      venta, así que la app siguió funcionando mientras dejaba de guardar
+      lo que hacía cada quien. PEDIDOS, Movimientos_Caja y el historial de
+      precios van por el mismo camino, solo que más despacio.
+
+      Se estira y se reintenta una vez. Si falla por otra cosa, se avienta
+      tal cual: aquí solo se arregla el llenarse.
+    */
+    if (!/exceeds grid limits/i.test((error as Error)?.message ?? '')) throw error;
+    await estirarHoja(tabName, nextRow);
+    await escribir();
+  }
 
   return nextRow;
+}
+
+/**
+ * Le agrega renglones a una pestaña que se llenó.
+ *
+ * Se crece de mil en mil y no de uno en uno: estirar cuesta una llamada a
+ * Google, y hacerlo en cada alta convertiría cada venta en dos viajes.
+ */
+async function estirarHoja(tabName: string, filaNecesaria: number): Promise<void> {
+  const auth = getAuthClient();
+  const sheets = google.sheets({ version: 'v4', auth });
+
+  const meta = await conReintento(() =>
+    sheets.spreadsheets.get({
+      spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+      fields: 'sheets.properties(sheetId,title,gridProperties.rowCount)',
+    })
+  );
+  const hoja = (meta.data.sheets || []).find((s) => s.properties?.title === tabName);
+  const sheetId = hoja?.properties?.sheetId;
+  const filasHoy = hoja?.properties?.gridProperties?.rowCount ?? 0;
+  if (sheetId === undefined || sheetId === null) {
+    throw new Error(`No encontré la pestaña "${tabName}" para estirarla`);
+  }
+  if (filasHoy >= filaNecesaria) return;
+
+  const faltan = filaNecesaria - filasHoy;
+  const cuantas = Math.max(1000, faltan);
+  await conReintento(() =>
+    sheets.spreadsheets.batchUpdate({
+      spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+      requestBody: {
+        requests: [{ appendDimension: { sheetId, dimension: 'ROWS', length: cuantas } }],
+      },
+    })
+  );
+  console.log(`Pestaña "${tabName}": se llenó en ${filasHoy} renglones, se le agregaron ${cuantas}`);
 }
 
 export async function updateCell(

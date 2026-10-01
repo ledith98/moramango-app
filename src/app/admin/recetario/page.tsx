@@ -48,6 +48,8 @@ interface LineaReceta {
   cantidadCruda?: number | null;
   merma: string;
   nota: string;
+  /** Lo que ella quiere recordar de este renglón: "con cáscara", "ya pelado" */
+  apunte: string;
   costo: number | null;
   huerfano: boolean;
 }
@@ -255,6 +257,21 @@ export default function RecetarioPage() {
       setBuscaComponente('');
       setNuevaCantidad('');
     }
+  }
+
+  /**
+   * El apunte del renglón: "con cáscara", "pesado en crudo", "ya pelado".
+   *
+   * Vive aparte de las notas de la app —esas se vacían al corregir la
+   * cantidad— porque esto es justo lo que hay que leer al corregirla.
+   */
+  async function editarApunte(l: LineaReceta) {
+    const valor = prompt(
+      `¿Qué quieres recordar de ${l.insumo} en esta receta?\n\nEj. "con cáscara", "ya pelado", "pesado en crudo". Déjalo vacío para quitarlo.`,
+      l.apunte ?? ''
+    );
+    if (valor === null) return;
+    await llamar('PATCH', { id: l.id, apunte: valor.trim() });
   }
 
   async function editarCantidad(l: LineaReceta) {
@@ -1110,6 +1127,19 @@ export default function RecetarioPage() {
                           )}
                           {l.insumo}
                           {l.huerfano && <span className="text-red-600"> (ya no existe)</span>}
+                          {/* Dentro del párrafo a propósito: un botón
+                              aparte le quitaría ancho fijo al renglón y
+                              partiría "Jugo de limón" en tres líneas. */}
+                          {!l.apunte && (
+                            <button
+                              onClick={() => editarApunte(l)}
+                              disabled={ocupado}
+                              className="ml-1 text-[11px] opacity-60 active:opacity-100 disabled:opacity-30"
+                              title="Apuntar algo de este ingrediente"
+                            >
+                              📝
+                            </button>
+                          )}
                         </p>
                         {/*
                           El aviso de crudo va ARRIBA de la nota y no
@@ -1187,6 +1217,20 @@ export default function RecetarioPage() {
                           </div>
                         )}
                         {l.nota && <p className="text-[11px] text-amber-700">📝 {l.nota}</p>}
+                        {/*
+                          El apunte de ella, en gris oscuro y no en ámbar:
+                          el ámbar es de los avisos de la app, que piden
+                          que se haga algo. Esto no pide nada, solo recuerda.
+                        */}
+                        {l.apunte && (
+                          <button
+                            onClick={() => editarApunte(l)}
+                            disabled={ocupado}
+                            className="text-[11px] text-neutral-800 text-left underline decoration-neutral-300 disabled:opacity-50"
+                          >
+                            📝 {l.apunte}
+                          </button>
+                        )}
                       </div>
                       <span className="text-sm font-semibold text-neutral-900 whitespace-nowrap">
                         {l.cantidad} {l.unidad}
@@ -1198,9 +1242,11 @@ export default function RecetarioPage() {
                         onClick={() => editarCantidad(l)}
                         disabled={ocupado}
                         className="text-xs font-semibold text-black bg-neutral-200 px-2 py-1 rounded-lg active:scale-95 disabled:opacity-50"
+                        title="Cambiar cuánto lleva"
                       >
                         ✏️
                       </button>
+
                       <button
                         onClick={() => quitar(l)}
                         disabled={ocupado}

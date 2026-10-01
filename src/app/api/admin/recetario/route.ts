@@ -216,6 +216,7 @@ export async function GET() {
             cantidad,
             merma: '',
             nota: r.Notas || '',
+            apunte: r.Apunte || '',
             costo:
               costoComp !== null
                 ? redondear((rinde > 0 ? cantidad / rinde : cantidad) * costoComp, 2)
@@ -282,6 +283,7 @@ export async function GET() {
           cantidadCruda: rendimiento && factor !== 1 ? redondear(cantidad * factor, 3) : null,
           merma: r.Merma_Pct || '',
           nota: r.Notas || '',
+          apunte: r.Apunte || '',
           /** Si viene, este renglón solo cuenta cuando se pide ese extra */
           extraRequerido: (r.Extra_Requerido || '').trim(),
           // Costo real, calculado con la última compra registrada
@@ -462,6 +464,7 @@ export async function PATCH(req: NextRequest) {
     id,
     cantidad,
     merma,
+    apunte,
     idProducto,
     oculta,
     orden,
@@ -651,6 +654,15 @@ export async function PATCH(req: NextRequest) {
   if (merma !== undefined) {
     cambios[COL_REC.merma] = (merma || '').toString().trim();
   }
+  /*
+    El apunte NO se borra al cambiar la cantidad, al revés que 'Notas':
+    "con cáscara" sigue siendo verdad después de corregir los gramos, y
+    es justo entonces cuando hace falta leerlo.
+  */
+  if (apunte !== undefined) {
+    await ensureColumn(HOJA_RECETARIO, 'Apunte');
+    cambios[COL_REC.apunte] = (apunte || '').toString().trim().slice(0, 120);
+  }
   await updateCells(HOJA_RECETARIO, fila, cambios);
 
   await anotar(
@@ -660,6 +672,9 @@ export async function PATCH(req: NextRequest) {
     [
       cantidad !== undefined ? `cantidad: ${recetario[idx].Cantidad} → ${cantidad}` : '',
       merma !== undefined ? `merma: ${recetario[idx].Merma_Pct || '0'} → ${merma || '0'}` : '',
+      apunte !== undefined
+        ? `apunte: ${recetario[idx].Apunte || '(vacío)'} → ${apunte || '(vacío)'}`
+        : '',
       `producto ${recetario[idx].ID_Producto}`,
     ]
       .filter(Boolean)

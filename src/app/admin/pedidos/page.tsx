@@ -418,6 +418,41 @@ export default function PedidosPage() {
   };
 
   /**
+   * Deshace un "pago confirmado" que no era.
+   *
+   * Confirmar es un botón verde grande que se toca antes de ver la
+   * transferencia caer, y una vez tocado el pedido se daba por cobrado
+   * para siempre: lo único que quedaba era reembolsarlo, que cancela la
+   * venta y la saca de las cuentas. Para un dedazo eso es peor que el
+   * error.
+   *
+   * No es lo mismo que un reembolso, y por eso son dos botones: aquí el
+   * dinero NUNCA llegó y el pedido vuelve a la lista de por cobrar;
+   * reembolsado quiere decir que llegó y se devolvió.
+   */
+  const volverAPendiente = async (idPedido: string) => {
+    if (
+      !confirm(
+        `¿${idPedido} todavía NO está pagado?\n\nVuelve a tu lista de cobros pendientes y deja de contar como cobrado.\n\nOjo: esto es para cuando lo confirmaste por error. Si el dinero sí llegó y lo devolviste, lo que va es "Marcar como reembolsado".`
+      )
+    )
+      return;
+
+    setActualizando(true);
+    try {
+      await fetch('/api/admin/pedidos', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idPedido, estadoPago: 'Pendiente' }),
+      });
+      cargarPedidos();
+      abrirDetalle(idPedido);
+    } finally {
+      setActualizando(false);
+    }
+  };
+
+  /**
    * Marca un pedido como reembolsado. El dinero se devuelve en Mercado
    * Pago (o en efectivo); aquí solo se deja el registro. Se cancela el
    * pedido a la vez, porque una venta devuelta no debe contar.
@@ -1037,6 +1072,19 @@ export default function PedidosPage() {
                             );
                           })}
                         </div>
+                        {/* Deshacer el "sí me pagaron" va ANTES de
+                            reembolsar: corregir un dedazo es lo común y
+                            devolver dinero lo raro, y puestos al revés se
+                            toca el de abajo creyendo que es este. */}
+                        {detalle.pedido.Estado_Pago === 'Pagado' && (
+                          <button
+                            onClick={() => volverAPendiente(detalle.pedido.ID_Pedido)}
+                            disabled={actualizando}
+                            className="mt-2 w-full border border-amber-300 bg-amber-50 text-amber-900 text-sm font-semibold py-2.5 rounded-xl active:scale-95 transition-transform disabled:opacity-50"
+                          >
+                            ↩️ Todavía no me pagan
+                          </button>
+                        )}
                         {/* Reembolsar casi nunca se usa y se lleva un
                             renglón entero: va aquí adentro, no suelto. */}
                         {detalle.pedido.Estado_Pago === 'Pagado' && (

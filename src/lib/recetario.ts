@@ -47,6 +47,17 @@ export const COLS_RECETARIO = [
   // abajo mientras se prepara, y el orden en que se capturaron no es el
   // orden en que se usan. Vacío = como se capturó.
   'Orden',
+  /*
+    Lo que la dueña quiere recordar de ESTE renglón: "con cáscara", "ya
+    pelado", "pesado en crudo".
+
+    No cabe en 'Notas', que es de la app: ahí se marcan los renglones que
+    quedaron por revisar de una migración, se cuentan en el aviso de "por
+    revisar" y se vacían solos al corregir la cantidad. Un apunte suyo
+    escrito ahí desaparecería justo cuando corrigiera el número — que es
+    exactamente el momento en que lo escribió para acordarse.
+  */
+  'Apunte',
 ];
 
 // Columnas 1-based para updateCell
@@ -59,6 +70,7 @@ export const COL_REC = {
   idComponente: 7,
   extraRequerido: 8,
   orden: 9,
+  apunte: 10,
 } as const;
 
 export async function prepararRecetario(): Promise<void> {
@@ -70,6 +82,7 @@ export async function prepararRecetario(): Promise<void> {
   await ensureColumn(HOJA_RECETARIO, 'ID_Componente');
   await ensureColumn(HOJA_RECETARIO, 'Extra_Requerido');
   await ensureColumn(HOJA_RECETARIO, 'Orden');
+  await ensureColumn(HOJA_RECETARIO, 'Apunte');
 }
 
 /**

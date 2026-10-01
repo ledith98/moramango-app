@@ -244,6 +244,7 @@ export async function PATCH(req: NextRequest) {
   const {
     idProducto,
     nombre,
+    soloPreparacion,
     categoria,
     descripcion,
     precio,
@@ -272,6 +273,21 @@ export async function PATCH(req: NextRequest) {
 
   if (typeof nombre === 'string' && nombre.trim()) {
     await updateCell('Productos', fila.rowIndex, 2, nombre.trim());
+  }
+  /*
+    Preparación de la casa o producto del menú.
+
+    Las tres celdas se mueven juntas a propósito. Marcar solo la columna
+    nueva dejaría al jarabe de jamaica visible en la tienda a $0; apagar
+    solo 'Oculto' lo sacaría del menú sin que nada dijera por qué. Quien
+    cambie una sin las otras deja la contradicción para después.
+  */
+  if (typeof soloPreparacion === 'boolean') {
+    const colPrep = await ensureColumn('Productos', 'Solo_Preparacion');
+    const colOculto2 = await ensureColumn('Productos', 'Oculto');
+    await updateCell('Productos', fila.rowIndex, colPrep, soloPreparacion ? 'si' : '');
+    await updateCell('Productos', fila.rowIndex, colOculto2, soloPreparacion ? 'TRUE' : '');
+    await updateCell('Productos', fila.rowIndex, 7, soloPreparacion ? 'FALSE' : 'TRUE');
   }
   if (typeof categoria === 'string' && categoria.trim()) {
     await updateCell('Productos', fila.rowIndex, 3, categoria.trim());

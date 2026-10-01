@@ -64,6 +64,10 @@ interface ProductoReceta {
   costoTotal: number | null;
   /** true = ya no se prepara; se guarda la receta pero no estorba */
   oculta?: boolean;
+  /** true = es preparación de la casa; no sale en el menú de la tienda */
+  soloPreparacion?: boolean;
+  /** true = no se enseña en la tienda ahorita; no es lo mismo que ser preparación */
+  escondido?: boolean;
   /** Cuánto sale de esta receta (1500 ml de jarabe); 0 = se usa por pieza */
   rinde?: { cantidad: number; unidad: string };
 }
@@ -318,7 +322,7 @@ export default function RecetarioPage() {
       await fetch('/api/admin/productos', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idProducto: data.idProducto, oculto: true, disponible: false }),
+        body: JSON.stringify({ idProducto: data.idProducto, soloPreparacion: true }),
       });
     }
     setOcupado(false);
@@ -431,6 +435,61 @@ export default function RecetarioPage() {
     setOcupado(false);
     if (!res.ok) {
       setError('No se pudo cambiar el nombre');
+      return;
+    }
+    await cargar();
+  }
+
+  /**
+   * Pasa una receta de preparación de la casa a producto del menú, o al revés.
+   *
+   * Hasta ahora esto se decidía al crearla y ya no se podía mover: el
+   * jarabe de jamaica que un día se empieza a vender en vaso se quedaba
+   * escondido, y un producto que dejó de venderse solo seguía en la
+   * tienda. Es la misma receta; lo único que cambia es si el cliente la ve.
+   *
+   * Para sacarla al menú hace falta precio. Sin él aparecería en la tienda
+   * a $0 —que es justo lo que se evitó al crearla— así que se pregunta
+   * aquí mismo en vez de dejarla salir rota.
+   */
+  async function cambiarVenta(p: ProductoReceta, soloPreparacion: boolean) {
+    if (!!p.soloPreparacion === soloPreparacion) return;
+
+    let precio = p.precio;
+    if (!soloPreparacion && !(precio > 0)) {
+      const escrito = prompt(
+        `¿A cuánto se vende "${p.nombre}"?\n\nLo necesita para salir al menú: sin precio aparecería en la tienda a $0.`,
+        ''
+      );
+      if (escrito === null) return;
+      precio = parseFloat(escrito.replace(',', '.'));
+      if (isNaN(precio) || precio <= 0) {
+        setError('Escribe a cuánto se vende');
+        return;
+      }
+    }
+    if (
+      soloPreparacion &&
+      !confirm(
+        `¿"${p.nombre}" deja de venderse en el menú?\n\nSe queda guardada como preparación de la casa, para usarla dentro de otras recetas. Su receta y su precio no se borran.`
+      )
+    )
+      return;
+
+    setOcupado(true);
+    setError('');
+    const res = await fetch('/api/admin/productos', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(
+        soloPreparacion
+          ? { idProducto: p.id, soloPreparacion: true }
+          : { idProducto: p.id, soloPreparacion: false, precio }
+      ),
+    });
+    setOcupado(false);
+    if (!res.ok) {
+      setError('No se pudo cambiar');
       return;
     }
     await cargar();
@@ -1640,6 +1699,39 @@ export default function RecetarioPage() {
                     </select>
                     <span className="text-[11px] text-neutral-700">
                       Es el mismo grupo del menú de la tienda.
+                    </span>
+                  </div>
+
+                  {/* Lo que se elige al crearla, ahora también después:
+                      el jarabe que se empieza a vender en vaso, o el
+                      producto que se vuelve nada más ingrediente. */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <label className="text-xs font-semibold text-neutral-700">¿Se vende?</label>
+                    <div className="flex gap-1.5">
+                      {[
+                        { v: true, t: '🧪 Solo es preparación' },
+                        { v: false, t: '🛒 Se vende en el menú' },
+                      ].map((o) => (
+                        <button
+                          key={o.t}
+                          onClick={() => cambiarVenta(p, o.v)}
+                          disabled={ocupado}
+                          className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg disabled:opacity-50 ${
+                            !!p.soloPreparacion === o.v
+                              ? 'bg-black text-white'
+                              : 'bg-neutral-100 text-neutral-800 active:scale-95'
+                          }`}
+                        >
+                          {o.t}
+                        </button>
+                      ))}
+                    </div>
+                    <span className="text-[11px] text-neutral-700 w-full">
+                      {p.soloPreparacion
+                        ? 'No sale en la tienda; solo se usa dentro de otras recetas.'
+                        : p.escondido
+                          ? `Se vende a $${p.precio.toFixed(2)}, pero ahorita está escondido del menú. Eso se prende en Productos.`
+                          : `Sale en el menú a $${p.precio.toFixed(2)}.`}
                     </span>
                   </div>
 

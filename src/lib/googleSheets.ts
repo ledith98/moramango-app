@@ -166,40 +166,56 @@ export async function appendRow(tabName: string, values: (string | number | bool
 }
 
 /**
- * Le agrega renglones a una pestaña que se llenó.
+ * Le agrega renglones —o columnas— a una pestaña que se llenó.
  *
- * Se crece de mil en mil y no de uno en uno: estirar cuesta una llamada a
- * Google, y hacerlo en cada alta convertiría cada venta en dos viajes.
+ * Los renglones crecen de mil en mil y no de uno en uno: estirar cuesta
+ * una llamada a Google, y hacerlo en cada alta convertiría cada venta en
+ * dos viajes. Las columnas crecen de a poco: se agregan de una en una a lo
+ * largo de los años, y una hoja con cien columnas vacías no se navega.
  */
-async function estirarHoja(tabName: string, filaNecesaria: number): Promise<void> {
+async function estirarHoja(
+  tabName: string,
+  filaNecesaria: number,
+  columnaNecesaria = 0
+): Promise<void> {
   const auth = getAuthClient();
   const sheets = google.sheets({ version: 'v4', auth });
 
   const meta = await conReintento(() =>
     sheets.spreadsheets.get({
       spreadsheetId: process.env.GOOGLE_SHEETS_ID,
-      fields: 'sheets.properties(sheetId,title,gridProperties.rowCount)',
+      fields: 'sheets.properties(sheetId,title,gridProperties(rowCount,columnCount))',
     })
   );
   const hoja = (meta.data.sheets || []).find((s) => s.properties?.title === tabName);
   const sheetId = hoja?.properties?.sheetId;
-  const filasHoy = hoja?.properties?.gridProperties?.rowCount ?? 0;
   if (sheetId === undefined || sheetId === null) {
     throw new Error(`No encontré la pestaña "${tabName}" para estirarla`);
   }
-  if (filasHoy >= filaNecesaria) return;
+  const filasHoy = hoja?.properties?.gridProperties?.rowCount ?? 0;
+  const columnasHoy = hoja?.properties?.gridProperties?.columnCount ?? 0;
 
-  const faltan = filaNecesaria - filasHoy;
-  const cuantas = Math.max(1000, faltan);
+  const peticiones: { appendDimension: { sheetId: number; dimension: string; length: number } }[] = [];
+  let cuenta = '';
+  if (filaNecesaria > filasHoy) {
+    const cuantas = Math.max(1000, filaNecesaria - filasHoy);
+    peticiones.push({ appendDimension: { sheetId, dimension: 'ROWS', length: cuantas } });
+    cuenta += ` ${cuantas} renglones (tenía ${filasHoy})`;
+  }
+  if (columnaNecesaria > columnasHoy) {
+    const cuantas = Math.max(5, columnaNecesaria - columnasHoy);
+    peticiones.push({ appendDimension: { sheetId, dimension: 'COLUMNS', length: cuantas } });
+    cuenta += ` ${cuantas} columnas (tenía ${columnasHoy})`;
+  }
+  if (peticiones.length === 0) return;
+
   await conReintento(() =>
     sheets.spreadsheets.batchUpdate({
       spreadsheetId: process.env.GOOGLE_SHEETS_ID,
-      requestBody: {
-        requests: [{ appendDimension: { sheetId, dimension: 'ROWS', length: cuantas } }],
-      },
+      requestBody: { requests: peticiones },
     })
   );
-  console.log(`Pestaña "${tabName}": se llenó en ${filasHoy} renglones, se le agregaron ${cuantas}`);
+  console.log(`Pestaña "${tabName}": se le agregaron${cuenta}`);
 }
 
 export async function updateCell(
@@ -446,14 +462,34 @@ async function crearColumna(tabName: string, columnName: string): Promise<number
 
   const nuevoIndice = headers.length + 1;
   const colLetter = letraColumna(nuevoIndice);
-  await conReintento(() =>
-    sheets.spreadsheets.values.update({
-      spreadsheetId: process.env.GOOGLE_SHEETS_ID,
-      range: `${tabName}!${colLetter}1`,
-      valueInputOption: 'USER_ENTERED',
-      requestBody: { values: [[columnName]] },
-    })
-  );
+  const escribirEncabezado = () =>
+    conReintento(() =>
+      sheets.spreadsheets.values.update({
+        spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+        range: `${tabName}!${colLetter}1`,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: { values: [[columnName]] },
+      })
+    );
+
+  try {
+    await escribirEncabezado();
+  } catch (error) {
+    /*
+      La pestaña se quedó sin columnas.
+
+      Es el mismo tope de cuadrícula que con los renglones, de lado: una
+      hoja nueva nace con 26 y Productos ya iba en 27, así que
+      Solo_Preparacion no tenía dónde nacer. Sin esto, la función que
+      estrena una columna no falla del todo —escribe el valor en la
+      celda— pero el encabezado nunca aparece y getSheetData deja de
+      devolver ese dato. Pasó con ID_Componente y los combos quedaron
+      vacíos hasta que se encontró.
+    */
+    if (!/exceeds grid limits/i.test((error as Error)?.message ?? '')) throw error;
+    await estirarHoja(tabName, 0, nuevoIndice);
+    await escribirEncabezado();
+  }
 
   columnasVistas.set(`${tabName}!${columnName}`, {
     indice: nuevoIndice,

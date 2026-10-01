@@ -309,6 +309,24 @@ export async function GET() {
         },
         /** 'si' = ya no se prepara; se guarda su receta pero no estorba */
         oculta: (p.Receta_Oculta || '').toString().trim().toLowerCase() === 'si',
+        /*
+          true = es de las de la casa (el jarabe, el jugo de limón): no
+          sale en el menú y solo existe dentro de otra receta.
+
+          Tiene columna propia y NO se deduce de 'Oculto'. En la hoja hay
+          quince productos ocultos y solo seis son preparaciones: los otros
+          —la Coca Cola, las conchas, los combos— se venden y están
+          escondidos por ahora, porque se acabaron o no es temporada.
+          Llamarlos "preparación" sería mentir sobre lo que son.
+
+          Son tres cosas distintas y por eso van en tres columnas:
+            Solo_Preparacion  nunca se vende solo
+            Oculto            no se enseña en la tienda ahorita
+            Receta_Oculta     ya no se prepara
+        */
+        soloPreparacion: (p.Solo_Preparacion || '').toString().trim().toLowerCase() === 'si',
+        /** true = no se enseña en la tienda; distinto de ser preparación */
+        escondido: (p.Oculto || '').toString().trim().toUpperCase() === 'TRUE',
       };
     });
 

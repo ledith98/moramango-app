@@ -90,6 +90,8 @@ export default function ProductosPage() {
   const [ivaPct, setIvaPct] = useState(IVA_DEFAULT);
   const [acomodando, setAcomodando] = useState(false);
   const [cargando, setCargando] = useState(true);
+  /** Lo que se teclea para encontrar un producto entre los casi 60 que hay */
+  const [busca, setBusca] = useState('');
   const [editando, setEditando] = useState<Producto | null>(null);
   const [creando, setCreando] = useState(false);
   const [form, setForm] = useState<FormProducto>(FORM_VACIO);
@@ -193,13 +195,32 @@ export default function ProductosPage() {
 
   const orden = (p: Producto) => parseInt(p.Orden_Menu ?? '') || 9999;
 
+  /*
+    Buscar entre los productos.
+
+    Sin acentos y sin mayúsculas, porque nadie teclea "Armonía" con tilde
+    cuando va de prisa. Busca en el nombre, en el grupo y en la clave: si
+    un producto da problemas, su PROD-016 es lo que se tiene a la mano.
+  */
+  const sinAcentos = (s: string) =>
+    (s || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').trim();
+  const loBuscado = sinAcentos(busca);
+  const buscando = loBuscado.length > 0;
+  const visibles = buscando
+    ? productos.filter((p) =>
+        [p.Nombre, p['Categoría'], p.ID_Producto, p.Descripcion].some((campo) =>
+          sinAcentos(campo ?? '').includes(loBuscado)
+        )
+      )
+    : productos;
+
   /**
    * Los productos se ven agrupados y en el mismo orden que en la tienda y
    * en Venta. Antes salían en el orden de las filas del Excel, así que un
    * producto nuevo aparecía hasta el final y lejos de los suyos.
    */
   const grupos = Array.from(
-    new Set(productos.map((p) => (p.Categoría || 'Otros').trim() || 'Otros'))
+    new Set(visibles.map((p) => (p.Categoría || 'Otros').trim() || 'Otros'))
   )
     .sort(
       (a, b) =>
@@ -208,7 +229,7 @@ export default function ProductosPage() {
     )
     .map((cat) => ({
       cat,
-      items: productos
+      items: visibles
         .filter((p) => claveCategoria(p.Categoría || 'Otros') === claveCategoria(cat))
         .sort((a, b) => orden(a) - orden(b)),
     }));
@@ -221,6 +242,13 @@ export default function ProductosPage() {
    * edita su categoría, que es lo que ya hacía esa decisión.
    */
   const mover = async (cat: string, i: number, hacia: -1 | 1) => {
+    /*
+      Con una búsqueda activa, `grupos` trae solo lo que coincide. Guardar
+      el orden desde ahí renumeraría los visibles y dejaría a los demás
+      colgados detrás. Las flechas se esconden mientras se busca; esto es
+      el seguro por si alguna se cuela.
+    */
+    if (buscando) return;
     const g = grupos.find((x) => x.cat === cat);
     if (!g) return;
     const j = i + hacia;
@@ -543,11 +571,40 @@ export default function ProductosPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-neutral-700">{productos.length} producto{productos.length === 1 ? '' : 's'}</span>
+      <div className="relative">
+        <input
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Busca un producto… (ej. piña, combo, PROD-016)"
+          className="w-full bg-white border border-neutral-300 rounded-xl pl-10 pr-10 py-3 text-sm text-neutral-900 placeholder-neutral-600 focus:outline-none focus:border-marron"
+        />
+        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-600">🔍</span>
+        {busca && (
+          <button
+            onClick={() => setBusca('')}
+            aria-label="Borrar la búsqueda"
+            className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg bg-neutral-100 text-neutral-800 font-bold active:scale-90"
+          >
+            ×
+          </button>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm text-neutral-700">
+          {buscando ? (
+            <>
+              <b className="text-neutral-900">{visibles.length}</b> de {productos.length}
+            </>
+          ) : (
+            <>
+              {productos.length} producto{productos.length === 1 ? '' : 's'}
+            </>
+          )}
+        </span>
         <button
           onClick={abrirCrear}
-          className="bg-black text-white font-semibold px-4 py-2.5 rounded-xl active:scale-95 transition-transform"
+          className="bg-black text-white font-semibold px-4 py-2.5 rounded-xl active:scale-95 transition-transform shrink-0"
         >
           + Nuevo producto
         </button>
@@ -565,36 +622,43 @@ export default function ProductosPage() {
                   ({items.length})
                 </span>
               </h3>
-              <p className="text-xs text-neutral-600 mb-3">
-                Con las flechas cambias el orden en que se ven, tanto en la tienda como en Venta.
-                Para pasarlo a otro grupo, edítalo y cámbiale la categoría.
-              </p>
+              {!buscando && (
+                <p className="text-xs text-neutral-600 mb-3">
+                  Con las flechas cambias el orden en que se ven, tanto en la tienda como en Venta.
+                  Para pasarlo a otro grupo, edítalo y cámbiale la categoría.
+                </p>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {items.map((p, indice) => {
             const estado = estadoDe(p);
             return (
               <div key={p.ID_Producto} className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 flex flex-col gap-2">
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => mover(cat, indice, -1)}
-                    disabled={indice === 0 || acomodando}
-                    aria-label={`Subir ${p.Nombre}`}
-                    className="w-8 h-8 rounded-lg bg-neutral-100 text-neutral-900 font-bold active:scale-90 disabled:opacity-30"
-                  >
-                    ↑
-                  </button>
-                  <button
-                    onClick={() => mover(cat, indice, 1)}
-                    disabled={indice === items.length - 1 || acomodando}
-                    aria-label={`Bajar ${p.Nombre}`}
-                    className="w-8 h-8 rounded-lg bg-neutral-100 text-neutral-900 font-bold active:scale-90 disabled:opacity-30"
-                  >
-                    ↓
-                  </button>
-                  <span className="text-xs font-semibold text-neutral-600 ml-1">
-                    {indice + 1}º de {items.length}
-                  </span>
-                </div>
+                {/* Las flechas solo con la lista completa: con un filtro
+                    encima, el "1º de 3" sería de los que coincidieron y
+                    guardarlo revolvería a los demás. */}
+                {!buscando && (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => mover(cat, indice, -1)}
+                      disabled={indice === 0 || acomodando}
+                      aria-label={`Subir ${p.Nombre}`}
+                      className="w-8 h-8 rounded-lg bg-neutral-100 text-neutral-900 font-bold active:scale-90 disabled:opacity-30"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      onClick={() => mover(cat, indice, 1)}
+                      disabled={indice === items.length - 1 || acomodando}
+                      aria-label={`Bajar ${p.Nombre}`}
+                      className="w-8 h-8 rounded-lg bg-neutral-100 text-neutral-900 font-bold active:scale-90 disabled:opacity-30"
+                    >
+                      ↓
+                    </button>
+                    <span className="text-xs font-semibold text-neutral-600 ml-1">
+                      {indice + 1}º de {items.length}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex items-start gap-2">
                     {p.Imagen_URL && (
@@ -659,6 +723,12 @@ export default function ProductosPage() {
               </div>
             </section>
           ))}
+
+          {buscando && visibles.length === 0 && (
+            <p className="text-center text-neutral-800 py-8">
+              Ningún producto se llama &ldquo;{busca.trim()}&rdquo;.
+            </p>
+          )}
         </div>
       )}
 

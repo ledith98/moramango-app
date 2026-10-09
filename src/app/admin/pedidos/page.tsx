@@ -157,7 +157,7 @@ const mensajeWhatsApp = (estado: string, nombre: string, idPedido: string): stri
     case 'Listo para recoger':
       return `¡Hola ${primerNombre}! 🎉 Tu pedido ${idPedido} está listo para recoger en Moramango. ¡Te esperamos!`;
     case 'Entregado':
-      return `¡Gracias por tu compra, ${primerNombre}! 💛 Esperamos que disfrutes tu pedido. ¡Vuelve pronto a Moramango!`;
+      return `¡Gracias por tu preferencia, ${primerNombre}! 💛 Esperamos que disfrutes tu pedido. ¡Vuelve pronto a Moramango!`;
     case 'Cancelado':
       return `Hola ${primerNombre}, lamentamos informarte que tu pedido ${idPedido} fue cancelado. Si tienes alguna duda, respóndenos por aquí. 🙏`;
     default:

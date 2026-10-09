@@ -262,7 +262,7 @@ export async function generarTicket(datos: DatosTicket): Promise<HTMLCanvasEleme
   ctx.textAlign = 'center';
   ctx.fillStyle = NEGRO;
   ctx.font = `bold 26px ${MONO}`;
-  ctx.fillText('GRACIAS POR SU COMPRA', centro, y);
+  ctx.fillText('GRACIAS POR SU PREFERENCIA', centro, y);
   y += 34;
 
   if (datos.lealtad) {
@@ -322,8 +322,29 @@ export function textoTicket(datos: DatosTicket): string {
   lineas.push(`*TOTAL: $${datos.total.toFixed(2)}*`);
   if (datos.metodoPago) lineas.push(`Pago: ${datos.metodoPago}`);
   lineas.push('');
-  lineas.push('¡Gracias por tu compra! 💛');
+  lineas.push('¡Gracias por tu preferencia! 💛');
   if (datos.lealtad) lineas.push(datos.lealtad);
+  return lineas.join('\n');
+}
+
+/**
+ * El mensaje que acompaña al ticket cuando se manda.
+ *
+ * Corto a propósito: va de pie de foto de la imagen, no la repite. Un
+ * ticket llegando solo, sin una palabra, se lee como un cobro; con esta
+ * línea se lee como que alguien se lo mandó.
+ */
+export function mensajeTicket(datos: DatosTicket): string {
+  const nombre = (datos.cliente || '').trim().split(' ')[0];
+  const lineas = [
+    nombre
+      ? `¡Gracias por tu preferencia, ${nombre}! 💛`
+      : '¡Gracias por tu preferencia! 💛',
+    `Aquí está tu ticket del pedido ${datos.idPedido} por ${dinero(datos.total)}.`,
+  ];
+  if (datos.lealtad) lineas.push(datos.lealtad);
+  lineas.push('');
+  lineas.push(`${NEGOCIO.nombre} — ${NEGOCIO.lema}`);
   return lineas.join('\n');
 }
 
@@ -362,6 +383,31 @@ export async function compartirTicket(datos: DatosTicket): Promise<void> {
   if (!blob) return;
 
   const archivo = new File([blob], `ticket-${datos.idPedido}.png`, { type: 'image/png' });
+  const texto = mensajeTicket(datos);
+
+  /*
+    La imagen y el mensaje salen juntos.
+
+    Antes se compartía solo el archivo y el ticket le llegaba al cliente
+    sin una palabra, como un cobro suelto. WhatsApp pone el texto de pie
+    de foto, así que van en el mismo envío y no en dos.
+
+    No todos los destinos aceptan texto y archivo a la vez; por eso se
+    pregunta primero y, si ese teléfono no puede, se manda la imagen
+    sola antes que no mandar nada.
+  */
+  if (navigator.canShare?.({ files: [archivo], text: texto })) {
+    try {
+      await navigator.share({
+        files: [archivo],
+        text: texto,
+        title: `Ticket ${datos.idPedido}`,
+      });
+      return;
+    } catch {
+      return; // el usuario canceló
+    }
+  }
 
   if (navigator.canShare?.({ files: [archivo] })) {
     try {

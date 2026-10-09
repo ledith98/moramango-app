@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { DIAS_NOMBRE, estadoTienda, HORARIO_DEFAULT, type Horario } from '@/lib/horario';
 import { catalogoExtras, claveExtra, type ExtraConocido } from '@/lib/extras';
-import { parsearOpciones } from '@/lib/opciones';
+import { parsearOpciones, resolverGrupos, type ProductoDelMenu } from '@/lib/opciones';
 import { productoDeOpcion, toppingsDeHoja } from '@/lib/toppingIncluido';
 import { desglosar, gananciaMaxima, precioParaGanancia } from '@/lib/impuestos';
 
@@ -159,9 +159,19 @@ export default function AjustesPage() {
       (x: Record<string, string>) => (x.Eliminado || '').toUpperCase() !== 'TRUE'
     );
     const menu = toppingsDeHoja(filas);
+    // Los `@Grupo` se abren también aquí: si un combo ofrece "@Licuados",
+    // sus toppings tienen que poder marcarse como agotados igual que si
+    // los licuados estuvieran escritos uno por uno.
+    const catalogo: ProductoDelMenu[] = filas
+      .filter((x) => (x.Oculto || '').toUpperCase() !== 'TRUE')
+      .map((x) => ({
+        nombre: (x.Nombre || '').trim(),
+        categoria: (x['Categoría'] || x.Categoria || '').trim(),
+      }))
+      .filter((x) => x.nombre);
     const deBebidas = new Set<string>();
     for (const f of filas) {
-      for (const g of parsearOpciones(f.Opciones ?? '')) {
+      for (const g of resolverGrupos(parsearOpciones(f.Opciones ?? ''), catalogo)) {
         for (const o of g.opciones) {
           const bebida = productoDeOpcion(g.nombre, o, menu);
           if (bebida && bebida.toppings.length > 0) {

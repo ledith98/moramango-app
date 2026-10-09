@@ -12,6 +12,17 @@
  * nombre del grupo va antes del "=" y sus opciones separadas por ";".
  * Así se agregan sabores nuevos sin tocar la estructura del Sheet.
  *
+ * Una opción puede ser un grupo entero del menú en vez de un nombre
+ * suelto: `Bebida=@Jugos` quiere decir "todos los jugos que se vendan
+ * hoy". Así, al dar de alta un jugo nuevo aparece solo en los combos que
+ * lo ofrecen, sin ir producto por producto a agregarlo — que es como el
+ * Combo 1 terminó ofreciendo cuatro licuados de los siete que hay.
+ *
+ * La lista se arma al momento de enseñarla, no al guardarla, para que no
+ * envejezca: `resolverGrupos` cambia los `@Grupo` por los productos que
+ * de verdad están a la venta. Quien pinta el menú y quien cobra la llaman
+ * con el mismo catálogo, así que ofrecen y aceptan exactamente lo mismo.
+ *
  * Lógica pura, sin Google Sheets: la usan la tienda y el mostrador (que
  * corren en el navegador) y también el servidor al cobrar.
  */
@@ -28,6 +39,8 @@ export type Eleccion = Record<string, string>;
 const SEP_GRUPO = '~';
 const SEP_NOMBRE = '=';
 const SEP_OPCION = ';';
+/** Delante del nombre de una opción: "todos los del grupo del menú". */
+export const MARCA_CATEGORIA = '@';
 
 const limpio = (t: string) => (t ?? '').toString().trim();
 const igual = (a: string, b: string) => limpio(a).toLowerCase() === limpio(b).toLowerCase();
@@ -175,4 +188,69 @@ export function claveEleccion(grupos: GrupoOpcion[], eleccion: Eleccion | undefi
   return grupos
     .map((g) => `${g.nombre.toLowerCase()}:${limpio(eleccion?.[g.nombre] ?? '').toLowerCase()}`)
     .join('|');
+}
+
+/** Lo que hace falta saber de un producto para resolver un `@Grupo`. */
+export interface ProductoDelMenu {
+  nombre: string;
+  categoria: string;
+}
+
+/** "@Jugos" → "Jugos". Cadena vacía si la opción es un nombre normal. */
+export function categoriaReferida(opcion: string): string {
+  const t = limpio(opcion);
+  return t.startsWith(MARCA_CATEGORIA) ? limpio(t.slice(MARCA_CATEGORIA.length)) : '';
+}
+
+/**
+ * Cambia cada `@Grupo` por los productos que ese grupo tiene hoy.
+ *
+ * `menu` debe traer SOLO lo que de verdad se vende: sin eliminados, sin
+ * ocultos y sin las preparaciones de la casa. Si entrara el "Jugo de
+ * limón" que solo existe para hacer el agua de pepino, aparecería como
+ * bebida a elegir dentro de un combo.
+ *
+ * El orden es el del menú, y un nombre escrito a mano que ya venía en el
+ * grupo se respeta donde estaba: así se puede tener "@Jugos" más un
+ * "Agua natural" que no es jugo.
+ */
+export function resolverGrupos(
+  grupos: GrupoOpcion[],
+  menu: ProductoDelMenu[]
+): GrupoOpcion[] {
+  if (grupos.length === 0) return grupos;
+  // Sin referencias no hay nada que resolver: se devuelve lo mismo
+  if (!grupos.some((g) => g.opciones.some((o) => categoriaReferida(o)))) return grupos;
+
+  return grupos.map((g) => {
+    if (!g.opciones.some((o) => categoriaReferida(o))) return g;
+    const opciones: string[] = [];
+    const meter = (nombre: string) => {
+      const n = limpio(nombre);
+      if (n && !opciones.some((x) => igual(x, n))) opciones.push(n);
+    };
+    for (const o of g.opciones) {
+      const cat = categoriaReferida(o);
+      if (!cat) {
+        meter(o);
+        continue;
+      }
+      for (const p of menu) if (igual(p.categoria, cat)) meter(p.nombre);
+    }
+    return { ...g, opciones };
+  });
+}
+
+/**
+ * Los grupos del menú a los que apunta un producto, para avisarlo en
+ * pantalla ("esta lista se llena sola con los Jugos").
+ */
+export function categoriasReferidas(grupos: GrupoOpcion[]): string[] {
+  const salida: string[] = [];
+  for (const g of grupos)
+    for (const o of g.opciones) {
+      const c = categoriaReferida(o);
+      if (c && !salida.some((x) => igual(x, c))) salida.push(c);
+    }
+  return salida;
 }

@@ -15,6 +15,8 @@ import {
   claveEleccion,
   type Eleccion,
   parsearOpciones,
+  resolverGrupos,
+  type ProductoDelMenu,
   resumenEleccion,
   validarEleccion,
 } from './opciones';
@@ -83,6 +85,22 @@ export async function validarItems(items: ItemEntrante[]): Promise<ResultadoVali
     leerAjustes(),
   ]);
   const porId = new Map(productos.map((p) => [p.ID_Producto, p]));
+  /*
+    El mismo catálogo que usa la tienda para abrir los `@Grupo`.
+
+    Tiene que resolverse igual de los dos lados: si aquí no se abriera, un
+    jugo recién dado de alta se vería en el menú y al cobrarlo saldría
+    "No tenemos ese jugo" — rechazando un pedido bueno.
+  */
+  const menu: ProductoDelMenu[] = productos
+    .filter((p) => (p.Eliminado || '').toUpperCase() !== 'TRUE')
+    .filter((p) => (p.Oculto || '').toUpperCase() !== 'TRUE')
+    .filter((p) => (p.Solo_Preparacion || '').toString().trim().toLowerCase() !== 'si')
+    .map((p) => ({
+      nombre: (p.Nombre || '').trim(),
+      categoria: (p['Categoría'] ?? p.Categoria ?? '').toString().trim(),
+    }))
+    .filter((p) => p.nombre);
   const menuToppings = toppingsDeHoja(
     productos.filter((p) => (p.Eliminado || '').toUpperCase() !== 'TRUE')
   );
@@ -142,7 +160,7 @@ export async function validarItems(items: ItemEntrante[]): Promise<ResultadoVali
     // No cambian el precio, pero sí lo que hay que preparar, así que se
     // exigen igual que el tamaño.
     // Si la bebida elegida trae toppings, se pregunta cuál (va incluido).
-    const gruposBase = parsearOpciones(p.Opciones ?? '');
+    const gruposBase = resolverGrupos(parsearOpciones(p.Opciones ?? ''), menu);
     const extrasHoja = parsearExtras(p.Extras ?? '');
     // Licuado suelto: uno de sus toppings va incluido
     const propios = toppingsPropios((p['Categoría'] ?? p.Categoria ?? '').toString(), extrasHoja);

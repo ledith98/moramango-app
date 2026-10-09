@@ -4,7 +4,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { comprimirImagen, enMegas } from '@/lib/comprimirImagen';
 import { esEnlaceDeVisorDrive } from '@/lib/imagenes';
 import { parsearTamanos, TAMANOS_SUGERIDOS, type Tamano } from '@/lib/tamanos';
-import { type GrupoOpcion, parsearOpciones } from '@/lib/opciones';
+import {
+  categoriaReferida,
+  type GrupoOpcion,
+  MARCA_CATEGORIA,
+  parsearOpciones,
+  resolverGrupos,
+  type ProductoDelMenu,
+} from '@/lib/opciones';
 import {
   type Guardado,
   guardarEnCajon,
@@ -205,6 +212,21 @@ export default function ProductosPage() {
   ).sort((a, b) => a.localeCompare(b, 'es'));
 
   const orden = (p: Producto) => parseInt(p.Orden_Menu ?? '') || 9999;
+
+  /*
+    Lo que se vende hoy, para enseñar a qué se abre cada "@Grupo".
+
+    Es la misma cuenta que hacen la tienda y el mostrador, así que lo que
+    se ve aquí al armar el combo es lo que va a ver el cliente.
+  */
+  const menuParaGrupos: ProductoDelMenu[] = productos
+    // La lista del panel ya viene sin eliminados
+    .filter((p) => (p.Oculto || '').toUpperCase() !== 'TRUE')
+    .map((p) => ({
+      nombre: (p.Nombre || '').trim(),
+      categoria: (p['Categoría'] || '').trim(),
+    }))
+    .filter((p) => p.nombre);
 
   /*
     Buscar entre los productos.
@@ -1344,9 +1366,37 @@ export default function ProductosPage() {
                       </button>
                     </div>
 
-                    {g.opciones.map((o, oi) => (
-                      <div key={oi} className="flex items-center gap-2 pl-3">
-                        <span className="text-neutral-500 shrink-0">·</span>
+                    {g.opciones.map((o, oi) => {
+                      // Un "@Grupo" no se teclea: se lee, y debajo dice a
+                      // qué se abre hoy para que no haya que adivinarlo.
+                      const cat = categoriaReferida(o);
+                      const abre = cat
+                        ? menuParaGrupos.filter(
+                            (x) => x.categoria.toLowerCase() === cat.toLowerCase()
+                          )
+                        : [];
+                      return (
+                      <div key={oi} className={`flex items-start gap-2 pl-3 ${cat ? 'py-1' : ''}`}>
+                        <span className="text-neutral-500 shrink-0 mt-2">·</span>
+                        {cat ? (
+                          <div className="flex-1 min-w-0 bg-marron/5 border border-marron/30 rounded-lg p-2">
+                            <p className="text-sm font-bold text-marron">
+                              Todos los de {cat}
+                              <span className="font-normal text-neutral-700">
+                                {' '}
+                                — se llena solo
+                              </span>
+                            </p>
+                            <p className="text-[11px] text-neutral-800 mt-0.5">
+                              {abre.length > 0
+                                ? `Hoy: ${abre.map((x) => x.nombre).join(' · ')}`
+                                : `Todavía no hay nada en "${cat}"`}
+                            </p>
+                            <p className="text-[11px] text-neutral-700">
+                              Lo que agregues a {cat} aparece aquí sin tocar este combo.
+                            </p>
+                          </div>
+                        ) : (
                         <input
                           value={o}
                           onChange={(e) => {
@@ -1359,6 +1409,7 @@ export default function ProductosPage() {
                           placeholder="Queso suizo"
                           className="flex-1 min-w-0 bg-white border border-neutral-200 rounded-lg p-2 text-sm text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-black"
                         />
+                        )}
                         <button
                           type="button"
                           onClick={() => {
@@ -1370,24 +1421,60 @@ export default function ProductosPage() {
                             setForm({ ...form, opciones: copia });
                           }}
                           aria-label={`Quitar ${o}`}
-                          className="w-9 h-9 shrink-0 rounded-lg bg-neutral-100 text-neutral-700 font-bold active:scale-90"
+                          className="w-9 h-9 shrink-0 rounded-lg bg-neutral-100 text-neutral-700 font-bold active:scale-90 mt-0.5"
                         >
                           ×
                         </button>
                       </div>
-                    ))}
+                      );
+                    })}
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const copia = [...form.opciones];
-                        copia[gi] = { ...copia[gi], opciones: [...copia[gi].opciones, ''] };
-                        setForm({ ...form, opciones: copia });
-                      }}
-                      className="ml-3 text-xs font-semibold text-neutral-700 px-3 py-1.5 rounded-lg bg-neutral-200 active:scale-95"
-                    >
-                      + Agregar opción
-                    </button>
+                    <div className="flex flex-wrap gap-2 ml-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const copia = [...form.opciones];
+                          copia[gi] = { ...copia[gi], opciones: [...copia[gi].opciones, ''] };
+                          setForm({ ...form, opciones: copia });
+                        }}
+                        className="text-xs font-semibold text-neutral-700 px-3 py-1.5 rounded-lg bg-neutral-200 active:scale-95"
+                      >
+                        + Agregar opción
+                      </button>
+                      {/*
+                        La lista viva.
+
+                        Sin esto, dar de alta un jugo obliga a entrar a
+                        cada combo que ofrece jugos y escribirlo otra vez.
+                        Así se apunta al grupo del menú una sola vez y el
+                        combo se entera solo de lo que se agregue después.
+                      */}
+                      {categoriasExistentes
+                        .filter(
+                          (c) =>
+                            !g.opciones.some(
+                              (o) => categoriaReferida(o).toLowerCase() === c.toLowerCase()
+                            )
+                        )
+                        .map((c) => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => {
+                              const copia = [...form.opciones];
+                              copia[gi] = {
+                                ...copia[gi],
+                                opciones: [...copia[gi].opciones, `${MARCA_CATEGORIA}${c}`],
+                              };
+                              setForm({ ...form, opciones: copia });
+                            }}
+                            title={`Ofrece siempre todos los productos del grupo ${c}`}
+                            className="text-xs font-semibold text-marron bg-marron/10 px-3 py-1.5 rounded-lg active:scale-95"
+                          >
+                            + Todos los de {c}
+                          </button>
+                        ))}
+                    </div>
                   </div>
                 ))}
 

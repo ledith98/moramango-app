@@ -6,7 +6,10 @@ import {
   claveEleccion,
   type Eleccion,
   enumerar,
+  type GrupoOpcion,
   parsearOpciones,
+  resolverGrupos,
+  type ProductoDelMenu,
   resumenEleccion,
 } from '@/lib/opciones';
 import {
@@ -269,6 +272,23 @@ export default function VentaPage() {
 
   /** Qué toppings trae cada bebida, para preguntarlo dentro del combo */
   const menuToppings = toppingsDeHoja(productos);
+  /*
+    El catálogo con el que se abren los `@Grupo` de las opciones.
+
+    `productos` ya viene filtrado a lo que se puede vender hoy, así que un
+    combo en el mostrador ofrece exactamente los jugos que hay. Tiene que
+    resolverse aquí igual que en la tienda y que al cobrar: si no, un jugo
+    nuevo se vería en el menú y el mostrador no lo ofrecería.
+  */
+  const menuParaGrupos: ProductoDelMenu[] = productos
+    .map((p) => ({
+      nombre: (p.Nombre || '').trim(),
+      categoria: (p['Categoría'] ?? '').toString().trim(),
+    }))
+    .filter((p) => p.nombre);
+  /** Las opciones de un producto, ya con los grupos del menú abiertos. */
+  const opcionesDe = (p: { Opciones?: string }): GrupoOpcion[] =>
+    resolverGrupos(opcionesDe(p), menuParaGrupos);
   /** Licuado suelto: sus toppings, de los que uno va incluido */
   const propiosDe = (p: Producto) =>
     toppingsPropios(p.Categoría ?? '', parsearExtras(p.Extras ?? ''));
@@ -277,7 +297,7 @@ export default function VentaPage() {
     setVentaOk(null);
     const tamanos = parsearTamanos(p.Tamanos ?? '');
     const grupos = gruposConTopping(
-      parsearOpciones(p.Opciones ?? ''),
+      opcionesDe(p),
       eleccion,
       menuToppings,
       toppingsConCosto,
@@ -611,7 +631,7 @@ export default function VentaPage() {
             </div>
 
             {gruposConTopping(
-              parsearOpciones(configurando.Opciones ?? ''),
+              opcionesDe(configurando),
               opcionesTemp,
               menuToppings,
               toppingsConCosto,
@@ -656,7 +676,7 @@ export default function VentaPage() {
                         <button
                           key={o}
                           onClick={() => {
-                            const base = parsearOpciones(configurando.Opciones ?? '');
+                            const base = opcionesDe(configurando);
                             const nueva = limpiarTopping(
                               base,
                               { ...opcionesTemp, [g.nombre]: o },
@@ -703,7 +723,7 @@ export default function VentaPage() {
               const propios = parsearExtras(configurando.Extras ?? '');
               const deBebida = extrasPermitidos(
                 propios,
-                parsearOpciones(configurando.Opciones ?? ''),
+                opcionesDe(configurando),
                 opcionesTemp,
                 menuToppings
               ).slice(propios.length);
@@ -784,7 +804,7 @@ export default function VentaPage() {
 
             {(() => {
               const gruposT = gruposConTopping(
-                parsearOpciones(configurando.Opciones ?? ''),
+                opcionesDe(configurando),
                 opcionesTemp,
                 menuToppings,
                 toppingsConCosto,
@@ -838,7 +858,7 @@ export default function VentaPage() {
             {items.map((p) => {
               const cant = cantidadDe(p.ID_Producto);
               const tamanosP = parsearTamanos(p.Tamanos ?? '');
-              const gruposP = parsearOpciones(p.Opciones ?? '');
+              const gruposP = opcionesDe(p);
               const extrasP = parsearExtras(p.Extras ?? '');
               const hayQueElegir =
                 tamanosP.length > 0 || gruposP.length > 0 || extrasP.length > 0;

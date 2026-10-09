@@ -6,7 +6,7 @@ import { estadoTienda } from '@/lib/horario';
 import { horariosDisponibles } from '@/lib/recoleccion';
 import { diasDeEntrega } from '@/lib/programados';
 import { parsearTamanos } from '@/lib/tamanos';
-import { parsearOpciones } from '@/lib/opciones';
+import { parsearOpciones, resolverGrupos, type ProductoDelMenu } from '@/lib/opciones';
 import { agotadasDeGrupos, claveNombre, comboImposible } from '@/lib/opcionesAgotadas';
 import { parsearExtras } from '@/lib/extras';
 
@@ -48,6 +48,28 @@ export async function GET() {
       .map((p) => (p.Nombre || '').trim())
       .filter(Boolean);
 
+    /*
+      El catálogo con el que se resuelven los `@Grupo` de las opciones.
+
+      Solo lo que de verdad se vende: sin eliminados, sin ocultos y sin
+      las preparaciones de la casa. Si entrara el "Jugo de limón" que solo
+      existe para hacer el agua de pepino, saldría como bebida a elegir
+      dentro de un combo.
+    */
+    const menu: ProductoDelMenu[] = todos
+      .filter((p) => (p.Eliminado || '').toUpperCase() !== 'TRUE')
+      .filter((p) => (p.Oculto || '').toUpperCase() !== 'TRUE')
+      .filter((p) => (p.Solo_Preparacion || '').toString().trim().toLowerCase() !== 'si')
+      .map((p) => ({
+        nombre: (p.Nombre || '').trim(),
+        categoria: (p.Categoria ?? p['Categoría'] ?? '').toString().trim(),
+      }))
+      .filter((p) => p.nombre);
+
+    /** Las opciones de un producto, ya con los grupos del menú abiertos. */
+    const gruposDe = (p: Record<string, string>) =>
+      resolverGrupos(parsearOpciones(p.Opciones ?? ''), menu);
+
     const publicos = todos
       // Tres estados, no dos:
       //   Oculto=TRUE            → ni siquiera aparece
@@ -70,13 +92,9 @@ export async function GET() {
         // Tamaños con precio propio. Vacío = un solo precio, como siempre.
         tamanos: parsearTamanos(p.Tamanos ?? ''),
         // Lo que el cliente elige dentro del producto: queso, sabor…
-        opciones: parsearOpciones(p.Opciones ?? ''),
+        opciones: gruposDe(p),
         // Cuáles de esas opciones no se pueden preparar hoy
-        opcionesAgotadas: agotadasDeGrupos(
-          parsearOpciones(p.Opciones ?? ''),
-          agotados,
-          nombresDelMenu
-        ),
+        opcionesAgotadas: agotadasDeGrupos(gruposDe(p), agotados, nombresDelMenu),
         // Toppings opcionales que suman al precio
         extras: parsearExtras(p.Extras ?? ''),
         // Existencias por producto: solo se usa en los de reventa (conchas,
@@ -94,8 +112,8 @@ export async function GET() {
         disponible:
           (p.Disponible ?? '').toString().toUpperCase() !== 'FALSE' &&
           !comboImposible(
-            parsearOpciones(p.Opciones ?? ''),
-            agotadasDeGrupos(parsearOpciones(p.Opciones ?? ''), agotados, nombresDelMenu)
+            gruposDe(p),
+            agotadasDeGrupos(gruposDe(p), agotados, nombresDelMenu)
           ),
         orden: parseInt(p.Orden_Menu) || 999,
       }))

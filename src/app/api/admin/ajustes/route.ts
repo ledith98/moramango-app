@@ -16,11 +16,13 @@ import {
   CLAVE_GASTOS_FIJOS,
   CLAVE_TOPE_ARTICULO,
   guardarAjuste,
+  guardarGruposGuardados,
   guardarHorario,
   guardarOrdenCategorias,
   guardarToppingsConCosto,
   leerAjustes,
 } from '@/lib/ajustes';
+import type { Guardado } from '@/lib/gruposGuardados';
 import { aMinutos, DIAS_NOMBRE } from '@/lib/horario';
 import { anotar } from '@/lib/bitacora';
 import { getAdminSession } from '@/lib/roles';
@@ -52,6 +54,7 @@ export async function POST(req: NextRequest) {
     isrPct,
     gananciaPct,
     gastosFijosMes,
+    gruposGuardados,
   } = await req.json();
 
   if (topeArticuloGratis !== undefined) {
@@ -124,6 +127,40 @@ export async function POST(req: NextRequest) {
       );
     }
     await guardarAjuste(CLAVE_MAPA, url, 'Enlace para llegar al local');
+  }
+
+  /*
+    El cajón de preguntas y extras.
+
+    Se recibe entero y se guarda entero: la pantalla manda la lista ya
+    como queda, no "agrega esto". Mandar un cambio suelto obligaría a
+    resolver aquí qué pasa si dos pestañas guardan a la vez, y esto se
+    toca una vez al mes.
+  */
+  if (gruposGuardados !== undefined) {
+    if (!Array.isArray(gruposGuardados)) {
+      return NextResponse.json({ error: 'Lista de grupos inválida' }, { status: 400 });
+    }
+    const limpios: Guardado[] = [];
+    for (const g of gruposGuardados) {
+      const nombre = (g?.nombre ?? '').toString().trim().slice(0, 40);
+      if (!nombre) continue;
+      if (g?.tipo === 'extras') {
+        const extras = (Array.isArray(g.extras) ? g.extras : [])
+          .map((e: { nombre?: unknown; precio?: unknown }) => ({
+            nombre: (e?.nombre ?? '').toString().trim().slice(0, 40),
+            precio: Math.max(0, parseFloat((e?.precio ?? 0).toString()) || 0),
+          }))
+          .filter((e: { nombre: string }) => e.nombre);
+        if (extras.length) limpios.push({ tipo: 'extras', nombre, extras });
+      } else {
+        const opciones = (Array.isArray(g?.opciones) ? g.opciones : [])
+          .map((o: unknown) => (o ?? '').toString().trim().slice(0, 40))
+          .filter(Boolean);
+        if (opciones.length) limpios.push({ tipo: 'pregunta', nombre, opciones });
+      }
+    }
+    await guardarGruposGuardados(limpios);
   }
 
   if (toppingsConCosto !== undefined) {

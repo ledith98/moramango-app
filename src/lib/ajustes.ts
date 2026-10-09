@@ -13,6 +13,7 @@ import { appendRow, ensureSheet, getSheetData, updateCell } from './googleSheets
 import { HORARIO_DEFAULT, Horario, parsearHorario, serializarHorario } from './horario';
 import { TOPPINGS_CON_COSTO_DEFAULT } from './toppingIncluido';
 import { GANANCIA_DEFAULT, ISR_DEFAULT, IVA_DEFAULT } from './impuestos';
+import { type Guardado, parsearGuardados, serializarGuardados } from './gruposGuardados';
 
 const HOJA = 'Ajustes_Tienda';
 const COLS = ['Clave', 'Valor', 'Nota', 'Fecha'];
@@ -69,6 +70,15 @@ export const CLAVE_GANANCIA = 'GananciaPct';
  */
 export const CLAVE_GASTOS_FIJOS = 'GastosFijosMes';
 
+/**
+ * El cajón de preguntas y extras que se reusan entre productos.
+ *
+ * Nace vacío a propósito: un cajón con ejemplos inventados se llena de
+ * cosas que nadie usa y que estorban al elegir. Se llena guardando las
+ * que de verdad se ocupan, desde el producto donde ya están escritas.
+ */
+export const CLAVE_GRUPOS_GUARDADOS = 'GruposGuardados';
+
 export interface Ajustes {
   topeArticuloGratis: number;
   ordenCategorias: string[];
@@ -85,6 +95,8 @@ export interface Ajustes {
   gananciaPct: number;
   /** Renta, luz, agua y demas gastos del mes; 0 = no se reparten */
   gastosFijosMes: number;
+  /** Preguntas y extras listos para agregar a cualquier producto */
+  gruposGuardados: Guardado[];
 }
 
 // Viven en su propio archivo para que la tienda y el panel las puedan usar
@@ -148,6 +160,7 @@ export async function leerAjustes(): Promise<Ajustes> {
         0,
         parseFloat(texto(CLAVE_GASTOS_FIJOS).replace(/[$,\s]/g, '')) || 0
       ),
+      gruposGuardados: parsearGuardados(texto(CLAVE_GRUPOS_GUARDADOS)),
       toppingsConCosto: filas.some((f) => f.Clave === CLAVE_TOPPINGS_CON_COSTO)
         ? texto(CLAVE_TOPPINGS_CON_COSTO)
             .split(SEPARADOR)
@@ -169,6 +182,7 @@ export async function leerAjustes(): Promise<Ajustes> {
       direccion: '',
       mapa: '',
       toppingsConCosto: TOPPINGS_CON_COSTO_DEFAULT,
+      gruposGuardados: [],
       ivaPct: IVA_DEFAULT,
       isrPct: ISR_DEFAULT,
       gananciaPct: GANANCIA_DEFAULT,
@@ -193,6 +207,15 @@ export async function guardarOrdenCategorias(orden: string[]): Promise<void> {
     CLAVE_ORDEN_CATEGORIAS,
     limpio.join(SEPARADOR),
     'Orden de los grupos de alimentos en la tienda'
+  );
+}
+
+/** Guarda el cajón de preguntas y extras que se reusan entre productos. */
+export async function guardarGruposGuardados(lista: Guardado[]): Promise<void> {
+  await guardarAjuste(
+    CLAVE_GRUPOS_GUARDADOS,
+    serializarGuardados(lista),
+    'Preguntas y extras listos para agregar a cualquier producto'
   );
 }
 

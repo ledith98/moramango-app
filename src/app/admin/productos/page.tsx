@@ -5,6 +5,14 @@ import { comprimirImagen, enMegas } from '@/lib/comprimirImagen';
 import { esEnlaceDeVisorDrive } from '@/lib/imagenes';
 import { parsearTamanos, TAMANOS_SUGERIDOS, type Tamano } from '@/lib/tamanos';
 import { type GrupoOpcion, parsearOpciones } from '@/lib/opciones';
+import {
+  type Guardado,
+  guardarEnCajon,
+  juegosDeExtras,
+  preguntasQueFaltan,
+  quitarDelCajon,
+  sumarExtras,
+} from '@/lib/gruposGuardados';
 import { desglosar, IVA_DEFAULT } from '@/lib/impuestos';
 import { catalogoExtras, claveExtra, type Extra, parsearExtras } from '@/lib/extras';
 import { claveCategoria, posicionCategoria } from '@/lib/categorias';
@@ -88,6 +96,8 @@ export default function ProductosPage() {
   const [ordenCategorias, setOrdenCategorias] = useState<string[]>([]);
   /** IVA con el que se reparte el precio; se edita en Ajustes */
   const [ivaPct, setIvaPct] = useState(IVA_DEFAULT);
+  /** Preguntas y extras listos para meterlos a cualquier producto */
+  const [cajon, setCajon] = useState<Guardado[]>([]);
   const [acomodando, setAcomodando] = useState(false);
   const [cargando, setCargando] = useState(true);
   /** Lo que se teclea para encontrar un producto entre los casi 60 que hay */
@@ -130,6 +140,7 @@ export default function ProductosPage() {
         setProductos(prod.productos || []);
         setOrdenCategorias(ajustes?.ordenCategorias || []);
         if (typeof ajustes?.ivaPct === 'number') setIvaPct(ajustes.ivaPct);
+        if (Array.isArray(ajustes?.gruposGuardados)) setCajon(ajustes.gruposGuardados);
       })
       .finally(() => setCargando(false));
 
@@ -277,6 +288,46 @@ export default function ProductosPage() {
       });
     } finally {
       setAcomodando(false);
+    }
+  };
+
+  /**
+   * Mete una pregunta o un juego de extras al cajón, para no volver a
+   * teclearlo en el siguiente combo.
+   *
+   * Se guarda una COPIA: cambiar el cajón después no toca los productos
+   * que ya lo usaron. Si al Combo lunch se le quita el chile serrano, eso
+   * no debe cambiar al Combo 1 sin que nadie lo pida.
+   */
+  const guardarEnElCajon = async (entrada: Guardado) => {
+    const nuevo = guardarEnCajon(cajon, entrada);
+    setCajon(nuevo);
+    const res = await fetch('/api/admin/ajustes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gruposGuardados: nuevo }),
+    });
+    if (!res.ok) {
+      setCajon(cajon);
+      setError('No se pudo guardar en el cajón');
+      return;
+    }
+    setAviso(`"${entrada.nombre}" quedó guardado. Ya lo puedes agregar a cualquier producto.`);
+  };
+
+  const sacarDelCajon = async (nombre: string) => {
+    if (!confirm(`¿Quitar "${nombre}" del cajón?\n\nLos productos que ya lo tienen no se tocan; solo deja de ofrecerse para los nuevos.`))
+      return;
+    const nuevo = quitarDelCajon(cajon, nombre);
+    setCajon(nuevo);
+    const res = await fetch('/api/admin/ajustes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gruposGuardados: nuevo }),
+    });
+    if (!res.ok) {
+      setCajon(cajon);
+      setError('No se pudo quitar del cajón');
     }
   };
 
@@ -1041,6 +1092,78 @@ export default function ProductosPage() {
                 </p>
               </div>
 
+              {/* Los mismos siete extras del sándwich estaban tecleados en
+                  cuatro productos. Guardados como juego, se ponen de un
+                  toque en el siguiente. */}
+              {form.extras.filter((e) => e.nombre.trim()).length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nombre = prompt(
+                      '¿Cómo le llamas a este juego de extras?\n\nEj. "Extras de sándwich", "Toppings de licuado". Así lo agregas completo a otro producto.',
+                      ''
+                    );
+                    if (!nombre?.trim()) return;
+                    guardarEnElCajon({
+                      tipo: 'extras',
+                      nombre: nombre.trim(),
+                      extras: form.extras
+                        .filter((e) => e.nombre.trim())
+                        .map((e) => ({ nombre: e.nombre.trim(), precio: e.precio })),
+                    });
+                  }}
+                  className="text-xs font-bold text-marron bg-marron/10 px-3 py-2 rounded-lg active:scale-95"
+                >
+                  Guardar estos {form.extras.filter((e) => e.nombre.trim()).length} extras como un juego
+                </button>
+              )}
+
+              {juegosDeExtras(cajon).length > 0 && (
+                <div className="bg-marron/5 border border-marron/20 rounded-xl p-3">
+                  <p className="text-xs font-semibold text-neutral-800 mb-2">
+                    Juegos de extras guardados — se suman a los que ya tiene
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {juegosDeExtras(cajon).map((g) => (
+                      <span key={g.nombre} className="flex items-stretch">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setForm({
+                              ...form,
+                              extras: sumarExtras(
+                                form.extras,
+                                g.tipo === 'extras' ? g.extras : []
+                              ),
+                            })
+                          }
+                          title={
+                            g.tipo === 'extras'
+                              ? g.extras.map((e) => `${e.nombre} $${e.precio}`).join(' · ')
+                              : ''
+                          }
+                          className="bg-white border border-marron/30 text-marron text-xs font-bold px-3 py-2 rounded-l-lg active:scale-95"
+                        >
+                          + {g.nombre}
+                          <span className="font-normal text-neutral-700">
+                            {' '}
+                            ({g.tipo === 'extras' ? g.extras.length : 0})
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => sacarDelCajon(g.nombre)}
+                          aria-label={`Quitar ${g.nombre} del cajón`}
+                          className="bg-white border border-l-0 border-marron/30 text-neutral-700 text-xs font-bold px-2 rounded-r-lg active:scale-95"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {form.extras.map((e, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <input
@@ -1190,6 +1313,25 @@ export default function ProductosPage() {
                         placeholder="Queso"
                         className="flex-1 min-w-0 bg-white border border-neutral-200 rounded-lg p-2.5 font-semibold text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-black"
                       />
+                      {/* Guardarla aquí y no en una pantalla aparte: es
+                          donde ya está escrita y donde se nota que vale
+                          la pena no volver a teclearla. */}
+                      {g.nombre.trim() && g.opciones.some((o) => o.trim()) && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            guardarEnElCajon({
+                              tipo: 'pregunta',
+                              nombre: g.nombre.trim(),
+                              opciones: g.opciones.map((o) => o.trim()).filter(Boolean),
+                            })
+                          }
+                          title="Guardar esta pregunta para reusarla en otros productos"
+                          className="shrink-0 h-10 px-3 rounded-lg bg-marron/10 text-marron text-xs font-bold active:scale-95"
+                        >
+                          Guardar
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() =>
@@ -1248,6 +1390,55 @@ export default function ProductosPage() {
                     </button>
                   </div>
                 ))}
+
+                {/*
+                  El cajón.
+
+                  "Tostado: Si / No" estaba capturado a mano en seis
+                  productos y "Chile" en dos; el Combo Croissant se quedó
+                  sin la del chile justamente por volver a teclearla. Aquí
+                  se agrega de un toque, ya escrita.
+                */}
+                {preguntasQueFaltan(cajon, form.opciones).length > 0 && (
+                  <div className="bg-marron/5 border border-marron/20 rounded-xl p-3">
+                    <p className="text-xs font-semibold text-neutral-800 mb-2">
+                      Preguntas guardadas — tócala y se agrega ya escrita
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {preguntasQueFaltan(cajon, form.opciones).map((g) => (
+                        <span key={g.nombre} className="flex items-stretch">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setForm({
+                                ...form,
+                                opciones: [
+                                  ...form.opciones,
+                                  {
+                                    nombre: g.nombre,
+                                    opciones: g.tipo === 'pregunta' ? [...g.opciones] : [],
+                                  },
+                                ],
+                              })
+                            }
+                            title={g.tipo === 'pregunta' ? g.opciones.join(' · ') : ''}
+                            className="bg-white border border-marron/30 text-marron text-xs font-bold px-3 py-2 rounded-l-lg active:scale-95"
+                          >
+                            + {g.nombre}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => sacarDelCajon(g.nombre)}
+                            aria-label={`Quitar ${g.nombre} del cajón`}
+                            className="bg-white border border-l-0 border-marron/30 text-neutral-700 text-xs font-bold px-2 rounded-r-lg active:scale-95"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <button
                   type="button"

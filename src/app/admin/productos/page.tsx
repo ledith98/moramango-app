@@ -112,6 +112,9 @@ export default function ProductosPage() {
   const [busca, setBusca] = useState('');
   /** true = está abierto el panel donde se arman las listas de los combos */
   const [verListas, setVerListas] = useState(false);
+  /** A qué lista se le está agregando algo, y lo que se teclea para buscarlo */
+  const [agregandoA, setAgregandoA] = useState('');
+  const [buscaEnLista, setBuscaEnLista] = useState('');
   const [editando, setEditando] = useState<Producto | null>(null);
   const [creando, setCreando] = useState(false);
   const [form, setForm] = useState<FormProducto>(FORM_VACIO);
@@ -764,50 +767,95 @@ export default function ProductosPage() {
                   </div>
 
                   {/*
-                    Los productos del menú solo se ofrecen si la lista ya
-                    es de productos. A "Tostado: Si / No" no se le propone
-                    un jugo: sería ruido en la lista que más se ve.
+                    Un botón, no el menú entero.
+
+                    Antes se pintaban los cuarenta productos como botones
+                    debajo de cada lista: con nueve listas eran cientos de
+                    botones cafés y no se distinguía lo que la lista SÍ
+                    lleva de lo que se le podría agregar. Ahora se busca.
                   */}
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {l.opciones.some((o) =>
-                      menuParaGrupos.some((x) => x.nombre.toLowerCase() === o.toLowerCase())
-                    ) &&
-                      menuParaGrupos
+                  {agregandoA === l.nombre ? (
+                    (() => {
+                      const q = sinAcentos(buscaEnLista);
+                      const sugeridos = menuParaGrupos
                         .filter(
                           (x) =>
                             !l.opciones.some((o) => o.toLowerCase() === x.nombre.toLowerCase())
                         )
-                        .slice(0, 40)
-                        .map((x) => (
-                          <button
-                            key={x.nombre}
-                            onClick={() =>
-                              guardarEnElCajon({
-                                tipo: 'pregunta',
-                                nombre: l.nombre,
-                                opciones: [...l.opciones, x.nombre],
-                              })
-                            }
-                            className="text-[11px] font-semibold text-marron bg-marron/10 px-2.5 py-1.5 rounded-lg active:scale-95"
-                          >
-                            + {x.nombre}
-                          </button>
-                        ))}
-                    <button
-                      onClick={() => {
-                        const nuevo = prompt(`¿Qué le agregas a "${l.nombre}"?`, '');
-                        if (!nuevo?.trim()) return;
+                        .filter((x) => !q || sinAcentos(x.nombre).includes(q))
+                        .slice(0, 8);
+                      const meter = (nombre: string) => {
                         guardarEnElCajon({
                           tipo: 'pregunta',
                           nombre: l.nombre,
-                          opciones: [...l.opciones, nuevo.trim()],
+                          opciones: [...l.opciones, nombre],
                         });
+                        setAgregandoA('');
+                        setBuscaEnLista('');
+                      };
+                      return (
+                        <div className="pt-1">
+                          <div className="flex gap-2">
+                            <input
+                              autoFocus
+                              value={buscaEnLista}
+                              onChange={(e) => setBuscaEnLista(e.target.value)}
+                              placeholder="Escribe para buscarlo en el menú…"
+                              className="flex-1 min-w-0 bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-sm text-neutral-900 placeholder-neutral-600 focus:outline-none focus:border-marron"
+                            />
+                            <button
+                              onClick={() => {
+                                setAgregandoA('');
+                                setBuscaEnLista('');
+                              }}
+                              className="shrink-0 text-xs font-semibold text-neutral-800 px-3 rounded-xl bg-neutral-100 active:scale-95"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                          <div className="mt-1 border border-neutral-200 rounded-xl divide-y divide-neutral-100 overflow-hidden">
+                            {sugeridos.map((x) => (
+                              <button
+                                key={x.nombre}
+                                onClick={() => meter(x.nombre)}
+                                className="w-full text-left px-3 py-2 text-sm text-neutral-900 bg-white active:bg-neutral-50"
+                              >
+                                {x.nombre}
+                                <span className="text-[11px] text-neutral-700"> · {x.categoria}</span>
+                              </button>
+                            ))}
+                            {/* Lo que no es del menú —"Si", "No"— se escribe */}
+                            {buscaEnLista.trim() &&
+                              !sugeridos.some(
+                                (x) => x.nombre.toLowerCase() === buscaEnLista.trim().toLowerCase()
+                              ) && (
+                                <button
+                                  onClick={() => meter(buscaEnLista.trim())}
+                                  className="w-full text-left px-3 py-2 text-sm font-semibold text-marron bg-white active:bg-neutral-50"
+                                >
+                                  Agregar &ldquo;{buscaEnLista.trim()}&rdquo; tal cual
+                                </button>
+                              )}
+                            {sugeridos.length === 0 && !buscaEnLista.trim() && (
+                              <p className="px-3 py-2 text-sm text-neutral-800">
+                                Ya tiene todo lo del menú.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setAgregandoA(l.nombre);
+                        setBuscaEnLista('');
                       }}
-                      className="text-[11px] font-semibold text-neutral-800 bg-neutral-100 px-2.5 py-1.5 rounded-lg active:scale-95"
+                      className="text-xs font-semibold text-marron px-2.5 py-1.5 rounded-lg bg-marron/10 active:scale-95"
                     >
-                      + escribir uno
+                      + Agregar
                     </button>
-                  </div>
+                  )}
                 </div>
               );
             })}

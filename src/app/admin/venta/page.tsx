@@ -6,7 +6,6 @@ import {
   claveEleccion,
   type Eleccion,
   enumerar,
-  type GrupoOpcion,
   parsearOpciones,
   resolverGrupos,
   type ProductoDelMenu,
@@ -287,8 +286,8 @@ export default function VentaPage() {
     }))
     .filter((p) => p.nombre);
   /** Las opciones de un producto, ya con los grupos del menú abiertos. */
-  const opcionesDe = (p: { Opciones?: string }): GrupoOpcion[] =>
-    resolverGrupos(opcionesDe(p), menuParaGrupos);
+  const opcionesDe = (p: { Opciones?: string }) =>
+    resolverGrupos(parsearOpciones(p.Opciones ?? ''), menuParaGrupos);
   /** Licuado suelto: sus toppings, de los que uno va incluido */
   const propiosDe = (p: Producto) =>
     toppingsPropios(p.Categoría ?? '', parsearExtras(p.Extras ?? ''));

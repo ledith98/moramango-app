@@ -279,3 +279,28 @@ export function categoriasReferidas(grupos: GrupoOpcion[]): string[] {
     }
   return salida;
 }
+
+/**
+ * Lo que se eligió, leído del nombre guardado, sin validar nada.
+ *
+ * `eleccionDesdeNombre` sirve para REPETIR un pedido, así que exige que
+ * cada valor siga ofreciéndose y devuelve null si uno ya no existe. Para
+ * descontar insumos hace falta lo contrario: lo que de verdad se pidió
+ * aquel día, aunque hoy ya no esté en el menú. Un sabor retirado se sirvió
+ * igual y gastó su fruta.
+ *
+ * Solo lee los pares "Grupo: Valor"; el formato viejo sin etiqueta no se
+ * puede repartir en grupos y se deja fuera.
+ */
+export function eleccionAnotada(nombre: string): Eleccion {
+  const m = /\(([^()]*)\)\s*$/.exec((nombre ?? '').trim());
+  const eleccion: Eleccion = {};
+  for (const parte of (m?.[1] ?? '').split('·')) {
+    const corte = parte.indexOf(':');
+    if (corte === -1) continue;
+    const grupo = limpio(parte.slice(0, corte));
+    const valor = limpio(parte.slice(corte + 1));
+    if (grupo && valor) eleccion[grupo] = valor;
+  }
+  return eleccion;
+}

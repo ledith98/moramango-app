@@ -50,6 +50,8 @@ interface LineaReceta {
   nota: string;
   /** Lo que ella quiere recordar de este renglón: "con cáscara", "ya pelado" */
   apunte: string;
+  /** "Azúcar=Stevia": este renglón solo se gasta con esa respuesta */
+  opcionRequerida?: string;
   costo: number | null;
   huerfano: boolean;
 }
@@ -66,6 +68,8 @@ interface ProductoReceta {
   oculta?: boolean;
   /** true = es preparación de la casa; no sale en el menú de la tienda */
   soloPreparacion?: boolean;
+  /** Las preguntas que este producto le hace al cliente */
+  opciones?: { nombre: string; opciones: string[] }[];
   /** true = no se enseña en la tienda ahorita; no es lo mismo que ser preparación */
   escondido?: boolean;
   /** Cuánto sale de esta receta (1500 ml de jarabe); 0 = se usa por pieza */
@@ -276,6 +280,18 @@ export default function RecetarioPage() {
     );
     if (valor === null) return;
     await llamar('PATCH', { id: l.id, apunte: valor.trim() });
+  }
+
+  /**
+   * Ata un ingrediente a una respuesta del cliente.
+   *
+   * Sin esto, un licuado con stevia descontaba azúcar: la receta lleva
+   * los dos renglones y se gastaban los dos siempre, pidiera lo que
+   * pidiera. Atado, cada uno se gasta nada más cuando le toca.
+   */
+  async function atarAOpcion(p: ProductoReceta, l: LineaReceta, valor: string) {
+    await llamar('PATCH', { id: l.id, opcionRequerida: valor });
+    void p;
   }
 
   async function editarCantidad(l: LineaReceta) {
@@ -1289,6 +1305,33 @@ export default function RecetarioPage() {
                           >
                             📝 {l.apunte}
                           </button>
+                        )}
+                        {/*
+                          Solo si el producto hace preguntas. En un jugo
+                          suelto no hay nada que atar y la casilla sería
+                          un control de más en todos los renglones.
+                        */}
+                        {(p.opciones?.length ?? 0) > 0 && (
+                          <select
+                            value={l.opcionRequerida || ''}
+                            onChange={(e) => atarAOpcion(p, l, e.target.value)}
+                            disabled={ocupado}
+                            title="Gastar este ingrediente solo con cierta respuesta"
+                            className={`mt-0.5 text-[11px] rounded-lg px-1.5 py-1 border disabled:opacity-50 ${
+                              l.opcionRequerida
+                                ? 'bg-marron/10 border-marron/30 text-marron font-bold'
+                                : 'bg-white border-neutral-200 text-neutral-700'
+                            }`}
+                          >
+                            <option value="">Se gasta siempre</option>
+                            {(p.opciones ?? []).flatMap((g) =>
+                              g.opciones.map((o) => (
+                                <option key={`${g.nombre}=${o}`} value={`${g.nombre}=${o}`}>
+                                  Solo si {g.nombre}: {o}
+                                </option>
+                              ))
+                            )}
+                          </select>
                         )}
                       </div>
                       <span className="text-sm font-semibold text-neutral-900 whitespace-nowrap">

@@ -58,7 +58,14 @@ export function factorMerma(mermaPct: string | undefined): number {
  * Devuelve un Map cuya clave es el nombre normalizado del ingrediente.
  */
 export function consumoPorInsumo(
-  items: { idProducto: string; cantidad: number; factor?: number; extras?: string[] }[],
+  items: {
+    idProducto: string;
+    cantidad: number;
+    factor?: number;
+    extras?: string[];
+    /** Lo que eligió el cliente: { Azúcar: 'Stevia', Queso: 'Panela' } */
+    opciones?: Record<string, string>;
+  }[],
   catalogo: Record<string, string>[]
 ): Map<string, number> {
   const consumo = new Map<string, number>();
@@ -69,6 +76,26 @@ export function consumoPorInsumo(
     const recetas = catalogo.filter((c) => c.ID_Producto === item.idProducto);
 
     for (const receta of recetas) {
+      /*
+        Renglones atados a lo que ELIGIÓ el cliente: "Azúcar=Stevia"
+        descuenta la stevia nada más cuando se pidió con stevia.
+
+        Va antes que el extra y no se multiplica: una opción se elige
+        entre varias, así que o aplica una vez o no aplica. Un extra sí
+        se puede pedir doble.
+      */
+      const atada = (receta.Opcion_Requerida || '').trim();
+      if (atada) {
+        const corte = atada.indexOf('=');
+        if (corte === -1) continue;
+        const grupo = atada.slice(0, corte).trim();
+        const valor = atada.slice(corte + 1).trim();
+        const elegido = (item.opciones ?? {})[grupo];
+        // Sin elección guardada no se adivina: descontar stevia en un
+        // pedido viejo que no la registró inventaría un consumo.
+        if (!elegido || !igual(elegido, valor)) continue;
+      }
+
       // Renglones que solo aplican si se pidió cierto extra: la avena del
       // licuado se descuenta nada más cuando se pidió con avena.
       const pide = (receta.Extra_Requerido || '').trim();

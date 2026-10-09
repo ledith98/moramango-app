@@ -32,6 +32,8 @@ import { getAdminSession } from '@/lib/roles';
 import { parsearFechaHora } from '@/lib/pedidoFecha';
 import { guardarOrdenCategorias, leerAjustes } from '@/lib/ajustes';
 import { claveCategoria } from '@/lib/categorias';
+import { parsearOpciones, resolverGrupos, type ProductoDelMenu } from '@/lib/opciones';
+import { listasDelCajon } from '@/lib/gruposGuardados';
 
 const vivos = (filas: Record<string, string>[]) =>
   filas.filter((b) => (b.Eliminado || '').toLowerCase() !== 'si');
@@ -56,6 +58,16 @@ export async function GET() {
     getSheetData('PEDIDOS'),
     getSheetData('DT PEDIDOS'),
   ]);
+
+  /** Lo que se vende hoy, para abrir los @Grupo de las opciones */
+  const menuParaGrupos: ProductoDelMenu[] = productos
+    .filter((p) => (p.Eliminado || '').toUpperCase() !== 'TRUE')
+    .filter((p) => (p.Oculto || '').toUpperCase() !== 'TRUE')
+    .map((p) => ({
+      nombre: (p.Nombre || '').trim(),
+      categoria: (p['Categoría'] ?? p.Categoria ?? '').toString().trim(),
+    }))
+    .filter((p) => p.nombre);
 
   /*
     Cuántos productos se vendieron en los últimos 30 días con venta.
@@ -284,6 +296,8 @@ export async function GET() {
           merma: r.Merma_Pct || '',
           nota: r.Notas || '',
           apunte: r.Apunte || '',
+          /** "Azúcar=Stevia": este renglón solo cuenta con esa respuesta */
+          opcionRequerida: (r.Opcion_Requerida || '').trim(),
           /** Si viene, este renglón solo cuenta cuando se pide ese extra */
           extraRequerido: (r.Extra_Requerido || '').trim(),
           // Costo real, calculado con la última compra registrada
@@ -325,6 +339,18 @@ export async function GET() {
             Receta_Oculta     ya no se prepara
         */
         soloPreparacion: (p.Solo_Preparacion || '').toString().trim().toLowerCase() === 'si',
+        /*
+          Las preguntas que este producto le hace al cliente, ya resueltas.
+
+          Van aquí para poder atar un ingrediente a una respuesta: la
+          stevia solo se gasta cuando se pidió con stevia, y para ofrecer
+          esa casilla hay que saber qué respuestas existen.
+        */
+        opciones: resolverGrupos(
+          parsearOpciones(p.Opciones ?? ''),
+          menuParaGrupos,
+          listasDelCajon(ajustes.gruposGuardados ?? [])
+        ),
         /** true = no se enseña en la tienda; distinto de ser preparación */
         escondido: (p.Oculto || '').toString().trim().toUpperCase() === 'TRUE',
       };
@@ -483,6 +509,7 @@ export async function PATCH(req: NextRequest) {
     cantidad,
     merma,
     apunte,
+    opcionRequerida,
     idProducto,
     oculta,
     orden,
@@ -680,6 +707,16 @@ export async function PATCH(req: NextRequest) {
   if (apunte !== undefined) {
     await ensureColumn(HOJA_RECETARIO, 'Apunte');
     cambios[COL_REC.apunte] = (apunte || '').toString().trim().slice(0, 120);
+  }
+  /*
+    "Azúcar=Stevia": este renglón solo se gasta con esa respuesta.
+
+    Vacío lo desata y vuelve a contar siempre, que es lo correcto para
+    un ingrediente que lleva el producto pase lo que pase.
+  */
+  if (opcionRequerida !== undefined) {
+    await ensureColumn(HOJA_RECETARIO, 'Opcion_Requerida');
+    cambios[COL_REC.opcionRequerida] = (opcionRequerida || '').toString().trim().slice(0, 80);
   }
   await updateCells(HOJA_RECETARIO, fila, cambios);
 

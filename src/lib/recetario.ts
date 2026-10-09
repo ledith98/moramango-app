@@ -58,6 +58,15 @@ export const COLS_RECETARIO = [
     exactamente el momento en que lo escribió para acordarse.
   */
   'Apunte',
+  /*
+    Si viene llena, este renglón SOLO cuenta cuando el cliente eligió eso.
+    Se escribe "Grupo=Valor": `Azúcar=Stevia` descuenta la stevia nada más
+    cuando se pidió con stevia, y el azúcar normal se queda quieta.
+
+    Es hermana de Extra_Requerido, no la misma: un extra se pide además
+    (puede llevar dos), y una opción se elige entre varias (es una u otra).
+  */
+  'Opcion_Requerida',
 ];
 
 // Columnas 1-based para updateCell
@@ -71,6 +80,7 @@ export const COL_REC = {
   extraRequerido: 8,
   orden: 9,
   apunte: 10,
+  opcionRequerida: 11,
 } as const;
 
 export async function prepararRecetario(): Promise<void> {
@@ -83,6 +93,7 @@ export async function prepararRecetario(): Promise<void> {
   await ensureColumn(HOJA_RECETARIO, 'Extra_Requerido');
   await ensureColumn(HOJA_RECETARIO, 'Orden');
   await ensureColumn(HOJA_RECETARIO, 'Apunte');
+  await ensureColumn(HOJA_RECETARIO, 'Opcion_Requerida');
 }
 
 /**
@@ -111,12 +122,18 @@ function insumosDe(
   /** Cuánto rinde la receta de cada producto; 0 = se usa por pieza */
   rindePorProducto: Map<string, number>,
   nivel = 0
-): { idBiblioteca: string; cantidad: number; merma: string; extra: string }[] {
+): { idBiblioteca: string; cantidad: number; merma: string; extra: string; opcion: string }[] {
   if (nivel >= PROFUNDIDAD_MAX || visitados.has(idProducto)) return [];
   const propios = new Set(visitados);
   propios.add(idProducto);
 
-  const salida: { idBiblioteca: string; cantidad: number; merma: string; extra: string }[] = [];
+  const salida: {
+    idBiblioteca: string;
+    cantidad: number;
+    merma: string;
+    extra: string;
+    opcion: string;
+  }[] = [];
   for (const r of porProducto.get(idProducto) ?? []) {
     const cantidad = (parseFloat(r.Cantidad) || 0) * factor;
     if (cantidad <= 0) continue;
@@ -141,6 +158,7 @@ function insumosDe(
         cantidad,
         merma: r.Merma_Pct || '',
         extra: (r.Extra_Requerido || '').trim(),
+        opcion: (r.Opcion_Requerida || '').trim(),
       });
     }
   }
@@ -198,6 +216,7 @@ export function recetarioComoCatalogo(
         Cantidad_Receta: String(cantidad),
         Merma_Pct: l.merma,
         Extra_Requerido: l.extra,
+        Opcion_Requerida: l.opcion,
       });
     }
   }

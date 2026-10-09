@@ -20,6 +20,7 @@ import { extrasDesdeNombre } from './extras';
 import { toppingDesdeNombre } from './toppingIncluido';
 import { factorDeTamano } from './tamanoFactor';
 import { parsearTamanos } from './tamanos';
+import { eleccionAnotada } from './opciones';
 import { consumoPorInsumo } from '@/lib/insumos';
 import { clavesDeInsumo, COL_ACT, estaEnUso, HOJA_ACTIVOS, HOJA_BIBLIOTECA } from '@/lib/inventario';
 import { leerRecetas } from '@/lib/recetario';
@@ -110,6 +111,15 @@ export async function moverStockDePedido(
           ...extrasDesdeNombre(i.Nombre_Producto_Snap ?? ''),
           toppingDesdeNombre(i.Nombre_Producto_Snap ?? ''),
         ].filter(Boolean),
+        /*
+          Lo que eligió el cliente, leído del mismo nombre guardado.
+
+          Se lee sin validar contra el menú de hoy a propósito: lo que
+          importa es lo que se sirvió ese día. Un sabor que ya se retiró
+          gastó su fruta igual, y validarlo contra el menú actual lo
+          dejaría fuera del descuento.
+        */
+        opciones: eleccionAnotada(i.Nombre_Producto_Snap ?? ''),
       })),
       catalogo
     );

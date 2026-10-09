@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { claveLinea, parsearTamanos, precioDesde, precioDeTamano } from '@/lib/tamanos';
+import { type Guardado, listasDelCajon } from '@/lib/gruposGuardados';
 import {
   claveEleccion,
   type Eleccion,
@@ -161,6 +162,8 @@ export default function VentaPage() {
   const [ordenCategorias, setOrdenCategorias] = useState<string[]>([]);
   /** Toppings que nunca van incluidos en el combo (la proteína) */
   const [toppingsConCosto, setToppingsConCosto] = useState<string[]>(TOPPINGS_CON_COSTO_DEFAULT);
+  /** Las listas que ella arma (JUGOS, BEBIDAS…), para abrir los @Nombre */
+  const [cajon, setCajon] = useState<Guardado[]>([]);
 
   useEffect(() => {
     fetch('/api/admin/productos')
@@ -180,6 +183,7 @@ export default function VentaPage() {
         if (d?.topeArticuloGratis) setTopeArticulo(d.topeArticuloGratis);
         setOrdenCategorias(d?.ordenCategorias || []);
         if (Array.isArray(d?.toppingsConCosto)) setToppingsConCosto(d.toppingsConCosto);
+        if (Array.isArray(d?.gruposGuardados)) setCajon(d.gruposGuardados);
         if (d?.horario?.dias?.length === 7) setHorario(d.horario);
       })
       .catch(() => {});
@@ -287,7 +291,7 @@ export default function VentaPage() {
     .filter((p) => p.nombre);
   /** Las opciones de un producto, ya con los grupos del menú abiertos. */
   const opcionesDe = (p: { Opciones?: string }) =>
-    resolverGrupos(parsearOpciones(p.Opciones ?? ''), menuParaGrupos);
+    resolverGrupos(parsearOpciones(p.Opciones ?? ''), menuParaGrupos, listasDelCajon(cajon));
   /** Licuado suelto: sus toppings, de los que uno va incluido */
   const propiosDe = (p: Producto) =>
     toppingsPropios(p.Categoría ?? '', parsearExtras(p.Extras ?? ''));

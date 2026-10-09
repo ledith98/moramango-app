@@ -23,6 +23,7 @@ import {
 import { claveLinea, nombreConTamano, parsearTamanos, precioDeTamano } from './tamanos';
 import { claveNombre } from './opcionesAgotadas';
 import { leerAjustes } from './ajustes';
+import { listasDelCajon } from './gruposGuardados';
 import {
   extrasPermitidos,
   GRUPO_TOPPING,
@@ -80,7 +81,7 @@ export async function validarItems(items: ItemEntrante[]): Promise<ResultadoVali
     return { ok: false, error: 'El carrito está vacío' };
   }
 
-  const [productos, { toppingsConCosto }] = await Promise.all([
+  const [productos, { toppingsConCosto, gruposGuardados }] = await Promise.all([
     getSheetData('Productos', { crudo: true }),
     leerAjustes(),
   ]);
@@ -101,6 +102,8 @@ export async function validarItems(items: ItemEntrante[]): Promise<ResultadoVali
       categoria: (p['Categoría'] ?? p.Categoria ?? '').toString().trim(),
     }))
     .filter((p) => p.nombre);
+  /** Las listas que ella arma; ganan sobre una categoría del mismo nombre */
+  const listas = listasDelCajon(gruposGuardados ?? []);
   const menuToppings = toppingsDeHoja(
     productos.filter((p) => (p.Eliminado || '').toUpperCase() !== 'TRUE')
   );
@@ -160,7 +163,7 @@ export async function validarItems(items: ItemEntrante[]): Promise<ResultadoVali
     // No cambian el precio, pero sí lo que hay que preparar, así que se
     // exigen igual que el tamaño.
     // Si la bebida elegida trae toppings, se pregunta cuál (va incluido).
-    const gruposBase = resolverGrupos(parsearOpciones(p.Opciones ?? ''), menu);
+    const gruposBase = resolverGrupos(parsearOpciones(p.Opciones ?? ''), menu, listas);
     const extrasHoja = parsearExtras(p.Extras ?? '');
     // Licuado suelto: uno de sus toppings va incluido
     const propios = toppingsPropios((p['Categoría'] ?? p.Categoria ?? '').toString(), extrasHoja);

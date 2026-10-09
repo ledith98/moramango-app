@@ -12,11 +12,16 @@
  * nombre del grupo va antes del "=" y sus opciones separadas por ";".
  * Así se agregan sabores nuevos sin tocar la estructura del Sheet.
  *
- * Una opción puede ser un grupo entero del menú en vez de un nombre
- * suelto: `Bebida=@Jugos` quiere decir "todos los jugos que se vendan
- * hoy". Así, al dar de alta un jugo nuevo aparece solo en los combos que
- * lo ofrecen, sin ir producto por producto a agregarlo — que es como el
- * Combo 1 terminó ofreciendo cuatro licuados de los siete que hay.
+ * Una opción puede apuntar a una LISTA en vez de ser un nombre suelto:
+ * `Bebida=@JUGOS` quiere decir "lo que hoy tenga la lista JUGOS". Así, al
+ * agregarle un jugo a esa lista aparece solo en todos los combos que la
+ * usan, sin entrar a ninguno — que es como el Combo 1 terminó ofreciendo
+ * cuatro licuados de los ocho que hay: nadie volvió a pasar por ahí.
+ *
+ * `@Nombre` busca primero entre las listas que la dueña arma a mano, y si
+ * no hay ninguna con ese nombre, cae al grupo del menú que se llame así.
+ * Primero la suya porque es la que escribió a propósito: la categoría
+ * "Jugos" trae los cinco que vende, y en combo solo entran tres.
  *
  * La lista se arma al momento de enseñarla, no al guardarla, para que no
  * envejezca: `resolverGrupos` cambia los `@Grupo` por los productos que
@@ -196,6 +201,9 @@ export interface ProductoDelMenu {
   categoria: string;
 }
 
+/** Cuántas listas puede atravesar una lista que apunta a otra. */
+const SALTOS_MAX = 5;
+
 /** "@Jugos" → "Jugos". Cadena vacía si la opción es un nombre normal. */
 export function categoriaReferida(opcion: string): string {
   const t = limpio(opcion);
@@ -216,7 +224,8 @@ export function categoriaReferida(opcion: string): string {
  */
 export function resolverGrupos(
   grupos: GrupoOpcion[],
-  menu: ProductoDelMenu[]
+  menu: ProductoDelMenu[],
+  listas: GrupoOpcion[] = []
 ): GrupoOpcion[] {
   if (grupos.length === 0) return grupos;
   // Sin referencias no hay nada que resolver: se devuelve lo mismo
@@ -229,14 +238,30 @@ export function resolverGrupos(
       const n = limpio(nombre);
       if (n && !opciones.some((x) => igual(x, n))) opciones.push(n);
     };
-    for (const o of g.opciones) {
-      const cat = categoriaReferida(o);
-      if (!cat) {
-        meter(o);
-        continue;
+
+    /*
+      Una lista puede apuntar a otra, y hay que poder cortar el círculo:
+      si JUGOS trae @BEBIDAS y BEBIDAS trae @JUGOS, sin esto la pantalla
+      se queda girando. Ya pasó una vez hoy por una función que se llamaba
+      a sí misma; no se repite.
+    */
+    const abrir = (opcion: string, vistas: string[]) => {
+      const nombre = categoriaReferida(opcion);
+      if (!nombre) {
+        meter(opcion);
+        return;
       }
-      for (const p of menu) if (igual(p.categoria, cat)) meter(p.nombre);
-    }
+      if (vistas.length >= SALTOS_MAX || vistas.some((v) => igual(v, nombre))) return;
+      // Primero la lista que ella armó; si no existe, el grupo del menú
+      const lista = listas.find((l) => igual(l.nombre, nombre));
+      if (lista) {
+        for (const o of lista.opciones) abrir(o, [...vistas, nombre]);
+        return;
+      }
+      for (const p of menu) if (igual(p.categoria, nombre)) meter(p.nombre);
+    };
+
+    for (const o of g.opciones) abrir(o, []);
     return { ...g, opciones };
   });
 }

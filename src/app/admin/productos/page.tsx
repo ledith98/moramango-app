@@ -17,6 +17,7 @@ import {
   guardarEnCajon,
   juegosDeExtras,
   preguntasQueFaltan,
+  listasDelCajon,
   quitarDelCajon,
   sumarExtras,
 } from '@/lib/gruposGuardados';
@@ -109,6 +110,8 @@ export default function ProductosPage() {
   const [cargando, setCargando] = useState(true);
   /** Lo que se teclea para encontrar un producto entre los casi 60 que hay */
   const [busca, setBusca] = useState('');
+  /** true = está abierto el panel donde se arman las listas de los combos */
+  const [verListas, setVerListas] = useState(false);
   const [editando, setEditando] = useState<Producto | null>(null);
   const [creando, setCreando] = useState(false);
   const [form, setForm] = useState<FormProducto>(FORM_VACIO);
@@ -312,6 +315,23 @@ export default function ProductosPage() {
       setAcomodando(false);
     }
   };
+
+  /**
+   * Los productos que apuntan a una lista.
+   *
+   * Se enseña antes de tocarla: cambiarle un jugo a JUGOS le cambia la
+   * carta a cuatro combos a la vez, y eso hay que verlo antes, no después.
+   */
+  const quienUsa = (nombre: string) =>
+    productos
+      .filter((p) =>
+        parsearOpciones(p.Opciones ?? '').some((g) =>
+          g.opciones.some(
+            (o) => categoriaReferida(o).toLowerCase() === nombre.toLowerCase()
+          )
+        )
+      )
+      .map((p) => p.Nombre);
 
   /**
    * Mete una pregunta o un juego de extras al cajón, para no volver a
@@ -643,6 +663,180 @@ export default function ProductosPage() {
           )}
         </div>
       )}
+
+      {/*
+        Las listas de los combos.
+
+        Viven aquí y no en otra pestaña porque es donde se arman los
+        combos que las usan: cambiarle un jugo a JUGOS y ver enseguida a
+        qué combos les acaba de cambiar la carta es la misma tarea.
+      */}
+      <div className="bg-white rounded-2xl shadow-sm border border-neutral-100">
+        <button
+          onClick={() => setVerListas((v) => !v)}
+          className="w-full flex items-center justify-between gap-3 p-4 text-left"
+        >
+          <span className="min-w-0">
+            <span className="block font-bold text-neutral-900">
+              🧩 Listas para combos{' '}
+              <span className="font-normal text-neutral-700">
+                ({listasDelCajon(cajon).length})
+              </span>
+            </span>
+            <span className="block text-xs text-neutral-700">
+              Arma aquí los JUGOS o las BEBIDAS una vez. Cambias la lista y cambian todos los
+              combos que la usan.
+            </span>
+          </span>
+          <span className="text-sm font-bold text-marron shrink-0">
+            {verListas ? 'Ocultar ▴' : 'Ver ▾'}
+          </span>
+        </button>
+
+        {verListas && (
+          <div className="border-t border-neutral-100 p-4 space-y-3">
+            {listasDelCajon(cajon).length === 0 && (
+              <p className="text-sm text-neutral-800">
+                Todavía no hay ninguna. Se crean aquí abajo, o desde un combo: escribes la
+                pregunta y le das Guardar.
+              </p>
+            )}
+
+            {listasDelCajon(cajon).map((l) => {
+              const usada = quienUsa(l.nombre);
+              return (
+                <div key={l.nombre} className="border border-neutral-200 rounded-xl p-3 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-bold text-neutral-900">{l.nombre}</p>
+                      <p className="text-xs text-neutral-700">
+                        {usada.length === 0
+                          ? 'Todavía no la usa ningún producto'
+                          : `La usan: ${usada.join(' · ')}`}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (usada.length > 0) {
+                          alert(
+                            `No se puede borrar "${l.nombre}" todavía: la usan ${usada.length} producto(s).\n\n${usada.join('\n')}\n\nQuítala de ahí primero, o esos combos se quedarían sin nada que ofrecer.`
+                          );
+                          return;
+                        }
+                        sacarDelCajon(l.nombre);
+                      }}
+                      className="shrink-0 text-xs font-semibold text-neutral-800 bg-neutral-100 px-3 py-2 rounded-lg active:scale-95"
+                    >
+                      Borrar
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {l.opciones.map((o) => (
+                      <span
+                        key={o}
+                        className="flex items-stretch rounded-lg overflow-hidden border border-neutral-300"
+                      >
+                        <span className="bg-white text-neutral-900 text-xs font-semibold px-2.5 py-1.5">
+                          {o}
+                        </span>
+                        <button
+                          onClick={() => {
+                            if (l.opciones.length <= 1) {
+                              alert(
+                                `"${l.nombre}" se quedaría vacía, y un combo con una pregunta sin opciones no se puede vender. Agrégale otra antes de quitar esta.`
+                              );
+                              return;
+                            }
+                            guardarEnElCajon({
+                              tipo: 'pregunta',
+                              nombre: l.nombre,
+                              opciones: l.opciones.filter((x) => x !== o),
+                            });
+                          }}
+                          aria-label={`Quitar ${o} de ${l.nombre}`}
+                          className="bg-neutral-100 text-neutral-800 text-xs font-bold px-2 active:scale-95"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+
+                  {/*
+                    Los productos del menú solo se ofrecen si la lista ya
+                    es de productos. A "Tostado: Si / No" no se le propone
+                    un jugo: sería ruido en la lista que más se ve.
+                  */}
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {l.opciones.some((o) =>
+                      menuParaGrupos.some((x) => x.nombre.toLowerCase() === o.toLowerCase())
+                    ) &&
+                      menuParaGrupos
+                        .filter(
+                          (x) =>
+                            !l.opciones.some((o) => o.toLowerCase() === x.nombre.toLowerCase())
+                        )
+                        .slice(0, 40)
+                        .map((x) => (
+                          <button
+                            key={x.nombre}
+                            onClick={() =>
+                              guardarEnElCajon({
+                                tipo: 'pregunta',
+                                nombre: l.nombre,
+                                opciones: [...l.opciones, x.nombre],
+                              })
+                            }
+                            className="text-[11px] font-semibold text-marron bg-marron/10 px-2.5 py-1.5 rounded-lg active:scale-95"
+                          >
+                            + {x.nombre}
+                          </button>
+                        ))}
+                    <button
+                      onClick={() => {
+                        const nuevo = prompt(`¿Qué le agregas a "${l.nombre}"?`, '');
+                        if (!nuevo?.trim()) return;
+                        guardarEnElCajon({
+                          tipo: 'pregunta',
+                          nombre: l.nombre,
+                          opciones: [...l.opciones, nuevo.trim()],
+                        });
+                      }}
+                      className="text-[11px] font-semibold text-neutral-800 bg-neutral-100 px-2.5 py-1.5 rounded-lg active:scale-95"
+                    >
+                      + escribir uno
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+
+            <button
+              onClick={() => {
+                const nombre = prompt(
+                  '¿Cómo se va a llamar la lista?\n\nEj. JUGOS, BEBIDAS DE COMBO, QUESOS. Después le agregas lo que lleva.',
+                  ''
+                );
+                if (!nombre?.trim()) return;
+                const primero = prompt(
+                  `¿Qué lleva "${nombre.trim()}" para empezar?\n\nUno nada más; los demás se los agregas de la lista de abajo.`,
+                  ''
+                );
+                if (!primero?.trim()) return;
+                guardarEnElCajon({
+                  tipo: 'pregunta',
+                  nombre: nombre.trim(),
+                  opciones: [primero.trim()],
+                });
+              }}
+              className="w-full border-2 border-dashed border-neutral-300 rounded-xl py-3 text-sm font-semibold text-neutral-700 active:scale-95"
+            >
+              + Lista nueva
+            </button>
+          </div>
+        )}
+      </div>
 
       <div className="relative">
         <input
@@ -1341,14 +1535,24 @@ export default function ProductosPage() {
                       {g.nombre.trim() && g.opciones.some((o) => o.trim()) && (
                         <button
                           type="button"
-                          onClick={() =>
-                            guardarEnElCajon({
+                          onClick={async () => {
+                            const nombre = g.nombre.trim();
+                            await guardarEnElCajon({
                               tipo: 'pregunta',
-                              nombre: g.nombre.trim(),
+                              nombre,
                               opciones: g.opciones.map((o) => o.trim()).filter(Boolean),
-                            })
-                          }
-                          title="Guardar esta pregunta para reusarla en otros productos"
+                            });
+                            /*
+                              Y este producto queda ligado a la lista que
+                              acaba de nacer. Si se quedara con la copia,
+                              editar la lista cambiaría a los demás combos
+                              menos a este, que es el más confuso de todos.
+                            */
+                            const copia = [...form.opciones];
+                            copia[gi] = { nombre, opciones: [`${MARCA_CATEGORIA}${nombre}`] };
+                            setForm({ ...form, opciones: copia });
+                          }}
+                          title="Guardarla como lista y ligar este producto a ella"
                           className="shrink-0 h-10 px-3 rounded-lg bg-marron/10 text-marron text-xs font-bold active:scale-95"
                         >
                           Guardar
@@ -1370,10 +1574,14 @@ export default function ProductosPage() {
                       // Un "@Grupo" no se teclea: se lee, y debajo dice a
                       // qué se abre hoy para que no haya que adivinarlo.
                       const cat = categoriaReferida(o);
+                      // Lo mismo que verá el cliente: su lista si existe,
+                      // y si no, el grupo del menú que se llame así
                       const abre = cat
-                        ? menuParaGrupos.filter(
-                            (x) => x.categoria.toLowerCase() === cat.toLowerCase()
-                          )
+                        ? resolverGrupos(
+                            [{ nombre: 'x', opciones: [o] }],
+                            menuParaGrupos,
+                            listasDelCajon(cajon)
+                          )[0].opciones
                         : [];
                       return (
                       <div key={oi} className={`flex items-start gap-2 pl-3 ${cat ? 'py-1' : ''}`}>
@@ -1389,7 +1597,7 @@ export default function ProductosPage() {
                             </p>
                             <p className="text-[11px] text-neutral-800 mt-0.5">
                               {abre.length > 0
-                                ? `Hoy: ${abre.map((x) => x.nombre).join(' · ')}`
+                                ? `Hoy: ${abre.join(' · ')}`
                                 : `Todavía no hay nada en "${cat}"`}
                             </p>
                             <p className="text-[11px] text-neutral-700">
@@ -1501,10 +1709,11 @@ export default function ProductosPage() {
                                 ...form,
                                 opciones: [
                                   ...form.opciones,
-                                  {
-                                    nombre: g.nombre,
-                                    opciones: g.tipo === 'pregunta' ? [...g.opciones] : [],
-                                  },
+                                  // LIGADA, no copiada: se guarda el nombre
+                                  // de la lista, y lo que esa lista tenga el
+                                  // día de mañana es lo que va a ofrecer este
+                                  // combo. Es justo para lo que se pidió.
+                                  { nombre: g.nombre, opciones: [`${MARCA_CATEGORIA}${g.nombre}`] },
                                 ],
                               })
                             }

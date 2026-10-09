@@ -150,3 +150,15 @@ export function sumarExtras(puestos: Extra[], nuevos: Extra[]): Extra[] {
   }
   return salida;
 }
+
+/**
+ * Las listas del cajón, como las espera `resolverGrupos`.
+ *
+ * Solo las preguntas: un juego de extras tiene precios y no se puede
+ * ofrecer como opción a elegir dentro de un combo.
+ */
+export function listasDelCajon(cajon: Guardado[]): GrupoOpcion[] {
+  return cajon
+    .filter((g): g is Extract<Guardado, { tipo: 'pregunta' }> => g.tipo === 'pregunta')
+    .map((g) => ({ nombre: g.nombre, opciones: g.opciones }));
+}

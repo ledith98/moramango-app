@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { DIAS_NOMBRE, estadoTienda, HORARIO_DEFAULT, type Horario } from '@/lib/horario';
 import { catalogoExtras, claveExtra, type ExtraConocido } from '@/lib/extras';
 import { parsearOpciones, resolverGrupos, type ProductoDelMenu } from '@/lib/opciones';
+import { listasDelCajon } from '@/lib/gruposGuardados';
 import { productoDeOpcion, toppingsDeHoja } from '@/lib/toppingIncluido';
 import { desglosar, gananciaMaxima, precioParaGanancia } from '@/lib/impuestos';
 
@@ -171,7 +172,7 @@ export default function AjustesPage() {
       .filter((x) => x.nombre);
     const deBebidas = new Set<string>();
     for (const f of filas) {
-      for (const g of resolverGrupos(parsearOpciones(f.Opciones ?? ''), catalogo)) {
+      for (const g of resolverGrupos(parsearOpciones(f.Opciones ?? ''), catalogo, listasDelCajon(a?.gruposGuardados ?? []))) {
         for (const o of g.opciones) {
           const bebida = productoDeOpcion(g.nombre, o, menu);
           if (bebida && bebida.toppings.length > 0) {
